@@ -16,4 +16,5 @@
 #define MUTAP_VERSION_MINOR 1
 #define MUTAP_VERSION_PATCH 0
 
+#include "mutap/fdaf.h"
 #include "mutap/fft.h"

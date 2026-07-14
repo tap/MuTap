@@ -30,16 +30,24 @@ One float-parameterized core, three targets:
 
 ## Status
 
-Early scaffold (milestone M0 of [HANDOFF.md](HANDOFF.md), which carries the
-full technical plan, milestone sequence and paper list). What exists today:
+Early (milestone M1 of [HANDOFF.md](HANDOFF.md), which carries the full
+technical plan, milestone sequence and paper list). What exists today:
 
 - `mutap::basic_real_fft<Sample>` — Ooura split-radix real FFT wrapped for
   float and double (`mutap::real_fft`, `mutap::real_fft32`), with the packed
   spectrum layout and sign convention documented in
   [`include/mutap/fft.h`](include/mutap/fft.h) and locked down by tests.
+- `mutap::partitioned_fdaf<Sample>` — partitioned-block frequency-domain
+  adaptive filter (overlap-save, per-bin NLMS update, optional gradient
+  constraint): the identification core that PEM prewhitening will wrap.
+  Validated open-loop against known impulse responses: on white noise the
+  constrained filter converges below −100 dB misalignment in float64 and
+  below −55 dB in float32, and the float32 run tracks the float64 golden
+  model to single-precision depth ([`tests/test_fdaf.cpp`](tests/test_fdaf.cpp)).
 
-Next up (M1): the partitioned-block frequency-domain adaptive filter,
-validated open-loop against known impulse responses.
+Next up (M2): the closed-loop simulator — forward path with gain and delay,
+howling-onset and added-stable-gain metrics, and the naive-FDAF failure
+baseline that PEM prewhitening (M3) must beat.
 
 ## Quick start
 

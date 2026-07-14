@@ -11,7 +11,8 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mutap_tests
-    test_fft.cpp)
+    test_fft.cpp
+    test_fdaf.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings
