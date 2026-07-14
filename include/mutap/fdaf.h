@@ -88,6 +88,12 @@ namespace mutap {
         size_t block_size() const noexcept { return m_cfg.block_size; }
         size_t partitions() const noexcept { return m_cfg.partitions; }
         size_t filter_length() const noexcept { return m_cfg.block_size * m_cfg.partitions; }
+        size_t fft_size() const noexcept { return m_n; }
+
+        /// Read access to partition p's filter spectrum (packed layout,
+        /// fft_size() slots). This is what lets a PEM wrapper apply the
+        /// learned filter to a *different* (non-prewhitened) input stream.
+        const Sample* partition_spectrum(size_t p) const noexcept { return &m_h[p * m_n]; }
 
         Sample step_size() const noexcept { return m_cfg.step_size; }
         void   set_step_size(Sample mu) noexcept { m_cfg.step_size = mu; }

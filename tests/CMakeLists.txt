@@ -13,6 +13,8 @@ FetchContent_MakeAvailable(googletest)
 add_executable(mutap_tests
     test_fft.cpp
     test_fdaf.cpp
+    test_lpc.cpp
+    test_pem_afc.cpp
     test_closed_loop.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap

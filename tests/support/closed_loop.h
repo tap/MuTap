@@ -56,10 +56,13 @@ namespace mutap_test {
         double forward_gain_db() const { return m_cfg.forward_gain_db; }
         size_t block_size() const { return m_cfg.block_size; }
 
-        /// Advance the loop by one block of near-end input v. `canceller` may
-        /// be null (open loop). Returns the RMS of the error/output block e
-        /// (+inf if the loop has produced non-finite samples).
-        double step(const Sample* v, mutap::partitioned_fdaf<Sample>* canceller) {
+        /// Advance the loop by one block of near-end input v. `canceller` is
+        /// any type with process_block(u, y, e) over block_size samples
+        /// (mutap::partitioned_fdaf, mutap::pem_afc, ...) and may be null
+        /// (open loop). Returns the RMS of the error/output block e (+inf if
+        /// the loop has produced non-finite samples).
+        template <typename Canceller>
+        double step(const Sample* v, Canceller* canceller) {
             const size_t b   = m_cfg.block_size;
             const size_t lf  = m_cfg.feedback_path.size();
             const double lim = m_cfg.speaker_limit;
@@ -165,14 +168,80 @@ namespace mutap_test {
         return v;
     }
 
+    /// Speech-envelope-like near-end: white noise through a fixed all-pole
+    /// AR(4) coloring filter (two strong resonances), normalized to unit
+    /// RMS. Strongly self-correlated -> biases a naive closed-loop estimate.
+    template <typename Sample>
+    std::vector<Sample> ar_near_end(size_t n, unsigned seed) {
+        std::mt19937                     gen(seed);
+        std::normal_distribution<double> dist(0.0, 1.0);
+        // Two resonator pole pairs: r=0.97 at 0.03*2pi and r=0.95 at 0.11*2pi.
+        const double        a1[] = {-2.0 * 0.97 * std::cos(0.03 * 2.0 * std::numbers::pi), 0.97 * 0.97};
+        const double        a2[] = {-2.0 * 0.95 * std::cos(0.11 * 2.0 * std::numbers::pi), 0.95 * 0.95};
+        std::vector<double> x(n, 0.0);
+        double              s1[2]  = {0.0, 0.0};
+        double              s2[2]  = {0.0, 0.0};
+        double              energy = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            double w = dist(gen);
+            w        = w - a1[0] * s1[0] - a1[1] * s1[1];
+            s1[1]    = s1[0];
+            s1[0]    = w;
+            w        = w - a2[0] * s2[0] - a2[1] * s2[1];
+            s2[1]    = s2[0];
+            s2[0]    = w;
+            x[i]     = w;
+            energy += w * w;
+        }
+        const double        scale = std::sqrt(static_cast<double>(n) / energy);
+        std::vector<Sample> v(n);
+        for (size_t i = 0; i < n; ++i) {
+            v[i] = static_cast<Sample>(x[i] * scale);
+        }
+        return v;
+    }
+
+    /// Voiced-speech-like near-end: a pitch-period impulse train through the
+    /// same AR(4) envelope, plus a small noise floor; unit RMS. Whitening it
+    /// fully needs BOTH predictor stages (envelope AND pitch periodicity).
+    template <typename Sample>
+    std::vector<Sample> voiced_near_end(size_t n, unsigned seed, size_t pitch_period = 160) {
+        std::mt19937                     gen(seed);
+        std::normal_distribution<double> dist(0.0, 1.0);
+        const double                     a1[] = {-2.0 * 0.97 * std::cos(0.03 * 2.0 * std::numbers::pi), 0.97 * 0.97};
+        const double                     a2[] = {-2.0 * 0.95 * std::cos(0.11 * 2.0 * std::numbers::pi), 0.95 * 0.95};
+        std::vector<double>              x(n, 0.0);
+        double                           s1[2]  = {0.0, 0.0};
+        double                           s2[2]  = {0.0, 0.0};
+        double                           energy = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            double w = (i % pitch_period == 0) ? std::sqrt(static_cast<double>(pitch_period)) : 0.0;
+            w += 0.01 * dist(gen);
+            w     = w - a1[0] * s1[0] - a1[1] * s1[1];
+            s1[1] = s1[0];
+            s1[0] = w;
+            w     = w - a2[0] * s2[0] - a2[1] * s2[1];
+            s2[1] = s2[0];
+            s2[0] = w;
+            x[i]  = w;
+            energy += w * w;
+        }
+        const double        scale = std::sqrt(static_cast<double>(n) / energy);
+        std::vector<Sample> v(n);
+        for (size_t i = 0; i < n; ++i) {
+            v[i] = static_cast<Sample>(x[i] * scale);
+        }
+        return v;
+    }
+
     // ---------------------------------------------------------------- metrics
 
     /// Run the whole near-end signal through the loop; howling = any block
     /// RMS at or beyond `howl_rms` (40 dB over the unit-RMS near-end by
     /// default; the speaker clip keeps a howling run bounded above it).
-    template <typename Sample>
-    bool loop_howls(closed_loop_sim<Sample>& sim, mutap::partitioned_fdaf<Sample>* canceller,
-                    const std::vector<Sample>& v, double howl_rms = 100.0) {
+    template <typename Sample, typename Canceller>
+    bool loop_howls(closed_loop_sim<Sample>& sim, Canceller* canceller, const std::vector<Sample>& v,
+                    double howl_rms = 100.0) {
         const size_t b = sim.block_size();
         for (size_t blk = 0; blk + 1 <= v.size() / b; ++blk) {
             if (sim.step(&v[blk * b], canceller) >= howl_rms) {
@@ -180,6 +249,13 @@ namespace mutap_test {
             }
         }
         return false;
+    }
+
+    /// Open-loop overload: `nullptr` cannot deduce the canceller type.
+    template <typename Sample>
+    bool loop_howls(closed_loop_sim<Sample>& sim, std::nullptr_t, const std::vector<Sample>& v,
+                    double howl_rms = 100.0) {
+        return loop_howls(sim, static_cast<mutap::partitioned_fdaf<Sample>*>(nullptr), v, howl_rms);
     }
 
     /// MSG upper bound from the loop-magnitude condition: the broadband gain
@@ -209,10 +285,10 @@ namespace mutap_test {
     /// each probe rebuilds the loop (and copies `canceller_template` fresh,
     /// when given) and runs the whole near-end signal. Returns the largest
     /// probed gain (dB, within tol_db) that did not howl.
-    template <typename Sample>
+    template <typename Sample, typename Canceller>
     double measured_msg_db(const typename closed_loop_sim<Sample>::config& loop_cfg,
-                           const mutap::partitioned_fdaf<Sample>* canceller_template, const std::vector<Sample>& v,
-                           double lo_db, double hi_db, double tol_db = 0.5) {
+                           const Canceller* canceller_template, const std::vector<Sample>& v, double lo_db,
+                           double hi_db, double tol_db = 0.5) {
         auto howls_at = [&](double k_db) {
             auto cfg            = loop_cfg;
             cfg.forward_gain_db = k_db;
@@ -221,7 +297,7 @@ namespace mutap_test {
                 auto canceller = *canceller_template; // fresh copy per probe
                 return loop_howls(sim, &canceller, v);
             }
-            return loop_howls<Sample>(sim, nullptr, v);
+            return loop_howls(sim, static_cast<Canceller*>(nullptr), v);
         };
         if (howls_at(lo_db)) {
             return lo_db; // caller picked lo too high; report the bound
@@ -236,6 +312,14 @@ namespace mutap_test {
             }
         }
         return lo_db;
+    }
+
+    /// Open-loop overload of measured_msg_db (no canceller in the loop).
+    template <typename Sample>
+    double measured_msg_db(const typename closed_loop_sim<Sample>::config& loop_cfg, std::nullptr_t,
+                           const std::vector<Sample>& v, double lo_db, double hi_db, double tol_db = 0.5) {
+        return measured_msg_db(loop_cfg, static_cast<const mutap::partitioned_fdaf<Sample>*>(nullptr), v, lo_db, hi_db,
+                               tol_db);
     }
 
 } // namespace mutap_test

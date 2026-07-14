@@ -56,10 +56,24 @@ technical plan, milestone sequence and paper list). What exists today:
   (ASG ≤ −12 dB — it howls at gains the open loop handles). Removing that
   failure is PEM prewhitening's job.
 
-Next up (M3): PEM prewhitening — the pluggable near-end predictor (speech
-cascade first), Levinson–Durbin with regularization, prefiltering of both
-adaptive-filter inputs; must turn the tonal-near-end baseline into the
-white-near-end behavior.
+- **PEM prewhitening** — the actual feedback canceller.
+  [`include/mutap/lpc.h`](include/mutap/lpc.h): autocorrelation and
+  Levinson–Durbin with the conditioning guards (relative ridge, silence
+  floor, early stop), plus the pluggable near-end models — `lpc_predictor`
+  (short-term LP) and `speech_predictor` (the cascade: short-term LP +
+  long-term pitch tap). [`include/mutap/pem_afc.h`](include/mutap/pem_afc.h):
+  `mutap::pem_afc<Sample, Predictor>`, the FDAF-PEM-AFROW structure —
+  cancellation runs on the raw signals, adaptation on the prewhitened pair.
+  Measured in the M2 loop (converged at MSG−6 dB, across seeds and both
+  precisions): on the tonal material where the naive canceller howls ≥12 dB
+  *below* the open-loop MSG, PEM is stable above it with **ASG +4.5…+6.8 dB**;
+  speech-envelope material **+3…+12.6 dB**; voiced (pitch-periodic) material
+  **+2.7…+4.5 dB** where naive howls; white unchanged (~+7.4 dB)
+  ([`tests/test_pem_afc.cpp`](tests/test_pem_afc.cpp),
+  [`tests/test_lpc.cpp`](tests/test_lpc.cpp)).
+
+Next up (M4): adaptation control and robustness — the IPC double-talk
+indicator, IPC-gated freeze/slow adaptation, variable regularization.
 
 ## Quick start
 
