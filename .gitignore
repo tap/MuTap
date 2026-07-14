@@ -1,0 +1,9 @@
+build*/
+.cache/
+compile_commands.json
+CMakeUserPresets.json
+.vscode/
+.idea/
+.claude/
+book/book/
+__pycache__/
