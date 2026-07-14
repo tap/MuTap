@@ -44,10 +44,22 @@ technical plan, milestone sequence and paper list). What exists today:
   constrained filter converges below −100 dB misalignment in float64 and
   below −55 dB in float32, and the float32 run tracks the float64 golden
   model to single-precision depth ([`tests/test_fdaf.cpp`](tests/test_fdaf.cpp)).
+- The closed-loop simulator and metrics
+  ([`tests/support/closed_loop.h`](tests/support/closed_loop.h)): mic =
+  near-end + true path × speaker, canceller subtraction, forward path with
+  gain, delay and a speaker limit; howling detection and bisected
+  maximum-stable-gain (MSG) measurement. Measured MSG agrees with the
+  −20·log₁₀ max|F(ω)| bound within 0.35 dB. And the **M2 regression
+  baseline** ([`tests/test_closed_loop.cpp`](tests/test_closed_loop.cpp)):
+  the naive (un-prewhitened) FDAF adds +6…+10 dB stable gain on white
+  near-end but its bias on tonal program material is *destabilizing*
+  (ASG ≤ −12 dB — it howls at gains the open loop handles). Removing that
+  failure is PEM prewhitening's job.
 
-Next up (M2): the closed-loop simulator — forward path with gain and delay,
-howling-onset and added-stable-gain metrics, and the naive-FDAF failure
-baseline that PEM prewhitening (M3) must beat.
+Next up (M3): PEM prewhitening — the pluggable near-end predictor (speech
+cascade first), Levinson–Durbin with regularization, prefiltering of both
+adaptive-filter inputs; must turn the tonal-near-end baseline into the
+white-near-end behavior.
 
 ## Quick start
 
