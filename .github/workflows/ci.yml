@@ -85,4 +85,5 @@ jobs:
         run: |
           sudo apt-get update -q && sudo apt-get install -y -q clang-format-18
           clang-format-18 --dry-run --Werror \
-            include/mutap/*.h tests/*.cpp tests/support/*.h
+            include/mutap/*.h tests/*.cpp tests/support/*.h \
+            tools/capi/*.cpp tools/capi/*.h

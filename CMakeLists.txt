@@ -52,3 +52,9 @@ if(MUTAP_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# C ABI shared library for FFI consumers (see notebooks/afc_demo.ipynb).
+option(MUTAP_BUILD_CAPI "Build the C ABI shared library" OFF)
+if(MUTAP_BUILD_CAPI)
+    add_subdirectory(tools/capi)
+endif()

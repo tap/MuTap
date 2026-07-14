@@ -30,8 +30,9 @@ One float-parameterized core, three targets:
 
 ## Status
 
-Early (milestone M1 of [HANDOFF.md](HANDOFF.md), which carries the full
-technical plan, milestone sequence and paper list). What exists today:
+Milestones M0–M4 of [HANDOFF.md](HANDOFF.md) (the full technical plan,
+milestone sequence and paper list) are done — the canceller core is
+algorithmically complete. What exists today:
 
 - `mutap::basic_real_fft<Sample>` — Ooura split-radix real FFT wrapped for
   float and double (`mutap::real_fft`, `mutap::real_fft32`), with the packed
@@ -119,17 +120,26 @@ cmake --build build -j
 ctest --test-dir build
 ```
 
+For a visual tour — howling past the MSG, the naive-canceller bias
+limit-cycling vs PEM riding 6 dB above the open-loop limit, ASG by program
+material, IPC, burst survival — see
+[notebooks/afc_demo.ipynb](notebooks/afc_demo.ipynb), which drives the
+library through its C ABI (`-DMUTAP_BUILD_CAPI=ON`, `tools/capi/`) via
+ctypes (Python needs `numpy` and `matplotlib`; the first cell builds the
+shared library if needed).
+
 ## Layout
 
 ```
 include/mutap/       the library (header-only; umbrella header mutap.h)
 third_party/ooura/   vendored Ooura FFT (see THIRD_PARTY_NOTICES.md)
 tests/               GoogleTest suite (fetched at configure time)
+tools/capi/          C ABI shared library for FFI consumers (notebooks)
+notebooks/           demo notebook (ctypes over the C ABI)
 ```
 
-Planned as the milestones land: `examples/`, `bench/`, `notebooks/` (driving
-the library through a C ABI, `tools/capi/`), `platform/` (Cortex-M55 board
-support), `docs/`.
+Planned as the milestones land: `examples/`, `bench/`, `platform/`
+(Cortex-M55 board support), `docs/`.
 
 ## Style
 
