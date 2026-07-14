@@ -79,6 +79,11 @@ namespace mutap {
         bool adapting() const noexcept { return m_fdaf.adapting(); }
         void set_adaptation(bool enabled) noexcept { m_fdaf.set_adaptation(enabled); }
 
+        /// IPC of the PREWHITENED adaptation pair (see partitioned_fdaf);
+        /// this staying low while the raw-pair IPC is high is exactly the
+        /// bias reduction PEM buys (Gil-Cacho et al. 2014).
+        Sample ipc() const noexcept { return m_fdaf.ipc(); }
+
         partitioned_fdaf<Sample>&       fdaf() noexcept { return m_fdaf; }
         const partitioned_fdaf<Sample>& fdaf() const noexcept { return m_fdaf; }
         const Predictor&                predictor() const noexcept { return m_predictor; }

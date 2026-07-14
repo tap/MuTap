@@ -82,6 +82,13 @@ namespace {
         typename mutap::partitioned_fdaf<Sample>::config cfg;
         cfg.block_size = k_block;
         cfg.partitions = k_taps / k_block;
+        // Pin the M1-era fixed-epsilon normalizer: this baseline documents
+        // the UNMITIGATED closed-loop bias. M4's variable regularization
+        // (relative_regularization, on by default) softens the tonal
+        // catastrophe on its own (measured ASG -12 -> -3.5 dB) — still
+        // destabilizing, but enough to make the howl-below-MSG assertion
+        // precision-dependent.
+        cfg.relative_regularization = Sample(0);
         mutap::partitioned_fdaf<Sample> fdaf(cfg);
 
         closed_loop_sim<Sample> sim(loop_config(path, gain_db));

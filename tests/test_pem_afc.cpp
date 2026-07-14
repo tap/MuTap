@@ -146,6 +146,10 @@ namespace {
         mutap::partitioned_fdaf<double>::config naive_cfg;
         naive_cfg.block_size = k_block;
         naive_cfg.partitions = k_taps / k_block;
+        // M1-era fixed-epsilon naive, same pinning as the M2 baseline test:
+        // M4's variable regularization softens the naive bias on its own
+        // (misalignment ~+18 -> ~+10 dB), which is mitigation, not the fix.
+        naive_cfg.relative_regularization = 0.0;
         mutap::partitioned_fdaf<double> naive(naive_cfg);
         closed_loop_sim<double>         sim(loop_config(path, open_msg - 6.0));
         for (size_t blk = 0; blk < v.size() / k_block; ++blk) {

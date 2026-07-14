@@ -72,8 +72,27 @@ technical plan, milestone sequence and paper list). What exists today:
   ([`tests/test_pem_afc.cpp`](tests/test_pem_afc.cpp),
   [`tests/test_lpc.cpp`](tests/test_lpc.cpp)).
 
-Next up (M4): adaptation control and robustness — the IPC double-talk
-indicator, IPC-gated freeze/slow adaptation, variable regularization.
+- **Adaptation control** (in `partitioned_fdaf`, so both cancellers get it):
+  the **IPC** double-talk indicator (after Gil-Cacho et al. 2014, computed as
+  a chance-corrected per-partition coherence — the estimated fraction of
+  error power coherent with the input: measured ~0.7 while unconverged, 0.00
+  converged, 0.02 under double-talk; and the paper's headline reproduces:
+  raw-pair IPC 0.73 in the tonal closed loop vs 0.05 prewhitened),
+  **IPC-scaled stepping** (μ·IPC², a Wiener-flavored variable step) plus an
+  **instantaneous transient gate**, which together contain a +20 dB near-end
+  burst that blows up the ungated loop (worst block RMS ~25 vs ~56000 —
+  each layer alone is insufficient), and **variable regularization**
+  (per-bin normalizer floored at a fraction of the mean bin power), making
+  identification scale-invariant from 10⁻⁵× to 10³× input scale where a
+  fixed epsilon degrades by ~150 dB
+  ([`tests/test_adaptation_control.cpp`](tests/test_adaptation_control.cpp)).
+  A side-effect worth knowing: variable regularization alone softens the
+  naive canceller's tonal bias (ASG −12 → −3.5 dB) — mitigation, not the
+  fix; the M2/M3 baseline tests pin the M1-era config explicitly.
+
+Next up (M5): the Max/MSP external in
+[MuTap-Max](https://github.com/tap/MuTap-Max) (Min-DevKit package, MuTap as
+a submodule), wrapping the M4 canceller.
 
 ## Quick start
 
