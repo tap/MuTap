@@ -44,6 +44,8 @@ and *shows* what it does:
 5. **IPC** — the double-talk indicator that gates adaptation
 6. **Bursts** — adaptation control surviving a +20 dB near-end burst
 7. **The Kalman core (v2)** — one update rule replaces every tuning knob
+8. **Echo cancellation** — the same engines run open loop: double-talk
+   robustness without a double-talk detector
 
 Everything is deterministic (fixed seeds); re-running reproduces every figure.
 """)
@@ -679,6 +681,97 @@ ax.legend(fontsize=9, frameon=False)
 plt.tight_layout(); plt.show()
 print(f"worst block RMS through the burst: NLMS ungated {rms_open[1500:1650].max():,.0f}, "
       f"Kalman {rms_k[1500:1650].max():,.0f}, Kalman+floor {rms_kf[1500:1650].max():,.1f}")''')
+
+md(r"""## 8. Echo cancellation — the open loop
+
+Acoustic **echo** cancellation is the feedback problem with the loop cut
+open: a *clean far-end reference* $x$ exists (the signal sent to the
+speaker), so nothing the canceller does comes back around. The signal flow
+is the same three lines with $u$ replaced by an exogenous $x$ — and
+`process(x, y)` is already the AEC call. What survives from the closed-loop
+story is **double-talk**: while the near-end talker speaks over the echo,
+the mic carries signal the filter must not chase, and a naive update chases
+it anyway. The classical answer bolts a double-talk *detector* onto the
+filter; the PEM structure (Gil-Cacho et al. 2014 is an AEC paper before
+MuTap borrowed it for feedback) instead whitens the near-end out of the
+update, and the Kalman core tracks the near-end PSD per bin — both are
+detector-free.
+
+Below: converge on far-end single-talk (speech-envelope material), then
+600 blocks of **0 dB double-talk** (near-end at the far-end's level), then
+single-talk again. The misalignment traces tell the story — double-talk
+kicks the naive estimate *past useless* (positive misalignment: subtracting
+its "echo estimate" adds energy) while PEM stays useful and the Kalman
+core barely moves. The scoreboard adds the trade the traces don't show:
+on colored far-end the naive filter's excitation-weighted convergence buys
+the best single-talk ERLE — until double-talk destroys it. (The gated M4
+stack simply freezes through the segment: safe, but it never converges
+past its shallow excitation-weighted estimate either.)""")
+
+code(r'''ST, DT, REC = 1500, 600, 600
+N_AEC = (ST + DT + REC) * BLOCK
+x_far = speech_env(N_AEC, 2)
+v_near = np.zeros(N_AEC)
+v_near[ST * BLOCK:(ST + DT) * BLOCK] = speech_env(DT * BLOCK, 202)
+d_echo = np.convolve(x_far, F)[:N_AEC]
+y_mic = d_echo + v_near
+
+AEC_CONFIGS = [("naive FDAF", lambda: naive(rel_reg=0.0), C_NAIVE),
+               ("gated NLMS (M4)", lambda: naive(ipc_scaling=True, transient_ratio=4.0), "#8fce8f"),
+               ("PEM-NLMS", pem, C_PEM),
+               ("PEM-Kalman (v2)", pem_kalman, C_KAL)]
+
+aec = {}
+for name, factory, col in AEC_CONFIGS:
+    c = factory()
+    mis = np.empty((ST + DT + REC) // 10)
+    en = {"st_mic": 0.0, "st_err": 0.0, "dt_echo": 0.0, "dt_resid": 0.0}
+    for k in range(ST + DT + REC):
+        sl = slice(k * BLOCK, (k + 1) * BLOCK)
+        e = c.process(x_far[sl], y_mic[sl])
+        if k % 10 == 0:
+            mis[k // 10] = misalignment_db(F, c.impulse_response())
+        if ST - 400 <= k < ST:  # converged single-talk window
+            en["st_mic"] += np.sum(y_mic[sl] ** 2); en["st_err"] += np.sum(e ** 2)
+        elif ST <= k < ST + DT:  # double-talk: residual echo = e - v
+            en["dt_echo"] += np.sum(d_echo[sl] ** 2)
+            en["dt_resid"] += np.sum((e - v_near[sl]) ** 2)
+    aec[name] = (mis, 10 * np.log10(en["st_mic"] / en["st_err"]),
+                 10 * np.log10(en["dt_echo"] / en["dt_resid"]), col)
+
+t_mis = np.arange((ST + DT + REC) // 10) * 10 * BLOCK / FS
+fig, ax = plt.subplots(figsize=(8, 3.8))
+for name, (mis, _, _, col) in aec.items():
+    ax.plot(t_mis, mis, color=col, label=name, lw=1.6)
+ax.axvspan(ST * BLOCK / FS, (ST + DT) * BLOCK / FS, color=C_TRUTH, alpha=0.12)
+ax.axhline(0, color=C_TRUTH, lw=0.8, ls=":")
+ax.annotate("0 dB double-talk", ((ST + DT / 2) * BLOCK / FS, ax.get_ylim()[1] * 0.9),
+            ha="center", fontsize=9, color=C_TRUTH)
+ax.annotate("zero filter", (0.1, 0.6), fontsize=8, color=C_TRUTH)
+ax.set_xlabel("time (s)"); ax.set_ylabel("misalignment (dB)")
+ax.set_title("open-loop AEC: double-talk hits the converged echo estimate")
+ax.legend(fontsize=9, frameon=False, loc="center right")
+plt.tight_layout(); plt.show()''')
+
+code(r'''fig, ax = plt.subplots(figsize=(8, 3.2))
+names = list(aec)
+ypos = np.arange(len(names), dtype=float)
+for (metric_ix, label, off) in ((1, "single-talk ERLE (converged)", -0.18),
+                                (2, "double-talk echo suppression", 0.18)):
+    vals = [aec[n][metric_ix] for n in names]
+    ax.barh(ypos + off, vals, height=0.32,
+            color=["#b9b6b1", C_TRUTH][metric_ix - 1], label=label)
+    for y, val in zip(ypos + off, vals):
+        ax.annotate(f"{val:+.1f} dB", (val, y), va="center", fontsize=8,
+                    ha="left", xytext=(4, 0), textcoords="offset points")
+ax.set_yticks(ypos, names); ax.invert_yaxis()
+ax.set_xlabel("dB")
+ax.set_title("the AEC scoreboard: what single-talk ERLE hides, double-talk reveals")
+ax.legend(fontsize=9, frameon=False, loc="lower right")
+plt.tight_layout(); plt.show()
+for n in names:
+    print(f"{n:20s} single-talk ERLE {aec[n][1]:+6.1f} dB   "
+          f"double-talk suppression {aec[n][2]:+6.1f} dB")''')
 
 md("""## Where this goes next
 

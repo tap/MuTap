@@ -38,8 +38,11 @@ carries the measured numbers; this is the map:
   near-end models: `speech_predictor`, `warped_lpc_predictor`),
   `pem_afc.h` (the FDAF-PEM-AFROW wrapper, templated over BOTH the
   predictor and the adaptive core).
-- `tests/` — 88 tests; `tests/support/closed_loop.h` is the closed-loop
-  simulator + MSG/ASG bisection metrics (a deliverable in its own right).
+- `tests/` — 97 tests; `tests/support/closed_loop.h` is the closed-loop
+  simulator + MSG/ASG bisection metrics (a deliverable in its own right);
+  `tests/support/echo_scenario.h` is its open-loop AEC counterpart (echo
+  path + double-talk injection, observable ERLE + true residual-echo
+  suppression), exercised by `test_aec.cpp`.
 - `tools/capi/` + `notebooks/afc_demo.ipynb` — the C ABI and the executed
   demo notebook (7 sections, every figure measured). The notebook is a
   build product of `tools/notebook/build_afc_demo.py` — edit the script,
@@ -138,7 +141,14 @@ acoustic echo cancellation* — PEM prewhitening is the AEC double-talk
 story, replacing a classical double-talk detector. No new DSP; the work
 is validation, an external, and docs. Three PRs, in dependency order:
 
-**Stage 1 — MuTap: open-loop AEC validation layer.**
+**Stage 1 — MuTap: open-loop AEC validation layer.** *DONE — measured
+numbers in the README Status section and the test_aec.cpp header; notebook
+section 8 is the AEC demo. One finding worth carrying forward: in pure
+single-talk on colored far-end, the naive NLMS posts the best observable
+ERLE (~44 dB, excitation-weighted) while PEM measures ~20 dB with a far
+deeper uniform estimate — the double-talk segment then destroys the naive
+filter (misalignment goes positive) where PEM/Kalman hold. That trade is
+the AEC default-engine story for the chapter.*
 - An echo scenario harness in `tests/support/` — much simpler than the
   closed-loop simulator (no loop closure): far-end source → true echo
   path F (reuse the committed RIR fixtures) → mic, plus near-end

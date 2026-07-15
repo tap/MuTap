@@ -121,7 +121,7 @@ algorithmically complete. What exists today:
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
   SampleRateTap ([`platform/`](platform/),
   [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
-  46 tests run on-target: the float32 typed suites (the embedded profile),
+  58 tests run on-target: the float32 typed suites (the embedded profile),
   the LP conditioning suite, the float closed-loop scenarios including the
   PEM tonal headline and burst gating, and the float-tracks-double oracle
   check — with double as soft-float (the M55 FPU is single-precision only).
@@ -132,7 +132,7 @@ algorithmically complete. What exists today:
   ([`cmake/hexagon-linux-musl.cmake`](cmake/hexagon-linux-musl.cmake)).
   A hosted Linux target needs no platform rig — stock gtest, ctest and
   exit codes work unchanged. Per-push CI runs the same emulation-sized
-  selection as the M55 leg (51 tests, ~8 min of TCG); the full 74-test
+  selection as the M55 leg (58 tests, ~8 min of TCG); the full 74-test
   suite, double-typed adaptive suites included, has also been validated
   once on the ISA (double is hardware on the Hexagon scalar core). What
   this leg deliberately does not cover: VTCM placement, L2 streaming
@@ -166,10 +166,32 @@ algorithmically complete. What exists today:
   +9.4…+9.7** ([`tests/test_rir_fixtures.cpp`](tests/test_rir_fixtures.cpp)).
   Measured rooms (academic datasets or your own sweeps) join with one
   command: `make_rir_fixtures.py --from-wav`.
+- **Open-loop echo cancellation (AEC)** — the same engines with the loop
+  cut open: a clean far-end reference exists, and
+  `pem_afc::process_block(x, y, e)` is already the AEC call (the 2014
+  Gil-Cacho paper the PEM structure implements is an open-loop double-talk
+  framework). The open-loop harness
+  ([`tests/support/echo_scenario.h`](tests/support/echo_scenario.h))
+  reports both the observable ERLE and the true residual-echo suppression
+  the simulation alone can measure. Pinned behavior (studio fixture room,
+  0 dB double-talk, medians over seeds;
+  [`tests/test_aec.cpp`](tests/test_aec.cpp)): double-talk kicks the naive
+  NLMS estimate *past useless* (post-double-talk misalignment **+3.4 dB** —
+  subtracting its echo estimate adds energy) while **PEM holds −8.5 dB and
+  the Kalman core −13.3 dB with 13.4 dB echo suppression through the
+  double-talk**, zero adaptation-control config. The trade the default
+  engine weighs: naive NLMS posts the best single-talk ERLE on colored
+  far-end (~44 dB, excitation-weighted) vs PEM's ~20 dB with uniform
+  −20 dB depth; the gated M4 stack freezes flat through double-talk
+  (kick ±0.1 dB) but stays excitation-shallow. On music-material
+  double-talk the warped predictor beat the speech cascade's suppression
+  in **all 18 room × seed pairs** measured (per-room medians 17.3…19.6 vs
+  15.2…16.7 dB, Kalman core).
 
-Next up: the `mutap.defeed~` Max attribute for the Kalman core, and the
-Hexagon data-layout work on real hardware (VTCM residency, FastRPC
-offload) — see [HANDOFF.md](HANDOFF.md).
+Next up (see [HANDOFF.md](HANDOFF.md) "The next effort"): the `mutap.aec~`
+external in MuTap-Max (plus the `mutap.defeed~` → `mutap.afc~` rename),
+then the echo-cancellation book chapter, then the Hexagon data-layout work
+on real hardware (VTCM residency, FastRPC offload).
 
 ## Quick start
 
