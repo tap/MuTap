@@ -29,6 +29,7 @@ which drives the very C++ code the shipping objects run. When a chapter
 says a setting trades six decibels for burst-proofing, that six is a
 regression-tested six, not a vibe.
 
-This is an early draft — one chapter so far, covering the acoustic
-feedback canceller (`mutap.defeed~`) end to end. Chapters on echo
-cancellation and the embedded targets will join it as those tools land.
+This is an early draft — two chapters so far: the acoustic feedback
+canceller (`mutap.afc~`) end to end, and its open-loop cousin, the echo
+canceller (`mutap.aec~`). A chapter on the embedded targets will join
+them as that work lands.

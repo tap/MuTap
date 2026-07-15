@@ -51,10 +51,12 @@ carries the measured numbers; this is the map:
   rig; `cmake/hexagon-linux-musl.cmake` — the Hexagon cross build.
 - `book/` — "Quieting the Loop" (mdBook, AmbiTap-book conventions): one
   chapter so far, the user-facing guide to the canceller and every knob.
-- Sibling repo `tap/MuTap-Max` — `mutap.defeed~` with attributes `block`,
-  `mu`, `adapt`, `gate`, `warp`, `kalman`; engine is a
-  `std::variant` over {speech, warped} × {NLMS, Kalman}, xtc~-pattern
-  lock-free rebuild handoff.
+- Sibling repo `tap/MuTap-Max` — two externals: `mutap.afc~` (the
+  feedback canceller, renamed from the `mutap.defeed~` placeholder in
+  Rev 4's Stage 2) and `mutap.aec~` (the open-loop echo canceller), both
+  with attributes `block`, `mu`, `adapt`, `gate`, `warp`, `kalman`;
+  engine is a `std::variant` over {speech, warped} × {NLMS, Kalman},
+  xtc~-pattern lock-free rebuild handoff.
 
 ## Working notes for the next session (hard-won; read before touching)
 
@@ -111,9 +113,10 @@ carries the measured numbers; this is the map:
 
 1. **In-Max listening.** Everything is code-complete and
    simulation-verified; nothing has been heard in a real room through a
-   real mic→speaker loop. The help patcher is the checklist (added
-   stable gain by ear, IPC metering, engine/gate/warp A/B). Findings
-   feed 2.
+   real mic→speaker loop. The help patchers are the checklist: for
+   `mutap.afc~`, added stable gain by ear, IPC metering, engine/gate/
+   warp A/B; for `mutap.aec~`, the in-patch simulated-room demo plus a
+   real call. Findings feed 2.
 2. **Decide the default engine.** The Kalman core beats the tuned NLMS
    stack in every simulated scenario; after real-room listening, decide
    whether `@kalman` becomes the external's default (and whether the M4
@@ -123,9 +126,11 @@ carries the measured numbers; this is the map:
 4. **Hexagon performance work** — needs the proprietary SDK + hardware:
    VTCM residency, L2 streaming layout, HVX mapping (the specifics
    section below still holds).
-5. **AEC objects** — the open-loop cousin is nearly free now (the cores
-   already run open-loop; it's an external + docs problem).
-6. **Book chapters** — echo cancellation, and the embedded-targets story.
+5. **AEC objects** — *DONE (Rev 4's "next effort", all three stages):
+   `mutap.aec~`, the echo scenario harness + `test_aec.cpp`, notebook
+   section 8, and the echo chapter. See the section below.*
+6. **Book chapters** — ~~echo cancellation~~ (done, Stage 3), and the
+   embedded-targets story (still open).
 7. **RIR fixtures** — infrastructure DONE (`tools/fixtures/
    make_rir_fixtures.py`, `tests/fixtures/rir_*.h`, `test_rir_fixtures.cpp`):
    three physically-modeled image-source rooms are committed baselines.
@@ -164,7 +169,10 @@ the AEC default-engine story for the chapter.*
 - A notebook section (via `tools/notebook/build_afc_demo.py`, never the
   .ipynb) demonstrating AEC, so the chapter has measured figures.
 
-**Stage 2 — MuTap-Max: `mutap.aec~` + the rename.**
+**Stage 2 — MuTap-Max: `mutap.aec~` + the rename.** *DONE (on the
+MuTap-Max branch): the rename, the new external, the in-patch help
+patcher, and the overdue submodule re-pin. Re-pin AGAIN after this
+repo's Stage 1/3 changes merge (working note 6).*
 - The coordinated rename `mutap.defeed~` → `mutap.afc~`: project
   folder, class, maxref, help patcher, README references. (Book
   chapter 1's references update in Stage 3, after the rename exists —
@@ -181,10 +189,12 @@ the AEC default-engine story for the chapter.*
   stale at `813e503` (pre-RIR-fixtures); re-pin again after Stage 1
   merges.
 
-**Stage 3 — MuTap: book chapter "Echo cancellation".**
-- Last, per the honesty rule: numbers from Stage 1's tests/notebook,
-  object and attribute descriptions from Stage 2. Includes updating
-  chapter 1 and any MuTap-side references to the renamed `mutap.afc~`.
+**Stage 3 — MuTap: book chapter "Echo cancellation".** *DONE:
+`book/src/echo-cancellation.md` (every number from test_aec.cpp /
+notebook section 8), plus the MuTap-side rename sweep (chapter 1,
+introduction, README, notebook). The whole effort is complete; what
+remains of the AEC line is real-call listening, which folds into
+"What's next" item 1.*
 
 ---
 

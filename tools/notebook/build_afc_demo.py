@@ -782,11 +782,12 @@ md("""## Where this goes next
   the M3 PEM pass criteria, and the M4 adaptation-control behavior.
 - The Kalman core is selectable wherever the NLMS core is:
   `mutap::pem_afc<Sample, Predictor, mutap::partitioned_fdkf<Sample>>`.
-- The Max/MSP external (`mutap.defeed~`, in
-  [MuTap-Max](https://github.com/tap/MuTap-Max)) wraps `mutap::pem_afc`
-  exactly as driven here; its `@warp` attribute selects the frequency-warped
-  near-end model demonstrated above (and enables the IPC step scaling it
-  requires).
+- The Max/MSP externals (in [MuTap-Max](https://github.com/tap/MuTap-Max))
+  wrap `mutap::pem_afc` exactly as driven here: `mutap.afc~` closes the
+  feedback loop of sections 1-7, `mutap.aec~` is the open-loop echo
+  canceller of section 8. `@warp` selects the frequency-warped near-end
+  model demonstrated above (and, on the classic engine, enables the IPC
+  step scaling it requires); `@kalman` selects the v2 core.
 
 **Papers:** Rombouts, van Waterschoot & Moonen, *JAES* 55(11), 2007
 (PEM-AFROW) · Gil-Cacho, van Waterschoot, Moonen & Jensen, *IEEE/ACM TASLP*

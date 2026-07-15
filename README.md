@@ -93,7 +93,7 @@ algorithmically complete. What exists today:
   naive canceller's tonal bias (ASG −12 → −3.5 dB) — mitigation, not the
   fix; the M2/M3 baseline tests pin the M1-era config explicitly.
 
-- **The Max/MSP external** — `mutap.defeed~` in
+- **The Max/MSP external** — `mutap.afc~` in
   [MuTap-Max](https://github.com/tap/MuTap-Max) (Min-DevKit package, MuTap
   as a submodule): universal macOS `.mxo` + Windows `.mxe64` built in CI.
 - **The music/tonal near-end predictor** —
@@ -188,10 +188,11 @@ algorithmically complete. What exists today:
   in **all 18 room × seed pairs** measured (per-room medians 17.3…19.6 vs
   15.2…16.7 dB, Kalman core).
 
-Next up (see [HANDOFF.md](HANDOFF.md) "The next effort"): the `mutap.aec~`
-external in MuTap-Max (plus the `mutap.defeed~` → `mutap.afc~` rename),
-then the echo-cancellation book chapter, then the Hexagon data-layout work
-on real hardware (VTCM residency, FastRPC offload).
+Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
+a real room and the default-engine decision, then the M55 performance
+work (CMSIS-DSP/Helium mapping, instruction-count ratchets) and the
+Hexagon data-layout work on real hardware (VTCM residency, FastRPC
+offload).
 
 ## Quick start
 
@@ -220,7 +221,7 @@ ctest --test-dir build
 
 For a reader who wants to *use* the canceller rather than build it, the
 book [`book/`](book/) ("Quieting the Loop") explains the algorithm and
-every `mutap.defeed~` knob and trade-off with no DSP background assumed.
+every `mutap.afc~` knob and trade-off with no DSP background assumed.
 
 For a visual tour — howling past the MSG, the naive-canceller bias
 limit-cycling vs PEM riding 6 dB above the open-loop limit, ASG by program
