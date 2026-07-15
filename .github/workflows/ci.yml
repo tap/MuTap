@@ -107,6 +107,49 @@ jobs:
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure
 
+  # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
+  # auto-vectorization on) and run the FULL test suite under qemu-hexagon
+  # user-mode emulation: the third target of the one-core/three-targets
+  # plan. Unlike the M55 leg this is a hosted Linux target — stock gtest
+  # main, ctest discovery and exit codes all work unchanged; binaries link
+  # statically so the emulator needs no sysroot. The VTCM/FastRPC
+  # data-layout work needs the proprietary Hexagon SDK and hardware; this
+  # job pins down what is checkable without them: the LLVM Hexagon backend
+  # compiles the core (including HVX vectorized loops) and every numeric
+  # regression test passes on the target ISA.
+  hexagon-qemu:
+    name: Hexagon cross (QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TOOLCHAIN: clang+llvm-19.1.5-cross-hexagon-unknown-linux-musl
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install QEMU
+        run: >
+          sudo apt-get update -q &&
+          sudo apt-get install -y -q qemu-user-static
+
+      - name: Download Hexagon toolchain
+        run: >
+          curl -fsSL
+          "https://github.com/quic/toolchain_for_hexagon/releases/download/v19.1.5/${TOOLCHAIN}.tar.zst"
+          | tar --zstd -x -C "$RUNNER_TEMP"
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=cmake/hexagon-linux-musl.cmake
+          -DHEXAGON_TOOLCHAIN_ROOT="$RUNNER_TEMP/$TOOLCHAIN"
+
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Test under emulation
+        run: ctest --test-dir build --output-on-failure
+
   clang-format:
     name: clang-format
     runs-on: ubuntu-latest
