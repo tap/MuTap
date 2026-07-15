@@ -62,6 +62,17 @@ MutapFdaf* mutap_fdaf_clone(const MutapFdaf* h);
 
 MutapAfc* mutap_afc_create(size_t block_size, size_t partitions, double step_size, double relative_regularization,
                            int ipc_step_scaling, double transient_freeze_ratio);
+
+/* Same canceller with the frequency-warped (music/tonal) near-end model
+ * instead of the speech cascade. lambda in (-1, 1) is the warping
+ * coefficient (0 selects the room-robust default 0.5; pass a tiny epsilon
+ * for a genuinely-zero warp); order 0 selects the default 16. Pass
+ * ipc_step_scaling nonzero: the warped whitener needs the IPC step scale
+ * to stay room-robust in the closed loop (include/mutap/lpc.h).
+ * The returned handle is interchangeable with mutap_afc_create's. */
+MutapAfc* mutap_afc_create_warped(size_t block_size, size_t partitions, double step_size,
+                                  double relative_regularization, int ipc_step_scaling, double transient_freeze_ratio,
+                                  double lambda, size_t order);
 void      mutap_afc_destroy(MutapAfc* h);
 
 /* One block: e = y - F_hat(u); u = loudspeaker signal, y = microphone. */

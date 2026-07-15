@@ -97,15 +97,24 @@ algorithmically complete. What exists today:
   as a submodule): universal macOS `.mxo` + Windows `.mxe64` built in CI.
 - **The music/tonal near-end predictor** —
   `mutap::warped_lpc_predictor<Sample>`: frequency-warped LP (unit delays
-  replaced by first-order allpass sections; λ = 0.766 ≈ the Bark scale at
-  48 kHz), warped autocorrelation + the same ridge-guarded Levinson–Durbin,
-  applied as an unconditionally stable tapped allpass chain. At λ = 0 it
-  reduces *exactly* to the plain predictor. On a low chord (three
-  incommensurate fundamentals, a dozen partials below 500 Hz — material
-  that defeats both the pitch tap and moderate-order plain LP), measured
-  ASG across seeds: **warped +7.2…+14.1 dB vs speech cascade
-  +5.3…+7.5 dB**, and no regression on speech-envelope material (+9.7 dB).
-  Select it with `mutap::pem_afc<Sample, mutap::warped_lpc_predictor<Sample>>`.
+  replaced by first-order allpass sections), warped autocorrelation + the
+  same ridge-guarded Levinson–Durbin, applied as an unconditionally stable
+  tapped allpass chain. At λ = 0 it reduces *exactly* to the plain
+  predictor. The test material is a low chord: three incommensurate
+  fundamentals, a dozen partials below 500 Hz — it defeats both the pitch
+  tap and moderate-order plain LP. **Pair it with IPC-scaled stepping**
+  (`fdaf.ipc_step_scaling = true`): the warped whitener notches the
+  partials so hard that without the IPC scale the converged closed-loop
+  update runs away on some rooms (howls 15 dB *below* the open-loop MSG,
+  ~1 room in 5 — found by evaluating across rooms after a single-room
+  first cut overfit). With it, measured ASG on the chord across **eleven
+  random rooms from two generator families: +7.2…+11.3 dB, no collapse
+  anywhere** — including the room where the speech cascade at its own
+  defaults destabilizes (−2.2 dB) — and speech-envelope material improves
+  to +13.8 dB. Defaults (λ = 0.5, order 16) are the sweep's best
+  worst-case; Bark-scale λ = 0.766/order 24 trades a slightly better mean
+  for a weaker floor at ~1.5× the cost. Select it with
+  `mutap::pem_afc<Sample, mutap::warped_lpc_predictor<Sample>>`.
 - **The Cortex-M55 build** — the first embedded target: bare metal
   (newlib + semihosting) on QEMU's MPS3 AN547 board model, platform rig
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
