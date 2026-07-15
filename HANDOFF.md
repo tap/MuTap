@@ -2,6 +2,15 @@
 
 > Context brief for a Claude Code session. Captures decisions and technical direction so the next session can start working without re-deriving anything. Can be adapted into a `CLAUDE.md` for persistent project context.
 >
+> **Rev 4** — planning revision, no code. The next effort is chosen and
+> staged: **AEC objects + the echo-cancellation book chapter** (former
+> "What's next" items 5+6 — chosen because items 1–2 need Tim in a real
+> room and 4 needs the Hexagon SDK). Two open decisions are settled: the
+> feedback external is renamed **`mutap.afc~`** (was `mutap.defeed~`, a
+> placeholder) and the new echo canceller is **`mutap.aec~`** — an
+> AFC/AEC acronym pair. See "The next effort (Rev 4)" for the
+> three-stage plan.
+>
 > **Rev 3** — the plan below has been EXECUTED: M0 through M6 and the v2
 > Kalman upgrade are built, measured, tested and merged. This revision adds
 > the "State of the repo" and "Working notes" sections (start there), marks
@@ -118,6 +127,54 @@ carries the measured numbers; this is the map:
    make_rir_fixtures.py`, `tests/fixtures/rir_*.h`, `test_rir_fixtures.cpp`):
    three physically-modeled image-source rooms are committed baselines.
    Still open (below): adding measured rooms — one command per WAV.
+
+## The next effort (Rev 4): AEC objects + echo chapter
+
+Items 5+6 above, planned in detail. The premise that makes this cheap:
+`pem_afc::process_block(u, y, e)` already IS the AEC signature (reference
+in, mic in, cleaned signal out), and the paper the core implements
+(Gil-Cacho et al. 2014) is titled a framework for *double-talk-robust
+acoustic echo cancellation* — PEM prewhitening is the AEC double-talk
+story, replacing a classical double-talk detector. No new DSP; the work
+is validation, an external, and docs. Three PRs, in dependency order:
+
+**Stage 1 — MuTap: open-loop AEC validation layer.**
+- An echo scenario harness in `tests/support/` — much simpler than the
+  closed-loop simulator (no loop closure): far-end source → true echo
+  path F (reuse the committed RIR fixtures) → mic, plus near-end
+  double-talk injection.
+- ERLE as a shared metric (today it lives ad hoc inside
+  `test_fdaf.cpp`), alongside misalignment.
+- `test_aec.cpp`: single-talk convergence on white and colored far-end;
+  double-talk scenarios where the naive core biases and PEM keeps
+  converging (the open-loop analogue of the M2 baseline); both engines
+  × both predictors. Per the working notes: thresholds measured in a
+  scratch harness first, medians across seeds, rooms from BOTH
+  generator families.
+- A notebook section (via `tools/notebook/build_afc_demo.py`, never the
+  .ipynb) demonstrating AEC, so the chapter has measured figures.
+
+**Stage 2 — MuTap-Max: `mutap.aec~` + the rename.**
+- The coordinated rename `mutap.defeed~` → `mutap.afc~`: project
+  folder, class, maxref, help patcher, README references. (Book
+  chapter 1's references update in Stage 3, after the rename exists —
+  honesty rule.)
+- New `mutap.aec~` cloned from the afc~ pattern: same engine
+  `std::variant` matrix, same lock-free rebuild handoff, same
+  attributes (`block`, `mu`, `adapt`, `gate`, `warp`, `kalman`), same
+  pre-allocated-atoms IPC outlet. What changes is semantics and docs:
+  inlet 2 is the far-end signal being sent to the speaker, and the
+  help patcher demonstrates echo removal + double-talk survival fully
+  in-patch (a delay/filter stands in for the room — unlike afc~, this
+  one is demonstrable without a physical mic→speaker loop).
+- Fold in the overdue submodule re-pin (working note 6): the pin is
+  stale at `813e503` (pre-RIR-fixtures); re-pin again after Stage 1
+  merges.
+
+**Stage 3 — MuTap: book chapter "Echo cancellation".**
+- Last, per the honesty rule: numbers from Stage 1's tests/notebook,
+  object and attribute descriptions from Stage 2. Includes updating
+  chapter 1 and any MuTap-side references to the renamed `mutap.afc~`.
 
 ---
 
@@ -314,8 +371,8 @@ merged blind.
 
 Resolved since rev 1: ~~license~~ (MIT), ~~core language~~ (header-only C++20), ~~milestone ordering~~ (executed as staged). Resolved since rev 2: ~~first program-material target~~ (moot — both predictors and both engines exist; what remains is the real-room tuning pass, item 1 of "What's next").
 
-Still open:
+Resolved since rev 3: ~~Max external naming~~ — settled (Rev 4): **`mutap.afc~`** (rename from the `mutap.defeed~` placeholder) and **`mutap.aec~`** for the new echo canceller, an acronym pair matching the literature. The rename executes in Stage 2 of "The next effort" above.
 
-- **Max external naming** — `mutap.defeed~` is a placeholder; alternatives: `mutap.afc~`, `mutap.howl~`, `mutap.clean~`. Sibling convention is `<repo-lowercase>.<name>~`. Worth settling before anything links to the object name publicly (the book chapter and maxref would need a coordinated rename).
+Still open:
 - **Default engine in the external** — `@kalman` off (classic NLMS) is the shipping default purely on seniority; the measured case for flipping it is in `tests/test_fd_kalman.cpp` and book chapter 1. Decide after real-room listening.
 - **RIR fixtures, the measured half** — the fixture pipeline is built and three physically-modeled rooms (image-source, documented geometry) are committed baselines with regression tests. What remains yours: which MEASURED rooms join them — an academic dataset room (MYRiAD is the PEM-AFROW group's own database; openAIR is the other usual source; check each room's license allows redistribution in an MIT repo) and/or your own swept-sine measurements. Either way it is one command per room: `python3 tools/fixtures/make_rir_fixtures.py --from-wav room.wav myroom --source "<provenance + license>"`, then a test with a freshly measured threshold. (The dataset hosts are unreachable from the remote dev container's network policy, so the WAVs have to enter via a commit.)
