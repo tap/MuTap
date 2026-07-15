@@ -16,6 +16,7 @@
 #define MUTAP_VERSION_MINOR 1
 #define MUTAP_VERSION_PATCH 0
 
+#include "mutap/fd_kalman.h"
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
 #include "mutap/lpc.h"

@@ -33,11 +33,13 @@ struct MutapFdaf {
     mutap::partitioned_fdaf<double> impl;
 };
 
-using speech_afc = mutap::pem_afc<double>;
-using warped_afc = mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>;
+using speech_afc        = mutap::pem_afc<double>;
+using warped_afc        = mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>;
+using kalman_speech_afc = mutap::pem_afc<double, mutap::speech_predictor<double>, mutap::partitioned_fdkf<double>>;
+using kalman_warped_afc = mutap::pem_afc<double, mutap::warped_lpc_predictor<double>, mutap::partitioned_fdkf<double>>;
 
 struct MutapAfc {
-    std::variant<speech_afc, warped_afc> impl;
+    std::variant<speech_afc, warped_afc, kalman_speech_afc, kalman_warped_afc> impl;
 };
 
 unsigned mutap_version(void) {
@@ -145,6 +147,33 @@ MutapAfc* mutap_afc_create_warped(size_t block_size, size_t partitions, double s
     }
 }
 
+MutapAfc* mutap_afc_create_kalman(size_t block_size, size_t partitions, double transient_floor_ratio, int warped,
+                                  double lambda, size_t order) {
+    try {
+        if (warped != 0) {
+            kalman_warped_afc::config cfg;
+            cfg.fdaf.block_size            = block_size;
+            cfg.fdaf.partitions            = partitions;
+            cfg.fdaf.transient_floor_ratio = transient_floor_ratio;
+            if (lambda != 0.0) {
+                cfg.predictor.lambda = lambda;
+            }
+            if (order != 0) {
+                cfg.predictor.order = order;
+            }
+            return new MutapAfc{kalman_warped_afc(cfg)};
+        }
+        kalman_speech_afc::config cfg;
+        cfg.fdaf.block_size            = block_size;
+        cfg.fdaf.partitions            = partitions;
+        cfg.fdaf.transient_floor_ratio = transient_floor_ratio;
+        return new MutapAfc{kalman_speech_afc(cfg)};
+    }
+    catch (...) {
+        return nullptr;
+    }
+}
+
 void mutap_afc_destroy(MutapAfc* h) {
     delete h;
 }
@@ -175,7 +204,14 @@ double mutap_afc_ipc(const MutapAfc* h) {
 
 void mutap_afc_set_step_size(MutapAfc* h, double mu) {
     if (h != nullptr) {
-        std::visit([&](auto& afc) { afc.fdaf().set_step_size(mu); }, h->impl);
+        std::visit(
+            [&](auto& afc) {
+                // The Kalman core has no step size — its gain is the point.
+                if constexpr (requires { afc.fdaf().set_step_size(mu); }) {
+                    afc.fdaf().set_step_size(mu);
+                }
+            },
+            h->impl);
     }
 }
 

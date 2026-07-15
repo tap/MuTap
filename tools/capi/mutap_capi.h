@@ -73,6 +73,18 @@ MutapAfc* mutap_afc_create(size_t block_size, size_t partitions, double step_siz
 MutapAfc* mutap_afc_create_warped(size_t block_size, size_t partitions, double step_size,
                                   double relative_regularization, int ipc_step_scaling, double transient_freeze_ratio,
                                   double lambda, size_t order);
+
+/* PEM canceller on the frequency-domain KALMAN core (fd_kalman.h, the v2
+ * update): no step size, no IPC options — the per-bin state uncertainty
+ * and near-end PSD replace the whole adaptation-control stack.
+ * transient_floor_ratio 0 (recommended) optimizes added stable gain; a
+ * ratio ~8 hardens a fixed-gain deployment against near-end bursts at a
+ * measured ASG cost. warped selects the frequency-warped near-end model
+ * (lambda/order as in mutap_afc_create_warped; ignored when warped = 0).
+ * mutap_afc_set_step_size is a no-op on these handles; otherwise they are
+ * interchangeable with mutap_afc_create's. */
+MutapAfc* mutap_afc_create_kalman(size_t block_size, size_t partitions, double transient_floor_ratio, int warped,
+                                  double lambda, size_t order);
 void      mutap_afc_destroy(MutapAfc* h);
 
 /* One block: e = y - F_hat(u); u = loudspeaker signal, y = microphone. */
