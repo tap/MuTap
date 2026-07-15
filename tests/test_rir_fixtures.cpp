@@ -46,9 +46,9 @@ namespace {
     };
 
     const room k_rooms[] = {
-        {"studio", mutap_test::fixtures::rir_studio, mutap_test::fixtures::rir_studio_taps},
-        {"rehearsal", mutap_test::fixtures::rir_rehearsal, mutap_test::fixtures::rir_rehearsal_taps},
-        {"hall", mutap_test::fixtures::rir_hall, mutap_test::fixtures::rir_hall_taps},
+        {"studio", mutap_test::fixtures::k_rir_studio, mutap_test::fixtures::k_rir_studio_taps},
+        {"rehearsal", mutap_test::fixtures::k_rir_rehearsal, mutap_test::fixtures::k_rir_rehearsal_taps},
+        {"hall", mutap_test::fixtures::k_rir_hall, mutap_test::fixtures::k_rir_hall_taps},
     };
 
     // The tests model the first k_taps of the room (a practical canceller
