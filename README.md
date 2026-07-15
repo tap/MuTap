@@ -26,8 +26,9 @@ One float-parameterized core, three targets:
   [MuTap-Max](https://github.com/tap/MuTap-Max) package repo.
 - **ARM Cortex-M55** — float32; builds and passes the on-target test
   subset under QEMU (MPS3 AN547) in CI
-- **Qualcomm Hexagon** — float32 with vector-float HVX (QCS8550-class cDSP)
-  *(planned)*
+- **Qualcomm Hexagon** — float32 with vector-float HVX (QCS8550-class
+  cDSP); cross-builds with HVX enabled and passes the on-target test
+  subset under QEMU user-mode emulation in CI
 
 ## Status
 
@@ -124,9 +125,23 @@ algorithmically complete. What exists today:
   the LP conditioning suite, the float closed-loop scenarios including the
   PEM tonal headline and burst gating, and the float-tracks-double oracle
   check — with double as soft-float (the M55 FPU is single-precision only).
+- **The Hexagon build** — the third target: hexagon-unknown-linux-musl via
+  the Codelinaro clang toolchain with **HVX auto-vectorization on**
+  (128-byte vectors, 32 fp32 lanes), statically linked and run under
+  qemu-hexagon user-mode emulation in CI
+  ([`cmake/hexagon-linux-musl.cmake`](cmake/hexagon-linux-musl.cmake)).
+  A hosted Linux target needs no platform rig — stock gtest, ctest and
+  exit codes work unchanged. Per-push CI runs the same emulation-sized
+  selection as the M55 leg (51 tests, ~8 min of TCG); the full 74-test
+  suite, double-typed adaptive suites included, has also been validated
+  once on the ISA (double is hardware on the Hexagon scalar core). What
+  this leg deliberately does not cover: VTCM placement, L2 streaming
+  layout and FastRPC offload need the proprietary Hexagon SDK and real
+  hardware (HANDOFF.md pins the layout targets).
 
-Next up: the Hexagon build (same float32 core, VTCM/L2 data layout) and
-the PEM-based frequency-domain Kalman upgrade (see [HANDOFF.md](HANDOFF.md)).
+Next up: the Hexagon data-layout work on real hardware (VTCM residency,
+FastRPC offload) and the PEM-based frequency-domain Kalman upgrade (see
+[HANDOFF.md](HANDOFF.md)).
 
 ## Quick start
 
@@ -169,10 +184,11 @@ third_party/ooura/   vendored Ooura FFT (see THIRD_PARTY_NOTICES.md)
 tests/               GoogleTest suite (fetched at configure time)
 tools/capi/          C ABI shared library for FFI consumers (notebooks)
 notebooks/           demo notebook (ctypes over the C ABI)
+platform/            Cortex-M55 bare-metal board support (startup, linker)
+cmake/               cross toolchain files (Cortex-M55 MPS3, Hexagon musl)
 ```
 
-Planned as the milestones land: `examples/`, `bench/`, `platform/`
-(Cortex-M55 board support), `docs/`.
+Planned as the milestones land: `examples/`, `bench/`, `docs/`.
 
 ## Style
 

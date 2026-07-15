@@ -161,9 +161,9 @@ The original "milestone 2 = the whole algorithm" was too big a bite. FDAF-PEM-AF
 **M5 — Scaffold `tap/MuTap-Max` + first external.** Min-DevKit package mirroring AmbiTap-Max (MuTap as submodule); one external wrapping the M4 processor — working name **`mutap.defeed~`** (sibling convention: `<repo>.<verb>~`, e.g. `ambitap.encode~`; final name open). Attributes: forward-path delay report, adaptation freeze, filter length, predictor selection; help patcher demonstrating added-stable-gain in a live mic→speaker patch.
 
 **M6+ (later):**
-- **Music/tonal near-end predictor** (frequency-warped all-pole or pole-zero) as the second plug-in.
-- **Cortex-M55 build** via SampleRateTap's QEMU AN547 rig; CMSIS-DSP mapping; instruction-count ratchet.
-- **Hexagon build** — same float32 core; effort goes to VTCM/L2 data layout and vector mapping, not numeric conversion.
+- **Music/tonal near-end predictor** — *done*: `warped_lpc_predictor` (frequency-warped all-pole), room-robust when paired with IPC-scaled stepping (see the class comment in `lpc.h` for the measured room sweep and why the pairing is required).
+- **Cortex-M55 build** — *done* (bare-metal QEMU AN547 rig ported from SampleRateTap, on-target subset in CI). Still open from this line: CMSIS-DSP mapping and the instruction-count ratchet.
+- **Hexagon build** — *toolchain leg done*: hexagon-unknown-linux-musl (Codelinaro clang, HVX auto-vectorization, static musl link) runs the emulation-sized suite under qemu-hexagon in CI, and the full suite passed once on the ISA. Still open: the actual performance work — VTCM residency, L2 streaming layout, HVX vector mapping of the FDAF hot path — which needs the Hexagon SDK and hardware.
 - **PEM-FD-Kalman** upgrade (v2 algorithm).
 
 ---
