@@ -14,10 +14,10 @@
 
 namespace mutap_test::fixtures {
 
-    inline constexpr unsigned rir_hall_fs   = 48000;
-    inline constexpr unsigned rir_hall_taps = 4096;
+    inline constexpr unsigned k_rir_hall_fs   = 48000;
+    inline constexpr unsigned k_rir_hall_taps = 4096;
 
-    inline constexpr float rir_hall[4096] = {
+    inline constexpr float k_rir_hall[4096] = {
         -7.52013287e-04f, -7.52964295e-04f, -7.53915775e-04f, -7.54867725e-04f,
         -7.55820144e-04f, -7.56773031e-04f, -7.57726386e-04f, -7.58680208e-04f,
         -7.62217345e-04f, -7.50008651e-04f, -7.85916629e-04f, -7.18157153e-04f,

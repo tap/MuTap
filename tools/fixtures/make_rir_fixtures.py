@@ -104,10 +104,10 @@ def emit_header(name: str, rir: np.ndarray, provenance: str) -> None:
         "",
         "namespace mutap_test::fixtures {",
         "",
-        f"    inline constexpr unsigned rir_{name}_fs   = {FS};",
-        f"    inline constexpr unsigned rir_{name}_taps = {len(rir)};",
+        f"    inline constexpr unsigned k_rir_{name}_fs   = {FS};",
+        f"    inline constexpr unsigned k_rir_{name}_taps = {len(rir)};",
         "",
-        f"    inline constexpr float rir_{name}[{len(rir)}] = {{",
+        f"    inline constexpr float k_rir_{name}[{len(rir)}] = {{",
     ]
     row = []
     for i, v in enumerate(rir):

@@ -14,10 +14,10 @@
 
 namespace mutap_test::fixtures {
 
-    inline constexpr unsigned rir_rehearsal_fs   = 48000;
-    inline constexpr unsigned rir_rehearsal_taps = 4096;
+    inline constexpr unsigned k_rir_rehearsal_fs   = 48000;
+    inline constexpr unsigned k_rir_rehearsal_taps = 4096;
 
-    inline constexpr float rir_rehearsal[4096] = {
+    inline constexpr float k_rir_rehearsal[4096] = {
         -1.40113892e-03f, -1.40288980e-03f, -1.40464151e-03f, -1.40639406e-03f,
         -1.40814745e-03f, -1.40990167e-03f, -1.41165672e-03f, -1.41341261e-03f,
         -1.41653979e-03f, -1.41130928e-03f, -1.43163340e-03f, -1.39687060e-03f,
