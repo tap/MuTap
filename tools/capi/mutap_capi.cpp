@@ -4,6 +4,7 @@
 #include "mutap_capi.h"
 
 #include <new>
+#include <variant>
 
 #include "mutap/mutap.h"
 
@@ -32,8 +33,11 @@ struct MutapFdaf {
     mutap::partitioned_fdaf<double> impl;
 };
 
+using speech_afc = mutap::pem_afc<double>;
+using warped_afc = mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>;
+
 struct MutapAfc {
-    mutap::pem_afc<double> impl;
+    std::variant<speech_afc, warped_afc> impl;
 };
 
 unsigned mutap_version(void) {
@@ -111,10 +115,30 @@ MutapFdaf* mutap_fdaf_clone(const MutapFdaf* h) {
 MutapAfc* mutap_afc_create(size_t block_size, size_t partitions, double step_size, double relative_regularization,
                            int ipc_step_scaling, double transient_freeze_ratio) {
     try {
-        mutap::pem_afc<double>::config cfg;
+        speech_afc::config cfg;
         apply_shared_knobs(cfg.fdaf, block_size, partitions, step_size, relative_regularization, ipc_step_scaling,
                            transient_freeze_ratio);
-        return new MutapAfc{mutap::pem_afc<double>(cfg)};
+        return new MutapAfc{speech_afc(cfg)};
+    }
+    catch (...) {
+        return nullptr;
+    }
+}
+
+MutapAfc* mutap_afc_create_warped(size_t block_size, size_t partitions, double step_size,
+                                  double relative_regularization, int ipc_step_scaling, double transient_freeze_ratio,
+                                  double lambda, size_t order) {
+    try {
+        warped_afc::config cfg;
+        apply_shared_knobs(cfg.fdaf, block_size, partitions, step_size, relative_regularization, ipc_step_scaling,
+                           transient_freeze_ratio);
+        if (lambda != 0.0) {
+            cfg.predictor.lambda = lambda;
+        }
+        if (order != 0) {
+            cfg.predictor.order = order;
+        }
+        return new MutapAfc{warped_afc(cfg)};
     }
     catch (...) {
         return nullptr;
@@ -127,43 +151,43 @@ void mutap_afc_destroy(MutapAfc* h) {
 
 void mutap_afc_process(MutapAfc* h, const double* u, const double* y, double* e) {
     if (h != nullptr) {
-        h->impl.process_block(u, y, e);
+        std::visit([&](auto& afc) { afc.process_block(u, y, e); }, h->impl);
     }
 }
 
 void mutap_afc_impulse_response(MutapAfc* h, double* dest) {
     if (h != nullptr) {
-        h->impl.copy_impulse_response(dest);
+        std::visit([&](auto& afc) { afc.copy_impulse_response(dest); }, h->impl);
     }
 }
 
 size_t mutap_afc_filter_length(const MutapAfc* h) {
-    return h != nullptr ? h->impl.filter_length() : 0;
+    return h != nullptr ? std::visit([](const auto& afc) { return afc.filter_length(); }, h->impl) : 0;
 }
 
 size_t mutap_afc_block_size(const MutapAfc* h) {
-    return h != nullptr ? h->impl.block_size() : 0;
+    return h != nullptr ? std::visit([](const auto& afc) { return afc.block_size(); }, h->impl) : 0;
 }
 
 double mutap_afc_ipc(const MutapAfc* h) {
-    return h != nullptr ? h->impl.ipc() : 0.0;
+    return h != nullptr ? std::visit([](const auto& afc) { return static_cast<double>(afc.ipc()); }, h->impl) : 0.0;
 }
 
 void mutap_afc_set_step_size(MutapAfc* h, double mu) {
     if (h != nullptr) {
-        h->impl.fdaf().set_step_size(mu);
+        std::visit([&](auto& afc) { afc.fdaf().set_step_size(mu); }, h->impl);
     }
 }
 
 void mutap_afc_set_adaptation(MutapAfc* h, int enabled) {
     if (h != nullptr) {
-        h->impl.set_adaptation(enabled != 0);
+        std::visit([&](auto& afc) { afc.set_adaptation(enabled != 0); }, h->impl);
     }
 }
 
 void mutap_afc_reset(MutapAfc* h) {
     if (h != nullptr) {
-        h->impl.reset();
+        std::visit([](auto& afc) { afc.reset(); }, h->impl);
     }
 }
 

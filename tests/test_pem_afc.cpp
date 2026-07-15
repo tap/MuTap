@@ -212,51 +212,67 @@ namespace {
     // THE MUSIC PREDICTOR'S HEADLINE (HANDOFF.md near-end-model decision):
     // a low chord — three incommensurate fundamentals, a dozen partials
     // packed below 500 Hz — defeats both the pitch tap (no common period)
-    // and a moderate-order plain LP (the poles crowd z = 1). The
-    // frequency-warped predictor resolves the bass and buys clearly more
-    // stable gain. Measured across seeds {2,12,22} (converge 1500 blocks
-    // at MSG-6): warped +7.2/+9.4/+14.1 dB vs speech-cascade
-    // +5.3/+6.3/+7.5 dB; the per-seed gap is chaotic (0.9..8.8 dB), so the
-    // comparative claim is asserted on medians.
-    TEST(PemAfc, WarpedPredictorWinsOnMusicNearEnd) {
-        const auto   path     = random_decaying_rir<double>(k_taps, 5);
-        const double open_msg = mutap_test::theoretical_msg_db(path);
+    // and a moderate-order plain LP (the poles crowd z = 1). Two findings
+    // this test pins, both found by evaluating across rooms after a
+    // single-room first cut overfit:
+    //
+    //  1. The warped whitener NEEDS IPC-scaled stepping. Without it the
+    //     converged update runs away on some rooms — a spurious resonance
+    //     in the partial band that live adaptation reinforces — and the
+    //     loop howls 15 dB below the open-loop MSG (~1 room in 5, at every
+    //     (lambda, order) tried). With it there is no collapse anywhere
+    //     tried: measured here (converge 1500 blocks at MSG-6, defaults
+    //     lambda 0.5 / order 16) across rooms {5..9}:
+    //     +10.3/+10.3/+10.9/+9.1/+7.2 dB — and +5.9..+11.3 on six more
+    //     rooms from a different generator family (notebook).
+    //
+    //  2. The speech cascade at ITS defaults destabilizes on room 9 of
+    //     this material (-2.2 dB); warped+IPC measures +7.2 there.
+    TEST(PemAfc, WarpedPredictorRobustOnMusicAcrossRooms) {
+        const auto v_converge = mutap_test::music_near_end<double>(1500 * k_block, 2);
+        const auto v_probe    = mutap_test::music_near_end<double>(600 * k_block, 12);
 
-        std::vector<double> asg_speech;
-        std::vector<double> asg_warped;
-        for (const unsigned seed : {2U, 12U, 22U}) {
-            const auto v_converge = mutap_test::music_near_end<double>(1500 * k_block, seed);
-            const auto v_probe    = mutap_test::music_near_end<double>(600 * k_block, seed + 10);
+        auto converge_and_measure = [&](auto& afc, const std::vector<double>& path, double open_msg) {
+            closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
+            for (size_t blk = 0; blk < 1500; ++blk) {
+                sim.step(&v_converge[blk * k_block], &afc);
+            }
+            return mutap_test::measured_msg_db(loop_config(path), &afc, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
+                   - open_msg;
+        };
 
-            auto converge_and_measure = [&](auto& afc) {
-                closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
-                for (size_t blk = 0; blk < 1500; ++blk) {
-                    sim.step(&v_converge[blk * k_block], &afc);
-                }
-                return mutap_test::measured_msg_db(loop_config(path), &afc, v_probe, open_msg - 15.0, open_msg + 25.0,
-                                                   0.5)
-                       - open_msg;
-            };
-
-            mutap::pem_afc<double> speech(pem_config<double>());
-            asg_speech.push_back(converge_and_measure(speech));
+        double warped_room9 = 0.0;
+        for (const unsigned room : {5U, 6U, 7U, 8U, 9U}) {
+            const auto   path     = random_decaying_rir<double>(k_taps, room);
+            const double open_msg = mutap_test::theoretical_msg_db(path);
 
             mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>::config wc;
-            wc.fdaf.block_size = k_block;
-            wc.fdaf.partitions = k_taps / k_block;
+            wc.fdaf.block_size       = k_block;
+            wc.fdaf.partitions       = k_taps / k_block;
+            wc.fdaf.ipc_step_scaling = true;
             mutap::pem_afc<double, mutap::warped_lpc_predictor<double>> warped(wc);
-            asg_warped.push_back(converge_and_measure(warped));
 
-            EXPECT_GT(asg_warped.back(), 3.0) << "seed " << seed << " (measured >= +7.2 dB)";
+            const double asg = converge_and_measure(warped, path, open_msg);
+            EXPECT_GT(asg, 4.0) << "room " << room << " (measured >= +7.2 dB)";
+            if (room == 9U) {
+                warped_room9 = asg;
+            }
         }
-        std::sort(asg_speech.begin(), asg_speech.end());
-        std::sort(asg_warped.begin(), asg_warped.end());
-        EXPECT_GT(asg_warped[1], asg_speech[1] + 1.0)
-            << "warped median should beat the speech cascade on music (measured gap 3.1 dB)";
+
+        // Room 9 is where the speech cascade destabilizes on this material
+        // (measured -2.2 dB vs warped+IPC +7.2 — a 9 dB gap; asserted with
+        // nearly half of it as chaotic-trajectory margin).
+        const auto             path     = random_decaying_rir<double>(k_taps, 9);
+        const double           open_msg = mutap_test::theoretical_msg_db(path);
+        mutap::pem_afc<double> speech(pem_config<double>());
+        const double           speech_room9 = converge_and_measure(speech, path, open_msg);
+        EXPECT_GT(warped_room9, speech_room9 + 4.0) << "warped+IPC should rescue the room where the cascade collapses";
     }
 
-    // And the warped predictor is a safe general default: no collapse on
-    // the speech-envelope material the cascade was built for.
+    // And the warped predictor (in its documented pairing with IPC-scaled
+    // stepping) is safe on the speech-envelope material the cascade was
+    // built for — no collapse, and in fact more headroom than the cascade
+    // measures there.
     TEST(PemAfc, WarpedPredictorHandlesSpeechEnvelopeToo) {
         const auto   path     = random_decaying_rir<double>(k_taps, 5);
         const double open_msg = mutap_test::theoretical_msg_db(path);
@@ -265,8 +281,9 @@ namespace {
         const auto v_probe    = mutap_test::ar_near_end<double>(600 * k_block, 12);
 
         mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>::config wc;
-        wc.fdaf.block_size = k_block;
-        wc.fdaf.partitions = k_taps / k_block;
+        wc.fdaf.block_size       = k_block;
+        wc.fdaf.partitions       = k_taps / k_block;
+        wc.fdaf.ipc_step_scaling = true;
         mutap::pem_afc<double, mutap::warped_lpc_predictor<double>> warped(wc);
 
         closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
@@ -276,7 +293,7 @@ namespace {
         const double asg =
             mutap_test::measured_msg_db(loop_config(path), &warped, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
             - open_msg;
-        EXPECT_GT(asg, 3.0) << "measured +9.7 dB";
+        EXPECT_GT(asg, 6.0) << "measured +13.8 dB";
     }
 
     // No regression where the naive canceller was already fine.

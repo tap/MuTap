@@ -190,15 +190,33 @@ namespace mutap {
     /// apply() runs the prediction-error filter as a tapped allpass chain —
     /// feed-forward, so it is unconditionally stable, like the plain FIR
     /// whitener. At lambda = 0 both collapse exactly to lpc_predictor.
+    ///
+    /// PAIR IT WITH IPC-SCALED STEPPING (fdaf.ipc_step_scaling = true).
+    /// The warped whitener notches the near-end partials so hard that on
+    /// some rooms the converged closed-loop update runs away — it builds a
+    /// spurious resonance in the partial band that live adaptation
+    /// re-inforces instead of correcting (measured: howls 15 dB BELOW the
+    /// open-loop MSG on ~1 room in 5, at every (lambda, order) tried).
+    /// The IPC step scale suppresses exactly that update — error power no
+    /// longer coherent with the input — and with it the warped canceller
+    /// measured ASG +7.2..+11.3 dB on low-chord music across eleven random
+    /// rooms from two generator families, with no collapse anywhere
+    /// (tests/test_pem_afc.cpp).
+    ///
+    /// Defaults (lambda 0.5, order 16) are the best worst-case of that
+    /// sweep; the Bark-scale lambda 0.766/order 24 buys a slightly better
+    /// mean (+10.2 vs +9.6 dB) at a weaker floor (+5.9 vs +7.2 dB) and
+    /// half again the per-sample cost.
     template <typename Sample>
     class warped_lpc_predictor {
       public:
         struct config {
-            size_t order = 24;           ///< warped LP order
+            size_t order = 16;           ///< warped LP order
             Sample ridge = Sample(1e-4); ///< relative noise floor on r[0]
-            /// Warping coefficient in (-1, 1); 0 = plain LP. Default is the
-            /// Bark-scale fit at 48 kHz (Smith & Abel 1999).
-            Sample lambda            = Sample(0.766);
+            /// Warping coefficient in (-1, 1); 0 = plain LP. 0.766 is the
+            /// Bark-scale fit at 48 kHz (Smith & Abel 1999); the default is
+            /// the room-robust 0.5 (see the class comment).
+            Sample lambda            = Sample(0.5);
             size_t analysis_capacity = 1024; ///< max analyze() window length
         };
 
