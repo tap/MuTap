@@ -54,7 +54,11 @@ endif()
 set(MUTAP_HEXAGON_ARCH_FLAGS "-mv68 -mhvx -mhvx-length=128b")
 set(CMAKE_C_FLAGS_INIT "${MUTAP_HEXAGON_ARCH_FLAGS}")
 set(CMAKE_CXX_FLAGS_INIT "${MUTAP_HEXAGON_ARCH_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-static")
+# --eh-frame-hdr: not implied for -static links, but the unwinder needs
+# PT_GNU_EH_FRAME to find the exception tables — without it the first
+# throw calls std::terminate (observed as the EXPECT_THROW validation
+# tests aborting under emulation).
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-static -Wl,--eh-frame-hdr")
 
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
