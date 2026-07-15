@@ -9,7 +9,7 @@ can honestly buy you, what each attribute trades, and how to drive it at
 a soundcheck.
 
 Companion material: the object's help patcher
-(`help/mutap.defeed~.maxhelp` in the MuTap-Max package) wires a live
+(`help/mutap.afc~.maxhelp` in the MuTap-Max package) wires a live
 mic→speaker loop with every control in this chapter; the
 [demo notebook](https://github.com/tap/MuTap/blob/main/notebooks/afc_demo.ipynb)
 shows every behavior described here as a measured figure.
@@ -63,13 +63,13 @@ That last part is where the real villain of this chapter lives.
 
 ## The wiring
 
-`mutap.defeed~` sits between the microphone and everything else:
+`mutap.afc~` sits between the microphone and everything else:
 
 ```text
  [adc~]                          your processing / mixer
     |                                    |
     +---> (inlet 1: microphone)     [*~ gain]
-              [mutap.defeed~ 2048]       |
+              [mutap.afc~ 2048]       |
     +---> (inlet 2: reference) <---------+----> [dac~]  (to the speaker)
 ```
 
@@ -136,7 +136,7 @@ flavors, and it helps to pick the right one.
 
 ### Filter length (the creation argument)
 
-`mutap.defeed~ 2048` learns a room echo of up to 2048 samples — about
+`mutap.afc~ 2048` learns a room echo of up to 2048 samples — about
 43 ms at 48 kHz. The rule: **cover the strong part of the room's
 speaker→mic response.** For a monitor wedge a meter from the mic, 1024
 is plenty; for a PA in a reverberant hall, 4096 or more. Too short and
