@@ -209,6 +209,76 @@ namespace {
         EXPECT_GT(msg_c - open_msg, 0.5) << "ASG too small (measured +2.7..+4.5 dB)";
     }
 
+    // THE MUSIC PREDICTOR'S HEADLINE (HANDOFF.md near-end-model decision):
+    // a low chord — three incommensurate fundamentals, a dozen partials
+    // packed below 500 Hz — defeats both the pitch tap (no common period)
+    // and a moderate-order plain LP (the poles crowd z = 1). The
+    // frequency-warped predictor resolves the bass and buys clearly more
+    // stable gain. Measured across seeds {2,12,22} (converge 1500 blocks
+    // at MSG-6): warped +7.2/+9.4/+14.1 dB vs speech-cascade
+    // +5.3/+6.3/+7.5 dB; the per-seed gap is chaotic (0.9..8.8 dB), so the
+    // comparative claim is asserted on medians.
+    TEST(PemAfc, WarpedPredictorWinsOnMusicNearEnd) {
+        const auto   path     = random_decaying_rir<double>(k_taps, 5);
+        const double open_msg = mutap_test::theoretical_msg_db(path);
+
+        std::vector<double> asg_speech;
+        std::vector<double> asg_warped;
+        for (const unsigned seed : {2U, 12U, 22U}) {
+            const auto v_converge = mutap_test::music_near_end<double>(1500 * k_block, seed);
+            const auto v_probe    = mutap_test::music_near_end<double>(600 * k_block, seed + 10);
+
+            auto converge_and_measure = [&](auto& afc) {
+                closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
+                for (size_t blk = 0; blk < 1500; ++blk) {
+                    sim.step(&v_converge[blk * k_block], &afc);
+                }
+                return mutap_test::measured_msg_db(loop_config(path), &afc, v_probe, open_msg - 15.0, open_msg + 25.0,
+                                                   0.5)
+                       - open_msg;
+            };
+
+            mutap::pem_afc<double> speech(pem_config<double>());
+            asg_speech.push_back(converge_and_measure(speech));
+
+            mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>::config wc;
+            wc.fdaf.block_size = k_block;
+            wc.fdaf.partitions = k_taps / k_block;
+            mutap::pem_afc<double, mutap::warped_lpc_predictor<double>> warped(wc);
+            asg_warped.push_back(converge_and_measure(warped));
+
+            EXPECT_GT(asg_warped.back(), 3.0) << "seed " << seed << " (measured >= +7.2 dB)";
+        }
+        std::sort(asg_speech.begin(), asg_speech.end());
+        std::sort(asg_warped.begin(), asg_warped.end());
+        EXPECT_GT(asg_warped[1], asg_speech[1] + 1.0)
+            << "warped median should beat the speech cascade on music (measured gap 3.1 dB)";
+    }
+
+    // And the warped predictor is a safe general default: no collapse on
+    // the speech-envelope material the cascade was built for.
+    TEST(PemAfc, WarpedPredictorHandlesSpeechEnvelopeToo) {
+        const auto   path     = random_decaying_rir<double>(k_taps, 5);
+        const double open_msg = mutap_test::theoretical_msg_db(path);
+
+        const auto v_converge = mutap_test::ar_near_end<double>(1500 * k_block, 2);
+        const auto v_probe    = mutap_test::ar_near_end<double>(600 * k_block, 12);
+
+        mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>::config wc;
+        wc.fdaf.block_size = k_block;
+        wc.fdaf.partitions = k_taps / k_block;
+        mutap::pem_afc<double, mutap::warped_lpc_predictor<double>> warped(wc);
+
+        closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
+        for (size_t blk = 0; blk < 1500; ++blk) {
+            sim.step(&v_converge[blk * k_block], &warped);
+        }
+        const double asg =
+            mutap_test::measured_msg_db(loop_config(path), &warped, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
+            - open_msg;
+        EXPECT_GT(asg, 3.0) << "measured +9.7 dB";
+    }
+
     // No regression where the naive canceller was already fine.
     TEST(PemAfc, MatchesNaiveOnWhiteNearEnd) {
         const auto   path     = random_decaying_rir<double>(k_taps, 5);
@@ -240,8 +310,11 @@ namespace {
     }
 
     // The real-time contract carries through the PEM wrapper: everything
-    // after construction is noexcept.
+    // after construction is noexcept — for the warped instantiation too.
     TEST(PemAfcRtContract, PostConstructionEntryPointsAreNoexcept) {
+        using wafc = mutap::pem_afc<float, mutap::warped_lpc_predictor<float>>;
+        static_assert(noexcept(std::declval<wafc&>().process_block(nullptr, nullptr, nullptr)));
+        static_assert(noexcept(std::declval<wafc&>().reset()));
         using afc = mutap::pem_afc<float>;
         static_assert(noexcept(std::declval<afc&>().process_block(nullptr, nullptr, nullptr)));
         static_assert(noexcept(std::declval<afc&>().copy_impulse_response(nullptr)));

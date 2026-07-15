@@ -18,12 +18,13 @@
 
 int main() {
     // Typed-suite naming: /0 = float, /1 = double (sample_types order).
-    ::testing::GTEST_FLAG(filter) = "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:"
-                                    "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:"
-                                    "Levinson.*:LpcPredictor.*:SpeechPredictor.*:PredictorConfigValidation.*:"
-                                    "pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:"
-                                    "closed_loop_test/0.*:burst_test/0.*:"
-                                    "AdaptationControlConfigValidation.*";
+    ::testing::GTEST_FLAG(filter) =
+        "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:"
+        "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:"
+        "Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:"
+        "pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:"
+        "closed_loop_test/0.*:burst_test/0.*:"
+        "AdaptationControlConfigValidation.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
