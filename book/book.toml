@@ -1,0 +1,14 @@
+[book]
+title = "Quieting the Loop"
+description = "A field guide to acoustic feedback cancellation — what howling is, how MuTap removes it, and how to drive the canceller well."
+authors = ["The MuTap project"]
+language = "en"
+src = "src"
+
+[build]
+create-missing = false
+
+[output.html]
+default-theme = "rust"
+git-repository-url = "https://github.com/tap/MuTap"
+site-url = "/MuTap/book/"
