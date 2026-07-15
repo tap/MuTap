@@ -29,7 +29,7 @@ carries the measured numbers; this is the map:
   near-end models: `speech_predictor`, `warped_lpc_predictor`),
   `pem_afc.h` (the FDAF-PEM-AFROW wrapper, templated over BOTH the
   predictor and the adaptive core).
-- `tests/` — 96 tests; `tests/support/closed_loop.h` is the closed-loop
+- `tests/` — 88 tests; `tests/support/closed_loop.h` is the closed-loop
   simulator + MSG/ASG bisection metrics (a deliverable in its own right).
 - `tools/capi/` + `notebooks/afc_demo.ipynb` — the C ABI and the executed
   demo notebook (7 sections, every figure measured). The notebook is a
@@ -114,8 +114,10 @@ carries the measured numbers; this is the map:
 5. **AEC objects** — the open-loop cousin is nearly free now (the cores
    already run open-loop; it's an external + docs problem).
 6. **Book chapters** — echo cancellation, and the embedded-targets story.
-7. **RIR fixtures** (still open, below) — real measured rooms as
-   permanent baselines alongside the synthetic ones.
+7. **RIR fixtures** — infrastructure DONE (`tools/fixtures/
+   make_rir_fixtures.py`, `tests/fixtures/rir_*.h`, `test_rir_fixtures.cpp`):
+   three physically-modeled image-source rooms are committed baselines.
+   Still open (below): adding measured rooms — one command per WAV.
 
 ---
 
@@ -316,4 +318,4 @@ Still open:
 
 - **Max external naming** — `mutap.defeed~` is a placeholder; alternatives: `mutap.afc~`, `mutap.howl~`, `mutap.clean~`. Sibling convention is `<repo-lowercase>.<name>~`. Worth settling before anything links to the object name publicly (the book chapter and maxref would need a coordinated rename).
 - **Default engine in the external** — `@kalman` off (classic NLMS) is the shipping default purely on seniority; the measured case for flipping it is in `tests/test_fd_kalman.cpp` and book chapter 1. Decide after real-room listening.
-- **RIR fixtures** — which measured room impulse responses to standardize on for regression tests (e.g. a MYRiAD/openAIR room vs. self-measured), since the fixtures become permanent pass/fail baselines. All current rooms are synthetic (two generator families).
+- **RIR fixtures, the measured half** — the fixture pipeline is built and three physically-modeled rooms (image-source, documented geometry) are committed baselines with regression tests. What remains yours: which MEASURED rooms join them — an academic dataset room (MYRiAD is the PEM-AFROW group's own database; openAIR is the other usual source; check each room's license allows redistribution in an MIT repo) and/or your own swept-sine measurements. Either way it is one command per room: `python3 tools/fixtures/make_rir_fixtures.py --from-wav room.wav myroom --source "<provenance + license>"`, then a test with a freshly measured threshold. (The dataset hosts are unreachable from the remote dev container's network policy, so the WAVs have to enter via a commit.)

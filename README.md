@@ -158,6 +158,14 @@ algorithmically complete. What exists today:
   wrecked); the opt-in transient floor contains it to gated-NLMS quality
   at a measured ~2–6 dB tonal-ASG cost, which is why it defaults off
   ([`tests/test_fd_kalman.cpp`](tests/test_fd_kalman.cpp)).
+- **RIR fixtures** — three physically-modeled rooms (image-source method,
+  documented geometry, deterministic; [`tools/fixtures/`](tools/fixtures/))
+  committed as permanent closed-loop baselines with real early-reflection
+  structure. Measured on them (block 64, 16 partitions, speech-envelope
+  material): **Kalman +17.8…+19.1 dB ASG vs the classic stack's
+  +9.4…+9.7** ([`tests/test_rir_fixtures.cpp`](tests/test_rir_fixtures.cpp)).
+  Measured rooms (academic datasets or your own sweeps) join with one
+  command: `make_rir_fixtures.py --from-wav`.
 
 Next up: the `mutap.defeed~` Max attribute for the Kalman core, and the
 Hexagon data-layout work on real hardware (VTCM residency, FastRPC
@@ -211,6 +219,7 @@ notebooks/           demo notebook (ctypes over the C ABI)
 book/                "Quieting the Loop" (mdBook) — the user-facing field guide
 platform/            Cortex-M55 bare-metal board support (startup, linker)
 cmake/               cross toolchain files (Cortex-M55 MPS3, Hexagon musl)
+tests/fixtures/      RIR fixtures (committed rooms; tools/fixtures regenerates)
 ```
 
 Planned as the milestones land: `examples/`, `bench/`, `docs/`.

@@ -35,7 +35,8 @@ add_executable(mutap_tests
     test_lpc.cpp
     test_pem_afc.cpp
     test_adaptation_control.cpp
-    test_closed_loop.cpp)
+    test_closed_loop.cpp
+    test_rir_fixtures.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)
