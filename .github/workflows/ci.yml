@@ -131,10 +131,13 @@ jobs:
           sudo apt-get update -q &&
           sudo apt-get install -y -q qemu-user-static
 
+      # The quic/toolchain_for_hexagon GitHub releases carry no assets of
+      # their own — the release notes link to Codelinaro's artifactory,
+      # which is where the archives actually live.
       - name: Download Hexagon toolchain
         run: >
           curl -fsSL
-          "https://github.com/quic/toolchain_for_hexagon/releases/download/v19.1.5/${TOOLCHAIN}.tar.zst"
+          "https://artifacts.codelinaro.org/artifactory/codelinaro-toolchain-for-hexagon/19.1.5/${TOOLCHAIN}.tar.zst"
           | tar --zstd -x -C "$RUNNER_TEMP"
 
       - name: Configure
