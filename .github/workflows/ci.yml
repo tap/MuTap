@@ -75,6 +75,38 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build --output-on-failure
 
+  # Cross-compile for Arm Cortex-M55 (bare metal, newlib + semihosting) and
+  # run the emulation-sized test subset on QEMU's MPS3 AN547 board model:
+  # the float32 embedded profile the one-core/three-targets plan exists for,
+  # on a 32-bit MCU-class target with no OS, no threads and no
+  # double-precision FPU, including the float-tracks-double oracle check
+  # and the PEM canceller's float closed-loop headline scenario. Platform
+  # rig (startup, linker script, one-shot gtest harness) ported from
+  # SampleRateTap.
+  cortex-m55-qemu:
+    name: Cortex-M55 cross (QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install toolchain and QEMU
+        run: >
+          sudo apt-get update -q &&
+          sudo apt-get install -y -q gcc-arm-none-eabi qemu-system-arm
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=MinSizeRel
+          -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake
+
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Test under emulation
+        run: ctest --test-dir build --output-on-failure
+
   clang-format:
     name: clang-format
     runs-on: ubuntu-latest
@@ -86,4 +118,4 @@ jobs:
           sudo apt-get update -q && sudo apt-get install -y -q clang-format-18
           clang-format-18 --dry-run --Werror \
             include/mutap/*.h tests/*.cpp tests/support/*.h \
-            tools/capi/*.cpp tools/capi/*.h
+            tools/capi/*.cpp tools/capi/*.h platform/*.c

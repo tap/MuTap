@@ -24,7 +24,8 @@ One float-parameterized core, three targets:
 - **Desktop / Max/MSP** — float64 available; the golden model and correctness
   oracle. Max externals live in the sibling
   [MuTap-Max](https://github.com/tap/MuTap-Max) package repo.
-- **ARM Cortex-M55** — float32 with Helium (MVE-F) *(planned)*
+- **ARM Cortex-M55** — float32; builds and passes the on-target test
+  subset under QEMU (MPS3 AN547) in CI
 - **Qualcomm Hexagon** — float32 with vector-float HVX (QCS8550-class cDSP)
   *(planned)*
 
@@ -91,9 +92,22 @@ algorithmically complete. What exists today:
   naive canceller's tonal bias (ASG −12 → −3.5 dB) — mitigation, not the
   fix; the M2/M3 baseline tests pin the M1-era config explicitly.
 
-Next up (M5): the Max/MSP external in
-[MuTap-Max](https://github.com/tap/MuTap-Max) (Min-DevKit package, MuTap as
-a submodule), wrapping the M4 canceller.
+- **The Max/MSP external** — `mutap.defeed~` in
+  [MuTap-Max](https://github.com/tap/MuTap-Max) (Min-DevKit package, MuTap
+  as a submodule): universal macOS `.mxo` + Windows `.mxe64` built in CI.
+- **The Cortex-M55 build** — the first embedded target: bare metal
+  (newlib + semihosting) on QEMU's MPS3 AN547 board model, platform rig
+  (Armv8-M startup, linker script, one-shot gtest harness) ported from
+  SampleRateTap ([`platform/`](platform/),
+  [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
+  46 tests run on-target: the float32 typed suites (the embedded profile),
+  the LP conditioning suite, the float closed-loop scenarios including the
+  PEM tonal headline and burst gating, and the float-tracks-double oracle
+  check — with double as soft-float (the M55 FPU is single-precision only).
+
+Next up: the Hexagon build (same float32 core, VTCM/L2 data layout), the
+music/tonal near-end predictor, and the PEM-based frequency-domain Kalman
+upgrade (see [HANDOFF.md](HANDOFF.md)).
 
 ## Quick start
 
