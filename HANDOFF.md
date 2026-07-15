@@ -1,8 +1,121 @@
 # MuTap — Project Handoff
 
-> Context brief for a Claude Code session. Captures decisions and technical direction from prior planning so the next session can start building without re-deriving anything. Can be adapted into a `CLAUDE.md` for persistent project context.
+> Context brief for a Claude Code session. Captures decisions and technical direction so the next session can start working without re-deriving anything. Can be adapted into a `CLAUDE.md` for persistent project context.
 >
-> **Rev 2** — refined against the actual `tap` ecosystem on disk (AmbiTap, AmbiTap-Max, SampleRateTap). Two former open decisions are now settled by sibling-repo convention, the single-repo assumption is corrected to the ecosystem's core/-Max split, and the build milestones are restructured into individually testable stages.
+> **Rev 3** — the plan below has been EXECUTED: M0 through M6 and the v2
+> Kalman upgrade are built, measured, tested and merged. This revision adds
+> the "State of the repo" and "Working notes" sections (start there), marks
+> the milestone list as history, and re-ranks what's next. The algorithm
+> description, portability architecture, Hexagon specifics and paper list
+> remain the reference they always were.
+>
+> **Rev 2** — refined against the actual `tap` ecosystem on disk (AmbiTap, AmbiTap-Max, SampleRateTap). Two former open decisions settled by sibling-repo convention, the single-repo assumption corrected to the ecosystem's core/-Max split, milestones restructured into individually testable stages.
+
+---
+
+## State of the repo (Rev 3)
+
+Everything below exists, is regression-tested, and is green in CI
+(Linux GCC/Clang, macOS, Windows, ASan+UBSan, clang-format/tidy,
+Cortex-M55 under QEMU, Hexagon under QEMU). The README's Status section
+carries the measured numbers; this is the map:
+
+- `include/mutap/` — `fft.h` (Ooura wrapper), `fdaf.h` (partitioned-block
+  NLMS core + the M4 control stack: IPC, IPC-scaled stepping, transient
+  gate, variable regularization), `fd_kalman.h` (**the v2 Kalman core** —
+  no step size, no IPC; per-bin state uncertainty + near-end PSD replace
+  the control stack; opt-in `transient_floor_ratio` trades tonal ASG for
+  burst hardening), `lpc.h` (ridge-guarded Levinson + the two pluggable
+  near-end models: `speech_predictor`, `warped_lpc_predictor`),
+  `pem_afc.h` (the FDAF-PEM-AFROW wrapper, templated over BOTH the
+  predictor and the adaptive core).
+- `tests/` — 96 tests; `tests/support/closed_loop.h` is the closed-loop
+  simulator + MSG/ASG bisection metrics (a deliverable in its own right).
+- `tools/capi/` + `notebooks/afc_demo.ipynb` — the C ABI and the executed
+  demo notebook (7 sections, every figure measured). The notebook is a
+  build product of `tools/notebook/build_afc_demo.py` — edit the script,
+  never the .ipynb.
+- `platform/` + `cmake/arm-cortex-m55-mps3.cmake` — the bare-metal M55
+  rig; `cmake/hexagon-linux-musl.cmake` — the Hexagon cross build.
+- `book/` — "Quieting the Loop" (mdBook, AmbiTap-book conventions): one
+  chapter so far, the user-facing guide to the canceller and every knob.
+- Sibling repo `tap/MuTap-Max` — `mutap.defeed~` with attributes `block`,
+  `mu`, `adapt`, `gate`, `warp`, `kalman`; engine is a
+  `std::variant` over {speech, warped} × {NLMS, Kalman}, xtc~-pattern
+  lock-free rebuild handoff.
+
+## Working notes for the next session (hard-won; read before touching)
+
+1. **Every test threshold is a measured number.** The workflow that built
+   this repo: run the experiment in a scratch harness first, write the
+   measured value into a comment next to the assertion, set the threshold
+   with margin. Keep doing this — reviewers (and CI archaeology) depend
+   on those comments.
+2. **Closed-loop trajectories are chaotic; assert directions, not
+   magnitudes.** Platform libm/FMA differences (AppleClang arm64
+   especially) get amplified arbitrarily by the loop. Three incidents to
+   learn from: the λ=0 warped/plain identity is algebraic but not bitwise
+   (FMA contraction → assert 1e-9, not 4 ulp); a naive-loop blowup peak
+   measured 18k on Linux and 34k on macOS (assert survival/recovery and
+   floored containment, never the chaotic peak); single-seed ASG numbers
+   move by dB between platforms (assert medians across seeds, bisected
+   stability directions, floors with several dB of margin).
+3. **One room is not an evaluation.** The warped predictor's first cut
+   was validated on one simulated room and shipped claims that a
+   five-room sweep demolished (one room in five DESTABILIZED at the old
+   defaults). The fix was structural (IPC pairing / the Kalman core), not
+   tuning. Any new closed-loop claim: sweep rooms from BOTH generator
+   families (the C++ `std::mt19937` rooms in the tests and the notebook's
+   numpy rooms) before writing the number down.
+4. **The emulated-target test selection lives in TWO places that must be
+   kept in sync by hand**: the baked gtest filter in
+   `tests/bare_metal_main.cpp` (Cortex-M55, no argv on target) and the
+   `TEST_FILTER` in `tests/CMakeLists.txt` (Hexagon and any future hosted
+   cross target). Both mirror the same policy: float typed suites,
+   LP/conditioning, validation/contract tests, float closed-loop
+   scenarios; the double-typed adaptive suites stay host-only (the full
+   suite ran once on the Hexagon ISA — 44 min of TCG — and passed; the
+   per-push selection takes ~8).
+5. **Hexagon CI quirks**: the toolchain downloads from Codelinaro's
+   artifactory (the quic/toolchain_for_hexagon GitHub releases carry NO
+   assets — the release notes just link out); the archive's inner
+   directory name varies, so the workflow locates `clang++` and derives
+   the root; `-static` does NOT imply `--eh-frame-hdr` and without it the
+   first `throw` aborts (that cost one CI round to find).
+6. **The submodule dance**: MuTap merges are rebase-merges, so every
+   merge orphans the branch SHAs. After any MuTap PR merges, re-pin
+   `MuTap-Max/submodules/MuTap` to the new main tip before (or as part
+   of) the next MuTap-Max merge — a dangling gitlink breaks recursive
+   clones once branches are cleaned up.
+7. **min-api pin gotcha** (MuTap-Max): the pinned min-api has no scalar
+   `send()` path on queue-backed outlets — send a pre-allocated `atoms`
+   lvalue (see `m_ipc_atoms` in the external).
+8. **The book's honesty rule** (inherited from the AmbiTap book): no
+   number in `book/` that the test suite or notebook doesn't measure, no
+   patch or attribute described that doesn't exist. If a chapter needs a
+   feature, build the feature in the same change.
+
+## What's next (ranked)
+
+1. **In-Max listening.** Everything is code-complete and
+   simulation-verified; nothing has been heard in a real room through a
+   real mic→speaker loop. The help patcher is the checklist (added
+   stable gain by ear, IPC metering, engine/gate/warp A/B). Findings
+   feed 2.
+2. **Decide the default engine.** The Kalman core beats the tuned NLMS
+   stack in every simulated scenario; after real-room listening, decide
+   whether `@kalman` becomes the external's default (and whether the M4
+   knobs get de-emphasized in docs).
+3. **M55 performance work** — CMSIS-DSP/Helium mapping of the FDAF hot
+   path and SampleRateTap-style instruction-count ratchets in CI.
+4. **Hexagon performance work** — needs the proprietary SDK + hardware:
+   VTCM residency, L2 streaming layout, HVX mapping (the specifics
+   section below still holds).
+5. **AEC objects** — the open-loop cousin is nearly free now (the cores
+   already run open-loop; it's an external + docs problem).
+6. **Book chapters** — echo cancellation, and the embedded-targets story.
+7. **RIR fixtures** (still open, below) — real measured rooms as
+   permanent baselines alongside the synthetic ones.
 
 ---
 
@@ -144,9 +257,14 @@ Concrete numbers that pin down the layout decisions (the vector-width question i
 
 ---
 
-## Milestones (restructured: each stage independently testable)
+## Milestones (Rev 3: ALL DONE — kept as the record of how it was staged)
 
-The original "milestone 2 = the whole algorithm" was too big a bite. FDAF-PEM-AFROW decomposes into layers where each layer has a crisp pass/fail experiment; build them in this order and land regression fixtures with each.
+Every stage below landed with its pass criterion met and regression
+fixtures committed; the README's Status section carries the measured
+results. The staging itself proved out — each layer's crisp pass/fail
+experiment caught real issues (M2's naive-bias baseline, the M4 burst
+fixtures, the room sweeps) that a build-it-all-at-once plan would have
+merged blind.
 
 **M0 — Scaffold `tap/MuTap`.** Sibling-repo layout: `include/mutap/`, `tests/`, `bench/`, `examples/`, `notebooks/`, `tools/capi/`, `cmake/`, `docs/`; MIT LICENSE; `STYLE.md` + `.clang-format`/`.clang-tidy` copied from a sibling; CI (`ci.yml`: build matrix, tests, format/tidy gates); README using the framing above. Vendor Ooura, port the real-FFT wrapper.
 
@@ -192,10 +310,10 @@ The original "milestone 2 = the whole algorithm" was too big a bite. FDAF-PEM-AF
 
 ## Open decisions (for Tim)
 
-Resolved since rev 1: ~~license~~ (MIT, by convention), ~~core language~~ (header-only C++20, by convention), ~~milestone ordering~~ (core + closed-loop harness first, Max wrapper at M5 — and the wrapper lives in `tap/MuTap-Max`).
+Resolved since rev 1: ~~license~~ (MIT), ~~core language~~ (header-only C++20), ~~milestone ordering~~ (executed as staged). Resolved since rev 2: ~~first program-material target~~ (moot — both predictors and both engines exist; what remains is the real-room tuning pass, item 1 of "What's next").
 
 Still open:
 
-- **First program-material target for tuning/demos** — speech vs music. The *implementation* order is fixed (speech predictor first, to validate against the literature; music predictor second), but which material the first real-room demo and default tuning target depends on the actual use case (live PA/instruments would pull the M6 music predictor forward, right after M4).
-- **Max external naming** — `mutap.defeed~` is a placeholder; alternatives: `mutap.afc~`, `mutap.howl~`, `mutap.clean~`. Sibling convention is `<repo-lowercase>.<name>~`.
-- **RIR fixtures** — which measured room impulse responses to standardize on for regression tests (e.g. a MYRiAD/openAIR room vs. self-measured), since the fixtures become permanent pass/fail baselines.
+- **Max external naming** — `mutap.defeed~` is a placeholder; alternatives: `mutap.afc~`, `mutap.howl~`, `mutap.clean~`. Sibling convention is `<repo-lowercase>.<name>~`. Worth settling before anything links to the object name publicly (the book chapter and maxref would need a coordinated rename).
+- **Default engine in the external** — `@kalman` off (classic NLMS) is the shipping default purely on seniority; the measured case for flipping it is in `tests/test_fd_kalman.cpp` and book chapter 1. Decide after real-room listening.
+- **RIR fixtures** — which measured room impulse responses to standardize on for regression tests (e.g. a MYRiAD/openAIR room vs. self-measured), since the fixtures become permanent pass/fail baselines. All current rooms are synthetic (two generator families).
