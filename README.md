@@ -188,6 +188,10 @@ cmake --build build -j
 ctest --test-dir build
 ```
 
+For a reader who wants to *use* the canceller rather than build it, the
+book [`book/`](book/) ("Quieting the Loop") explains the algorithm and
+every `mutap.defeed~` knob and trade-off with no DSP background assumed.
+
 For a visual tour — howling past the MSG, the naive-canceller bias
 limit-cycling vs PEM riding 6 dB above the open-loop limit, ASG by program
 material, IPC, burst survival — see
@@ -204,6 +208,7 @@ third_party/ooura/   vendored Ooura FFT (see THIRD_PARTY_NOTICES.md)
 tests/               GoogleTest suite (fetched at configure time)
 tools/capi/          C ABI shared library for FFI consumers (notebooks)
 notebooks/           demo notebook (ctypes over the C ABI)
+book/                "Quieting the Loop" (mdBook) — the user-facing field guide
 platform/            Cortex-M55 bare-metal board support (startup, linker)
 cmake/               cross toolchain files (Cortex-M55 MPS3, Hexagon musl)
 ```
