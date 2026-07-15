@@ -41,16 +41,24 @@ namespace mutap {
     /// satisfying the plug-in contract documented in lpc.h. Default is the
     /// speech cascade (short-term LP + long-term pitch predictor).
     ///
+    /// The adaptive core is pluggable too: any type with partitioned_fdaf's
+    /// interface surface (config with block_size/partitions, process_block,
+    /// partition_spectrum, ...). Default is the NLMS core; pass
+    /// mutap::partitioned_fdkf<Sample> for the frequency-domain Kalman
+    /// update (fd_kalman.h) — the FDAF-PEM-AFROW structure is identical,
+    /// only the update rule changes. The config field keeps the name `fdaf`
+    /// across cores.
+    ///
     /// Real-time contract: constructor allocates and may throw;
     /// process_block() and every other post-construction entry point are
     /// noexcept and allocation-free.
-    template <typename Sample, typename Predictor = speech_predictor<Sample>>
+    template <typename Sample, typename Predictor = speech_predictor<Sample>, typename Core = partitioned_fdaf<Sample>>
     class pem_afc {
       public:
         struct config {
-            typename partitioned_fdaf<Sample>::config fdaf;
-            typename Predictor::config                predictor;
-            size_t                                    analysis_window = 1024; ///< samples of e per near-end re-fit
+            typename Core::config      fdaf;
+            typename Predictor::config predictor;
+            size_t                     analysis_window = 1024; ///< samples of e per near-end re-fit
         };
 
         explicit pem_afc(const config& cfg)
@@ -81,12 +89,21 @@ namespace mutap {
 
         /// IPC of the PREWHITENED adaptation pair (see partitioned_fdaf);
         /// this staying low while the raw-pair IPC is high is exactly the
-        /// bias reduction PEM buys (Gil-Cacho et al. 2014).
-        Sample ipc() const noexcept { return m_fdaf.ipc(); }
+        /// bias reduction PEM buys (Gil-Cacho et al. 2014). Cores without
+        /// the IPC machinery (the Kalman core, whose noise-PSD tracking
+        /// makes the gate redundant) report 0.
+        Sample ipc() const noexcept {
+            if constexpr (requires(const Core& c) { c.ipc(); }) {
+                return m_fdaf.ipc();
+            }
+            else {
+                return Sample(0);
+            }
+        }
 
-        partitioned_fdaf<Sample>&       fdaf() noexcept { return m_fdaf; }
-        const partitioned_fdaf<Sample>& fdaf() const noexcept { return m_fdaf; }
-        const Predictor&                predictor() const noexcept { return m_predictor; }
+        Core&            fdaf() noexcept { return m_fdaf; }
+        const Core&      fdaf() const noexcept { return m_fdaf; }
+        const Predictor& predictor() const noexcept { return m_predictor; }
 
         void reset() noexcept {
             m_fdaf.reset();
@@ -173,7 +190,7 @@ namespace mutap {
         }
 
         config                    m_cfg;
-        partitioned_fdaf<Sample>  m_fdaf; ///< adapts on the prewhitened pair; owns F_hat
+        Core                      m_fdaf; ///< adapts on the prewhitened pair; owns F_hat
         Predictor                 m_predictor;
         typename Predictor::state m_u_state;
         typename Predictor::state m_y_state;

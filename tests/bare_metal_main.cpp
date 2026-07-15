@@ -21,6 +21,7 @@ int main() {
     ::testing::GTEST_FLAG(filter) =
         "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:"
         "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:"
+        "fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:"
         "Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:"
         "pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:"
         "closed_loop_test/0.*:burst_test/0.*:"
@@ -30,7 +31,7 @@ int main() {
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is ~45 tests; 30 leaves headroom for legitimate removals without
+    // is ~57 tests; 30 leaves headroom for legitimate removals without
     // masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {

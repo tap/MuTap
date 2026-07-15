@@ -164,7 +164,7 @@ The original "milestone 2 = the whole algorithm" was too big a bite. FDAF-PEM-AF
 - **Music/tonal near-end predictor** — *done*: `warped_lpc_predictor` (frequency-warped all-pole), room-robust when paired with IPC-scaled stepping (see the class comment in `lpc.h` for the measured room sweep and why the pairing is required).
 - **Cortex-M55 build** — *done* (bare-metal QEMU AN547 rig ported from SampleRateTap, on-target subset in CI). Still open from this line: CMSIS-DSP mapping and the instruction-count ratchet.
 - **Hexagon build** — *toolchain leg done*: hexagon-unknown-linux-musl (Codelinaro clang, HVX auto-vectorization, static musl link) runs the emulation-sized suite under qemu-hexagon in CI, and the full suite passed once on the ISA. Still open: the actual performance work — VTCM residency, L2 streaming layout, HVX vector mapping of the FDAF hot path — which needs the Hexagon SDK and hardware.
-- **PEM-FD-Kalman** upgrade (v2 algorithm).
+- **PEM-FD-Kalman** upgrade (v2 algorithm) — *done*: `partitioned_fdkf` (fd_kalman.h), a drop-in core for `pem_afc` (which is now templated over the adaptive core). Measured: dissolves the NLMS speed/depth tradeoff, saturates the +25 dB ASG probe on broadband near-end, room-robust on music with zero adaptation-control config, survives bursts ungated. The transient floor is opt-in (burst hardening at a measured tonal-ASG cost). Not yet the default core in the Max external — that switch (and any deprecation of the M4 knobs) deserves its own decision after in-Max listening.
 
 ---
 

@@ -139,9 +139,29 @@ algorithmically complete. What exists today:
   layout and FastRPC offload need the proprietary Hexagon SDK and real
   hardware (HANDOFF.md pins the layout targets).
 
-Next up: the Hexagon data-layout work on real hardware (VTCM residency,
-FastRPC offload) and the PEM-based frequency-domain Kalman upgrade (see
-[HANDOFF.md](HANDOFF.md)).
+- **The PEM-FD-Kalman core (v2)** — `mutap::partitioned_fdkf<Sample>`
+  ([`include/mutap/fd_kalman.h`](include/mutap/fd_kalman.h)): the NLMS
+  update replaced by a diagonalized partitioned-block frequency-domain
+  Kalman filter (Enzner & Vary 2006; Bernardi et al.'s PEM variant), as a
+  drop-in core for the same FDAF-PEM-AFROW structure —
+  `mutap::pem_afc<Sample, Predictor, mutap::partitioned_fdkf<Sample>>`.
+  The per-bin state uncertainty and near-end PSD replace the entire
+  adaptation-control stack (no step size, no IPC options), and every claim
+  is measured: at 0 dB SNR it beats both ends of the NLMS speed/depth
+  tradeoff at once (−15.7 dB by block 300 vs μ=0.5's −5.9 and μ=0.1's
+  slow start); in the closed loop with **zero knobs** it matches the tuned
+  stack on tonal ASG (+4.7/+7.8 dB), **saturates the +25 dB probe ceiling**
+  on speech-envelope and white near-end (NLMS stack: +3…+12.6), and holds
+  **+8.4…+13.4 dB across all the music rooms with no IPC pairing** —
+  including the room where the NLMS speech cascade destabilizes. A +20 dB
+  near-end burst is survived ungated (excursion ~2 dB; ungated NLMS is
+  wrecked); the opt-in transient floor contains it to gated-NLMS quality
+  at a measured ~2–6 dB tonal-ASG cost, which is why it defaults off
+  ([`tests/test_fd_kalman.cpp`](tests/test_fd_kalman.cpp)).
+
+Next up: the `mutap.defeed~` Max attribute for the Kalman core, and the
+Hexagon data-layout work on real hardware (VTCM residency, FastRPC
+offload) — see [HANDOFF.md](HANDOFF.md).
 
 ## Quick start
 

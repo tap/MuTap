@@ -31,6 +31,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(mutap_tests
     test_fft.cpp
     test_fdaf.cpp
+    test_fd_kalman.cpp
     test_lpc.cpp
     test_pem_afc.cpp
     test_adaptation_control.cpp
@@ -64,7 +65,7 @@ else()
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:AdaptationControlConfigValidation.*")
+            "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:AdaptationControlConfigValidation.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)
