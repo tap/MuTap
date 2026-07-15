@@ -283,8 +283,13 @@ namespace {
     }
 
     // The warped predictor at lambda = 0 IS the plain predictor: the
-    // allpass sections collapse to unit delays, so both the analysis and
-    // the applied filter must match exactly.
+    // allpass sections collapse to unit delays. The identity is algebraic,
+    // not bitwise — the two implementations walk different arithmetic
+    // paths, and compilers that contract them differently (AppleClang on
+    // arm64 fuses the allpass recursion into FMAs) round differently, which
+    // Levinson then amplifies to ~2e-10 relative on the smallest
+    // coefficients. Asserted at 1e-9, ~3 orders looser than that and ~3
+    // orders tighter than any behavioral difference could matter.
     TEST(WarpedLpcPredictor, LambdaZeroMatchesPlain) {
         const auto v = mutap_test::music_near_end<double>(4096, 7);
 
@@ -298,7 +303,7 @@ namespace {
         warped.analyze(&v[2048], 1024);
 
         for (size_t j = 0; j <= 16; ++j) {
-            EXPECT_DOUBLE_EQ(plain.coefficients()[j], warped.coefficients()[j]) << "coefficient " << j;
+            EXPECT_NEAR(plain.coefficients()[j], warped.coefficients()[j], 1e-9) << "coefficient " << j;
         }
 
         auto                ps = plain.make_state();
@@ -308,7 +313,7 @@ namespace {
         plain.apply(ps, &v[3072], pout.data(), 512);
         warped.apply(ws, &v[3072], wout.data(), 512);
         for (size_t i = 0; i < 512; ++i) {
-            ASSERT_NEAR(pout[i], wout[i], 1e-12) << "sample " << i;
+            ASSERT_NEAR(pout[i], wout[i], 1e-9) << "sample " << i;
         }
     }
 
