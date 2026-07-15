@@ -136,16 +136,30 @@ jobs:
       # which is where the archives actually live.
       - name: Download Hexagon toolchain
         run: >
+          mkdir -p "$RUNNER_TEMP/hexagon-toolchain" &&
           curl -fsSL
           "https://artifacts.codelinaro.org/artifactory/codelinaro-toolchain-for-hexagon/19.1.5/${TOOLCHAIN}.tar.zst"
-          | tar --zstd -x -C "$RUNNER_TEMP"
+          | tar --zstd -x -C "$RUNNER_TEMP/hexagon-toolchain"
+
+      # The tarball's inner directory naming has varied across releases, so
+      # find the driver and derive the root from it instead of hardcoding.
+      - name: Locate toolchain root
+        run: |
+          ls "$RUNNER_TEMP/hexagon-toolchain"
+          cxx=$(find "$RUNNER_TEMP/hexagon-toolchain" -maxdepth 5 \( -type f -o -type l \) \
+                \( -name 'hexagon-unknown-linux-musl-clang++' -o -name 'clang++' \) | sort | head -1)
+          test -n "$cxx" || { echo "no clang++ found in the toolchain archive"; exit 1; }
+          root=$(dirname "$(dirname "$cxx")")
+          echo "found driver: $cxx"
+          ls "$root/bin" | head -40
+          echo "HEXAGON_TOOLCHAIN_ROOT=$root" >> "$GITHUB_ENV"
 
       - name: Configure
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE=cmake/hexagon-linux-musl.cmake
-          -DHEXAGON_TOOLCHAIN_ROOT="$RUNNER_TEMP/$TOOLCHAIN"
+          -DHEXAGON_TOOLCHAIN_ROOT="$HEXAGON_TOOLCHAIN_ROOT"
 
       - name: Build
         run: cmake --build build -j 4
