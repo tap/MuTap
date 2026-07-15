@@ -54,5 +54,18 @@ if(MUTAP_BARE_METAL)
 else()
     target_link_libraries(mutap_tests PRIVATE GTest::gtest_main)
     include(GoogleTest)
-    gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 PROPERTIES TIMEOUT 900)
+    # Hosted cross targets run under an emulator (Hexagon under
+    # qemu-hexagon): the full suite measured ~44 minutes of TCG, almost all
+    # of it the double-typed adaptive suites — target-independent math
+    # already covered on every host platform. Run the same emulation-sized
+    # selection as the Cortex-M55 leg (tests/bare_metal_main.cpp): the
+    # float32 typed suites, the double FFT, the LP/conditioning suites, the
+    # float closed-loop scenarios and the validation/contract tests.
+    set(mutap_emulated_selection "")
+    if(CMAKE_CROSSCOMPILING)
+        set(mutap_emulated_selection TEST_FILTER
+            "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:AdaptationControlConfigValidation.*")
+    endif()
+    gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
+                         PROPERTIES TIMEOUT 900)
 endif()
