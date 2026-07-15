@@ -1,8 +1,9 @@
 /// @file lpc.h
 /// @brief Linear-prediction analysis and the pluggable near-end models used
 ///        for PEM prewhitening: autocorrelation, Levinson-Durbin with the
-///        conditioning guards, a short-term LP predictor and the speech
-///        cascade (short-term + long-term/pitch).
+///        conditioning guards, a short-term LP predictor, the speech cascade
+///        (short-term + long-term/pitch) and the frequency-warped predictor
+///        for music/tonal program material.
 // SPDX-License-Identifier: MIT
 // Copyright 2026 MuTap contributors
 //
@@ -172,6 +173,134 @@ namespace mutap {
         std::vector<Sample> m_a;
         std::vector<Sample> m_r;
         std::vector<Sample> m_scratch;
+    };
+
+    /// Frequency-warped all-pole near-end model — the music/tonal predictor
+    /// (HANDOFF.md near-end-model decision). Plain LP spends its resolution
+    /// uniformly over frequency; musical program material concentrates its
+    /// partials low, where a moderate plain order cannot resolve them (poles
+    /// crowd z = 1, exactly where the ridge-guarded analysis is stiffest).
+    /// Warped LP replaces every unit delay in the predictor with a
+    /// first-order allpass D(z) = (-lambda + z^-1)/(1 - lambda z^-1), which
+    /// warps the frequency axis (lambda ~ 0.766 approximates the Bark scale
+    /// at 48 kHz) so the same order buys far more resolution in the bass.
+    ///
+    /// analyze() computes the WARPED autocorrelation r[k] = <x, D^k x>
+    /// (Haermae et al.) and runs the same ridge-guarded Levinson-Durbin;
+    /// apply() runs the prediction-error filter as a tapped allpass chain —
+    /// feed-forward, so it is unconditionally stable, like the plain FIR
+    /// whitener. At lambda = 0 both collapse exactly to lpc_predictor.
+    template <typename Sample>
+    class warped_lpc_predictor {
+      public:
+        struct config {
+            size_t order = 24;           ///< warped LP order
+            Sample ridge = Sample(1e-4); ///< relative noise floor on r[0]
+            /// Warping coefficient in (-1, 1); 0 = plain LP. Default is the
+            /// Bark-scale fit at 48 kHz (Smith & Abel 1999).
+            Sample lambda            = Sample(0.766);
+            size_t analysis_capacity = 1024; ///< max analyze() window length
+        };
+
+        struct state {
+            std::vector<Sample> allpass; ///< one state per section
+        };
+
+        explicit warped_lpc_predictor(const config& cfg)
+            : m_cfg(cfg)
+            , m_a(cfg.order + 1)
+            , m_r(cfg.order + 1)
+            , m_scratch(cfg.order + 1)
+            , m_d_prev(cfg.analysis_capacity)
+            , m_d_cur(cfg.analysis_capacity) {
+            if (cfg.order == 0) {
+                throw std::invalid_argument("warped_lpc_predictor: order must be >= 1");
+            }
+            if (!(cfg.ridge > Sample(0))) {
+                throw std::invalid_argument("warped_lpc_predictor: ridge must be > 0");
+            }
+            if (!(cfg.lambda > Sample(-1)) || !(cfg.lambda < Sample(1))) {
+                throw std::invalid_argument("warped_lpc_predictor: lambda must be in (-1, 1)");
+            }
+            if (cfg.analysis_capacity == 0) {
+                throw std::invalid_argument("warped_lpc_predictor: analysis_capacity must be >= 1");
+            }
+            m_a[0] = Sample(1);
+        }
+
+        state make_state() const { return state{std::vector<Sample>(m_cfg.order, Sample(0))}; }
+
+        void reset_state(state& s) const noexcept {
+            for (auto& x : s.allpass) {
+                x = Sample(0);
+            }
+        }
+
+        size_t order() const noexcept { return m_cfg.order; }
+        Sample lambda() const noexcept { return m_cfg.lambda; }
+
+        /// Prediction-error coefficients over warped delays, a[0] = 1.
+        const std::vector<Sample>& coefficients() const noexcept { return m_a; }
+
+        void analyze(const Sample* window, size_t n) noexcept {
+            if (n > m_d_prev.size()) {
+                n = m_d_prev.size();
+            }
+            // Warped autocorrelation: r[k] = <window, D^k window>, each
+            // allpass pass one-shot over the frame with zero initial state.
+            for (size_t i = 0; i < n; ++i) {
+                m_d_prev[i] = window[i];
+            }
+            Sample r0 = Sample(0);
+            for (size_t i = 0; i < n; ++i) {
+                r0 += window[i] * window[i];
+            }
+            m_r[0]         = r0;
+            const Sample l = m_cfg.lambda;
+            for (size_t k = 1; k <= m_cfg.order; ++k) {
+                Sample s   = Sample(0);
+                Sample acc = Sample(0);
+                for (size_t i = 0; i < n; ++i) {
+                    const Sample x = m_d_prev[i];
+                    const Sample y = -l * x + s;
+                    s              = x + l * y;
+                    m_d_cur[i]     = y;
+                    acc += window[i] * y;
+                }
+                m_r[k] = acc;
+                m_d_prev.swap(m_d_cur);
+            }
+            const size_t achieved = levinson(m_r.data(), m_cfg.order, m_a.data(), m_scratch.data(), m_cfg.ridge);
+            for (size_t j = achieved + 1; j <= m_cfg.order; ++j) {
+                m_a[j] = Sample(0);
+            }
+        }
+
+        /// out[i] = in[i] + sum_j a[j] d_j(i), the tapped allpass chain,
+        /// streaming across blocks (one allpass state per section).
+        void apply(state& st, const Sample* in, Sample* out, size_t n) const noexcept {
+            const size_t m = m_cfg.order;
+            const Sample l = m_cfg.lambda;
+            for (size_t i = 0; i < n; ++i) {
+                Sample prev = in[i];
+                Sample acc  = in[i];
+                for (size_t j = 0; j < m; ++j) {
+                    const Sample y = -l * prev + st.allpass[j];
+                    st.allpass[j]  = prev + l * y;
+                    acc += m_a[j + 1] * y;
+                    prev = y;
+                }
+                out[i] = acc;
+            }
+        }
+
+      private:
+        config              m_cfg;
+        std::vector<Sample> m_a;
+        std::vector<Sample> m_r;
+        std::vector<Sample> m_scratch;
+        std::vector<Sample> m_d_prev;
+        std::vector<Sample> m_d_cur;
     };
 
     /// The speech near-end model from the PEM-AFROW papers: a cascade of the

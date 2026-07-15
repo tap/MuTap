@@ -282,6 +282,123 @@ namespace {
         }
     }
 
+    // The warped predictor at lambda = 0 IS the plain predictor: the
+    // allpass sections collapse to unit delays, so both the analysis and
+    // the applied filter must match exactly.
+    TEST(WarpedLpcPredictor, LambdaZeroMatchesPlain) {
+        const auto v = mutap_test::music_near_end<double>(4096, 7);
+
+        mutap::lpc_predictor<double> plain({16, 1e-4});
+        plain.analyze(&v[2048], 1024);
+
+        mutap::warped_lpc_predictor<double>::config wc;
+        wc.order  = 16;
+        wc.lambda = 0.0;
+        mutap::warped_lpc_predictor<double> warped(wc);
+        warped.analyze(&v[2048], 1024);
+
+        for (size_t j = 0; j <= 16; ++j) {
+            EXPECT_DOUBLE_EQ(plain.coefficients()[j], warped.coefficients()[j]) << "coefficient " << j;
+        }
+
+        auto                ps = plain.make_state();
+        auto                ws = warped.make_state();
+        std::vector<double> pout(512);
+        std::vector<double> wout(512);
+        plain.apply(ps, &v[3072], pout.data(), 512);
+        warped.apply(ws, &v[3072], wout.data(), 512);
+        for (size_t i = 0; i < 512; ++i) {
+            ASSERT_NEAR(pout[i], wout[i], 1e-12) << "sample " << i;
+        }
+    }
+
+    TEST(WarpedLpcPredictor, BlockwiseApplyMatchesOneShot) {
+        const auto                          v = mutap_test::music_near_end<double>(2048, 9);
+        mutap::warped_lpc_predictor<double> wp({});
+        wp.analyze(v.data(), 1024);
+
+        auto                one_state = wp.make_state();
+        std::vector<double> one(v.size());
+        wp.apply(one_state, v.data(), one.data(), v.size());
+
+        auto                blk_state = wp.make_state();
+        std::vector<double> blk(v.size());
+        for (size_t pos = 0; pos < v.size();) {
+            const size_t n = std::min<size_t>({13, v.size() - pos});
+            wp.apply(blk_state, &v[pos], &blk[pos], n);
+            pos += n;
+        }
+        for (size_t i = 0; i < v.size(); ++i) {
+            ASSERT_DOUBLE_EQ(blk[i], one[i]) << "sample " << i;
+        }
+    }
+
+    TEST(WarpedLpcPredictor, ResetStateClearsHistory) {
+        const auto                          v = mutap_test::music_near_end<double>(1024, 6);
+        mutap::warped_lpc_predictor<double> wp({});
+        wp.analyze(v.data(), v.size());
+
+        auto                s = wp.make_state();
+        std::vector<double> out(v.size());
+        wp.apply(s, v.data(), out.data(), v.size());
+        wp.reset_state(s);
+
+        auto                fresh = wp.make_state();
+        std::vector<double> a(v.size());
+        std::vector<double> b(v.size());
+        wp.apply(s, v.data(), a.data(), v.size());
+        wp.apply(fresh, v.data(), b.data(), v.size());
+        for (size_t i = 0; i < v.size(); ++i) {
+            ASSERT_DOUBLE_EQ(a[i], b[i]);
+        }
+    }
+
+    // The conditioning guards are shared with the plain analysis: degenerate
+    // frames must yield the identity filter, and applying the identity must
+    // pass the signal through untouched (the allpass taps all weigh zero).
+    TEST(WarpedLpcPredictor, DegenerateFramesGiveIdentity) {
+        mutap::warped_lpc_predictor<double> wp({});
+
+        std::vector<double> silence(1024, 0.0);
+        wp.analyze(silence.data(), silence.size());
+        for (size_t j = 1; j <= wp.order(); ++j) {
+            EXPECT_DOUBLE_EQ(wp.coefficients()[j], 0.0);
+        }
+
+        std::vector<double> garbage(1024, std::numeric_limits<double>::quiet_NaN());
+        wp.analyze(garbage.data(), garbage.size());
+        for (size_t j = 1; j <= wp.order(); ++j) {
+            EXPECT_DOUBLE_EQ(wp.coefficients()[j], 0.0);
+        }
+
+        const auto          x = white_noise<double>(256, 3);
+        auto                s = wp.make_state();
+        std::vector<double> out(x.size());
+        wp.apply(s, x.data(), out.data(), x.size());
+        for (size_t i = 0; i < x.size(); ++i) {
+            ASSERT_DOUBLE_EQ(out[i], x[i]) << "identity filter must pass through";
+        }
+    }
+
+    // Float instantiation (the embedded profile) tracks double analysis on
+    // the same frame. The tolerance is loose by design: a 24th-order fit on
+    // a near-line spectrum is the ill-conditioned case the ridge exists
+    // for, and float accumulation through 24 chained allpass passes
+    // legitimately shifts coefficients by ~0.5% (behavioral float coverage
+    // comes from the in-loop suites).
+    TEST(WarpedLpcPredictor, FloatTracksDouble) {
+        const auto         vd = mutap_test::music_near_end<double>(4096, 7);
+        std::vector<float> vf(vd.begin(), vd.end());
+
+        mutap::warped_lpc_predictor<double> wd({});
+        mutap::warped_lpc_predictor<float>  wf({});
+        wd.analyze(&vd[2048], 1024);
+        wf.analyze(&vf[2048], 1024);
+        for (size_t j = 0; j <= wd.order(); ++j) {
+            EXPECT_NEAR(static_cast<double>(wf.coefficients()[j]), wd.coefficients()[j], 1e-2) << "coefficient " << j;
+        }
+    }
+
     TEST(PredictorConfigValidation, RejectsBadConfigs) {
         using lpc = mutap::lpc_predictor<float>;
         EXPECT_THROW(lpc({0, 1e-4F}), std::invalid_argument);
@@ -300,6 +417,20 @@ namespace {
         c          = {};
         c.max_gain = 1.0F;
         EXPECT_THROW(speech{c}, std::invalid_argument);
+
+        using warped = mutap::warped_lpc_predictor<float>;
+        warped::config w;
+        w.order = 0;
+        EXPECT_THROW(warped{w}, std::invalid_argument);
+        w        = {};
+        w.lambda = 1.0F;
+        EXPECT_THROW(warped{w}, std::invalid_argument);
+        w        = {};
+        w.lambda = -1.0F;
+        EXPECT_THROW(warped{w}, std::invalid_argument);
+        w                   = {};
+        w.analysis_capacity = 0;
+        EXPECT_THROW(warped{w}, std::invalid_argument);
     }
 
 } // namespace

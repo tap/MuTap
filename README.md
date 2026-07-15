@@ -95,6 +95,17 @@ algorithmically complete. What exists today:
 - **The Max/MSP external** — `mutap.defeed~` in
   [MuTap-Max](https://github.com/tap/MuTap-Max) (Min-DevKit package, MuTap
   as a submodule): universal macOS `.mxo` + Windows `.mxe64` built in CI.
+- **The music/tonal near-end predictor** —
+  `mutap::warped_lpc_predictor<Sample>`: frequency-warped LP (unit delays
+  replaced by first-order allpass sections; λ = 0.766 ≈ the Bark scale at
+  48 kHz), warped autocorrelation + the same ridge-guarded Levinson–Durbin,
+  applied as an unconditionally stable tapped allpass chain. At λ = 0 it
+  reduces *exactly* to the plain predictor. On a low chord (three
+  incommensurate fundamentals, a dozen partials below 500 Hz — material
+  that defeats both the pitch tap and moderate-order plain LP), measured
+  ASG across seeds: **warped +7.2…+14.1 dB vs speech cascade
+  +5.3…+7.5 dB**, and no regression on speech-envelope material (+9.7 dB).
+  Select it with `mutap::pem_afc<Sample, mutap::warped_lpc_predictor<Sample>>`.
 - **The Cortex-M55 build** — the first embedded target: bare metal
   (newlib + semihosting) on QEMU's MPS3 AN547 board model, platform rig
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
@@ -105,9 +116,8 @@ algorithmically complete. What exists today:
   PEM tonal headline and burst gating, and the float-tracks-double oracle
   check — with double as soft-float (the M55 FPU is single-precision only).
 
-Next up: the Hexagon build (same float32 core, VTCM/L2 data layout), the
-music/tonal near-end predictor, and the PEM-based frequency-domain Kalman
-upgrade (see [HANDOFF.md](HANDOFF.md)).
+Next up: the Hexagon build (same float32 core, VTCM/L2 data layout) and
+the PEM-based frequency-domain Kalman upgrade (see [HANDOFF.md](HANDOFF.md)).
 
 ## Quick start
 

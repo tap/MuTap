@@ -234,6 +234,40 @@ namespace mutap_test {
         return v;
     }
 
+    /// Music-like near-end: a low A-major chord (A1, C#2, E2 fundamentals)
+    /// with 1/h harmonic rolloff and a -40 dB noise floor, unit RMS, at an
+    /// implied 48 kHz. Three incommensurate fundamentals defeat a single
+    /// pitch tap, and a dozen partials packed below 500 Hz defeat a
+    /// moderate-order PLAIN short-term LP (the poles crowd z = 1) — this is
+    /// the material the frequency-warped predictor exists for.
+    template <typename Sample>
+    std::vector<Sample> music_near_end(size_t n, unsigned seed) {
+        std::mt19937                     gen(seed);
+        std::normal_distribution<double> dist(0.0, 1.0);
+        const double                     f0[] = {55.0 / 48000.0, 69.296 / 48000.0, 82.407 / 48000.0};
+        const double        phase[3][4]       = {{0.1, 1.9, 4.2, 0.7}, {2.3, 5.1, 1.4, 3.8}, {0.9, 3.3, 5.7, 2.2}};
+        std::vector<double> x(n, 0.0);
+        double              energy = 0.0;
+        for (size_t i = 0; i < n; ++i) {
+            const double t = static_cast<double>(i);
+            double       s = 0.0;
+            for (int voice = 0; voice < 3; ++voice) {
+                for (int h = 1; h <= 4; ++h) {
+                    s += (1.0 / h) * std::sin(2.0 * std::numbers::pi * f0[voice] * h * t + phase[voice][h - 1]);
+                }
+            }
+            s += 0.01 * dist(gen);
+            x[i] = s;
+            energy += s * s;
+        }
+        const double        scale = std::sqrt(static_cast<double>(n) / energy);
+        std::vector<Sample> v(n);
+        for (size_t i = 0; i < n; ++i) {
+            v[i] = static_cast<Sample>(x[i] * scale);
+        }
+        return v;
+    }
+
     // ---------------------------------------------------------------- metrics
 
     /// Run the whole near-end signal through the loop; howling = any block
