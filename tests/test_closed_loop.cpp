@@ -153,12 +153,16 @@ namespace {
 
     // THE M2 REGRESSION BASELINE. Self-correlated (tonal) near-end biases
     // the naive closed-loop estimate so badly that the "canceller" is
-    // DESTABILIZING: the loop howls at a gain 3 dB below the open-loop MSG
-    // — a gain that is perfectly stable with no canceller at all (measured:
-    // it howls even 12 dB below). The estimate is also worse than the zero
-    // filter (misalignment > 0 dB). PEM prewhitening (M3) exists to remove
-    // exactly this failure; its canceller must turn this scenario into the
-    // white-near-end behavior above.
+    // DESTABILIZING: its measured maximum stable gain sits BELOW the
+    // open-loop MSG (on Linux it howls even 12 dB below), and the estimate
+    // is worse than the zero filter (misalignment > 0 dB). PEM prewhitening
+    // (M3) exists to remove exactly this failure.
+    //
+    // The assertion is a bisected MSG, not a single stability probe: the
+    // biased loop limit-cycles chaotically, so any one trajectory is
+    // exquisitely sensitive to platform floating-point details (libm ULPs,
+    // FMA contraction) — a single probe at a fixed gain flips pass/fail
+    // across OSes. The SIGN of the ASG is the platform-independent claim.
     TYPED_TEST(closed_loop_test, NaiveCancellerDestabilizesOnTonalNearEnd) {
         const auto   path     = random_decaying_rir<TypeParam>(k_taps, 5);
         const double open_msg = mutap_test::theoretical_msg_db(path);
@@ -169,11 +173,11 @@ namespace {
 
         EXPECT_GT(misalignment, 0.0) << "biased estimate should be worse than the zero filter";
 
-        const auto                 v_probe = mutap_test::tonal_near_end<TypeParam>(400 * k_block, 3);
-        closed_loop_sim<TypeParam> sim(loop_config(path, open_msg - 3.0));
-        auto                       probe = fdaf; // fresh copy, keeps the converged (biased) state
-        EXPECT_TRUE(mutap_test::loop_howls<TypeParam>(sim, &probe, v_probe))
-            << "expected the biased canceller to destabilize a loop the open loop handles";
+        const auto   v_probe = mutap_test::tonal_near_end<TypeParam>(600 * k_block, 3);
+        const double msg_c = mutap_test::measured_msg_db<TypeParam>(loop_config(path), &fdaf, v_probe, open_msg - 15.0,
+                                                                    open_msg + 25.0, 0.5);
+        EXPECT_LT(msg_c - open_msg, -1.0)
+            << "expected the biased canceller's MSG to sit below the open loop's (Linux measures -12 dB)";
     }
 
 } // namespace
