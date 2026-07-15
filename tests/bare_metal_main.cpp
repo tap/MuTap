@@ -24,7 +24,7 @@ int main() {
         "fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:"
         "Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:"
         "pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:"
-        "closed_loop_test/0.*:burst_test/0.*:"
+        "closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:"
         "AdaptationControlConfigValidation.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
