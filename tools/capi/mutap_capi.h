@@ -4,13 +4,18 @@
  * contract for C/ctypes/cffi consumers (the notebooks re-declare the same
  * prototypes); it must stay in sync with mutap_capi.cpp.
  *
- * Two families, mirroring the C++ API:
+ * Three families, mirroring the C++ API:
  *   mutap_fdaf_*  — the naive partitioned-block FDAF (mutap::partitioned_fdaf<double>);
  *                   an open-loop echo canceller, and the biased-baseline
  *                   comparator for closed-loop feedback demos.
  *   mutap_afc_*   — the PEM-prewhitened feedback canceller
  *                   (mutap::pem_afc<double> with the speech-cascade
  *                   near-end model).
+ *   mutap_aec_*   — the full acoustic-echo-cancellation chain
+ *                   (mutap::aec_chain<double>): raw FD-Kalman canceller +
+ *                   residual suppressor + comfort noise + initial receive
+ *                   guard, built from the ITU compliance preset
+ *                   (mutap::aec_chain_preset).
  *
  * All process calls handle EXACTLY the configured block size per call.
  * Errors: create returns NULL on invalid configuration. Every function
@@ -29,6 +34,7 @@ extern "C" {
 
 typedef struct MutapFdaf MutapFdaf;
 typedef struct MutapAfc  MutapAfc;
+typedef struct MutapAec  MutapAec;
 
 /* ABI/version probe: MUTAP_VERSION_MAJOR*10000 + MINOR*100 + PATCH. */
 unsigned mutap_version(void);
@@ -98,6 +104,40 @@ void   mutap_afc_set_adaptation(MutapAfc* h, int enabled);
 void   mutap_afc_reset(MutapAfc* h);
 /* Deep copy, as mutap_fdaf_clone. */
 MutapAfc* mutap_afc_clone(const MutapAfc* h);
+
+/* The measured AEC chain (mutap::aec_chain<double>), configured by the
+ * ITU compliance preset (mutap::aec_chain_preset): the raw FD-Kalman
+ * canceller — deliberately NOT PEM; open-loop AEC has an exogenous far
+ * end and the predictor refit measurably floors the misalignment — plus
+ * the coherence-driven residual suppressor, comfort noise matched to the
+ * near-end noise floor, and the initial receive guard. This is the
+ * configuration the compliance battery certifies at 48 and 16 kHz
+ * (docs/itu-compliance.md); the preset rescales its time constants for
+ * any (block_size, sample_rate) geometry.
+ *   sample_rate      Hz; scales the preset's time constants
+ *   comfort_noise    nonzero: fill suppressed bins to the noise floor
+ *   receive_guard    nonzero: switched < 14 dB send loss until initial
+ *                    convergence certifies, then latched off permanently
+ * The cleaned output e trails the canceller-only path by one extra block
+ * (the suppressor's constrained causal gain filter). */
+MutapAec* mutap_aec_create(size_t block_size, size_t partitions, double sample_rate, int comfort_noise,
+                           int receive_guard);
+void      mutap_aec_destroy(MutapAec* h);
+
+/* One block: x = far-end reference (to the loudspeaker), y = microphone,
+ * e = the cleaned send signal. */
+void   mutap_aec_process(MutapAec* h, const double* x, const double* y, double* e);
+size_t mutap_aec_block_size(const MutapAec* h);
+/* Fraction of mic power the echo estimate explains, 0..1 (the suppressor's
+ * convergence statistic; the receive guard certifies on it). */
+double mutap_aec_echo_explained(const MutapAec* h);
+/* Nonzero once the initial receive guard has certified convergence
+ * (always nonzero when the guard is disabled). */
+int  mutap_aec_converged(const MutapAec* h);
+void mutap_aec_set_adaptation(MutapAec* h, int enabled);
+void mutap_aec_reset(MutapAec* h);
+/* Deep copy, as mutap_fdaf_clone. */
+MutapAec* mutap_aec_clone(const MutapAec* h);
 
 #ifdef __cplusplus
 }

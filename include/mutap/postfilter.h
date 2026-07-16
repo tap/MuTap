@@ -761,4 +761,57 @@ namespace mutap {
         Sample                      m_guard      = Sample(1);
     };
 
+    /// THE COMPLIANCE PRESET: the aec_chain configuration MuTap's ITU-T
+    /// battery certifies (docs/itu-compliance.md — every requirement of
+    /// the automotive/hands-free recommendations met at both required
+    /// rates), generalized to any (block_size, sample_rate) geometry.
+    ///
+    /// The measurements behind every constant were taken at the reference
+    /// geometry, block 256 at 48 kHz; portability to other geometries is
+    /// one rule applied uniformly: every per-block constant is rescaled so
+    /// the PHYSICAL time constants hold — smoothing factors a' =
+    /// a^(block_s / ref_block_s), windows counted in blocks divide by the
+    /// same ratio, and the low-band suppression cap keeps covering
+    /// 0..300 Hz whatever the bin width. Two constants deliberately do
+    /// NOT follow the rule:
+    ///   - the canceller transition stays 0.9998 per block (rescaling it
+    ///     traded the time-variant-path row to the wire for hangover);
+    ///   - the comfort-noise floor bias is calibrated per geometry, not
+    ///     rescaled: longer blocks put fewer meter samples in each
+    ///     minimum-statistics window and the minima bias deeper. Two
+    ///     points are measured (ratio 1: 4.0; ratio 3, the 16 kHz rate:
+    ///     5.6); between and near them the preset interpolates linearly
+    ///     in the ratio and clamps to the measured neighborhood — treat
+    ///     readings far outside block 256 at 16..96 kHz as uncalibrated.
+    ///
+    /// The Tier A / Tier B batteries pin their chain through this preset
+    /// (tests/support/itu_chain.h), so the configuration it returns for
+    /// block 256 at 48 and 16 kHz is exactly the measured one; the
+    /// mutap.aec~ external's @postfilter mode builds from it as well.
+    template <typename Sample>
+    typename aec_chain<Sample>::config aec_chain_preset(size_t block_size, size_t partitions, double sample_rate) {
+        typename aec_chain<Sample>::config cfg;
+        cfg.canceller.block_size          = block_size;
+        cfg.canceller.partitions          = partitions;
+        cfg.canceller.transition          = Sample(0.9998); // the measured AEC sweet spot; NOT rescaled (see above)
+        cfg.canceller.initial_uncertainty = Sample(10);
+        const double ratio            = (static_cast<double>(block_size) / sample_rate) / (256.0 / 48000.0);
+        cfg.canceller.noise_smoothing = Sample(std::pow(0.9, ratio));
+        auto& pf             = cfg.postfilter;
+        pf.leakage_smoothing = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
+        pf.gain_attack       = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
+        pf.gain_release      = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
+        pf.floor_smoothing   = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
+        pf.floor_window      = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
+        // Low-band suppression cap from 300 Hz (protect voice fundamentals
+        // no analysis resolution can separate from echo; the canceller
+        // owns low-frequency echo) with sustained certification held at
+        // 0.3 s of real time.
+        const double n_analysis    = static_cast<double>(pf.analysis_blocks * block_size);
+        pf.low_band_bins           = static_cast<size_t>(300.0 * n_analysis / sample_rate) + 1;
+        pf.low_band_certify_blocks = std::max<size_t>(8, static_cast<size_t>(56.0 / ratio));
+        pf.floor_bias              = Sample(std::clamp(4.0 + 0.8 * (ratio - 1.0), 3.0, 5.6));
+        return cfg;
+    }
+
 } // namespace mutap

@@ -565,4 +565,27 @@ note: CSS generation through the NOTE 2 resampler dominates the dump's
 runtime, so it memoizes `make_css_at` — verified byte-identical output
 against the uncached run.)
 
-Remaining: Stage 5 (externals/docs).
+## Stage 5 delivered: the preset, the external, the claims
+
+- **The pinned configuration is now a library API**:
+  `mutap::aec_chain_preset<Sample>(block, partitions, fs)` in
+  `mutap/postfilter.h`. `tests/support/itu_chain.h` builds the
+  compliance chain through it, so the suite gates the preset itself;
+  the per-rate comfort-noise floor-bias calibration is generalized by
+  interpolating the two measured points (ratio 1 → 4.0, ratio 3 → 5.6)
+  with a clamp to the measured neighborhood — geometries far outside
+  block 256 at 16..96 kHz are uncalibrated and say so in the header.
+- **`mutap.aec~ @postfilter 1`** (MuTap-Max) engages the certified
+  chain; `@comfort` controls the fill, `@gate` maps to the receive
+  guard, the right outlet reports echo-explained. The external
+  currently replicates the preset's scaling rule and will switch to
+  calling the library preset at the next submodule re-pin.
+- **C ABI**: the `mutap_aec_*` family exposes the chain to FFI
+  consumers, configured by the preset.
+- **Claims**: README carries the requirement/measured/margin table
+  (worst-rate values) with the scope caveats (G.168-adapted framing,
+  G.167 run-and-reported, synthetic-signal method equivalence);
+  the book's echo chapter explains the post-filter for non-DSP readers.
+
+Remaining: ITU real-speech test-vector procurement (tracked above) and
+the fd_kalman uncertainty re-inflation core follow-up (HANDOFF).

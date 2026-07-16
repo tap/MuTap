@@ -55,47 +55,16 @@ namespace mutap_test::itu {
         return {setup_48k(), setup_16k()};
     }
 
+    /// The pinned compliance configuration IS the library preset
+    /// (mutap::aec_chain_preset — Stage 5 moved the scaling rule there;
+    /// its header documents every constant and the two deliberate
+    /// exceptions). The suite measures what the preset returns for
+    /// block 256 at 48 and 16 kHz, so any preset change lands here as a
+    /// failing gate, never as silent drift. The historical per-rate
+    /// rationale (why transition is NOT rescaled, why floor_bias is
+    /// calibrated per geometry) lives with the preset.
     inline compliance_chain::config chain_config(const rate_setup& rs) {
-        compliance_chain::config cfg;
-        cfg.canceller.block_size          = rs.block;
-        cfg.canceller.partitions          = rs.taps / rs.block;
-        cfg.canceller.initial_uncertainty = 10;
-        // ALL per-block constants — canceller and suppressor — are
-        // rescaled to keep the same PHYSICAL time constants; blocks at
-        // 16 kHz last 3x longer (16 ms vs 5.33), so rescale every
-        // constant to keep the same PHYSICAL time constants the Stage 2
-        // measurements calibrated (a' = a^(block_s / ref_block_s)),
-        // and the floor window to the same seconds.
-        const double ratio = (static_cast<double>(rs.block) / rs.fs) / (256.0 / 48000.0);
-        // Canceller: transition (state decay per block) and the noise-PSD
-        // smoothing follow block duration — unscaled, the 16 kHz Kalman's
-        // observation-noise tracker reacted 3x slower in wall time and
-        // double talk dragged its filter (hangover recovery measured
-        // 16.4 dB bare where 48 kHz reads 42.6).
-        cfg.canceller.transition =
-            0.9998; // NOT rescaled: rescaling traded TimeVariantPath to the wire (-52.3 vs req -52) for hangover
-        cfg.canceller.noise_smoothing = std::pow(0.9, ratio);
-        auto& pf                      = cfg.postfilter;
-        pf.leakage_smoothing          = std::pow(pf.leakage_smoothing, ratio);
-        pf.gain_attack                = std::pow(pf.gain_attack, ratio);
-        pf.gain_release               = std::pow(pf.gain_release, ratio);
-        pf.floor_smoothing            = std::pow(pf.floor_smoothing, ratio);
-        pf.floor_window = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
-        // Low-band suppression cap at 300 Hz (see postfilter.h): protect
-        // voice fundamentals where no analysis resolution can separate
-        // them from echo; the canceller owns low-frequency echo.
-        const size_t n_analysis    = pf.analysis_blocks * rs.block;
-        pf.low_band_bins           = static_cast<size_t>(300.0 * static_cast<double>(n_analysis) / rs.fs) + 1;
-        pf.low_band_certify_blocks = std::max<size_t>(8, static_cast<size_t>(56.0 / ratio));
-        // Comfort-noise floor bias, calibrated per rate: at 16 ms blocks
-        // the minimum-statistics window holds 3x fewer meter samples and
-        // the minima bias deeper (measured -2.8 dB comfort-noise step
-        // tracking at bias 4, against G.168's +-2 requirement; 5.6
-        // restores the 48 kHz calibration).
-        if (rs.fs != 48000.0) {
-            pf.floor_bias = 5.6;
-        }
-        return cfg;
+        return mutap::aec_chain_preset<double>(rs.block, rs.taps / rs.block, rs.fs);
     }
 
     enum class room { cabin, studio };
