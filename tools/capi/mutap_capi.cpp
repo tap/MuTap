@@ -42,6 +42,10 @@ struct MutapAfc {
     std::variant<speech_afc, warped_afc, kalman_speech_afc, kalman_warped_afc> impl;
 };
 
+struct MutapAec {
+    mutap::aec_chain<double> impl;
+};
+
 unsigned mutap_version(void) {
     return MUTAP_VERSION_MAJOR * 10000U + MUTAP_VERSION_MINOR * 100U + MUTAP_VERSION_PATCH;
 }
@@ -230,6 +234,67 @@ void mutap_afc_reset(MutapAfc* h) {
 MutapAfc* mutap_afc_clone(const MutapAfc* h) {
     try {
         return h != nullptr ? new MutapAfc{*h} : nullptr;
+    }
+    catch (...) {
+        return nullptr;
+    }
+}
+
+MutapAec* mutap_aec_create(size_t block_size, size_t partitions, double sample_rate, int comfort_noise,
+                           int receive_guard) {
+    try {
+        if (sample_rate <= 0.0) {
+            return nullptr;
+        }
+        auto cfg                     = mutap::aec_chain_preset<double>(block_size, partitions, sample_rate);
+        cfg.postfilter.comfort_noise = comfort_noise != 0;
+        if (receive_guard == 0) {
+            cfg.guard_attenuation_db = 0.0;
+        }
+        return new MutapAec{mutap::aec_chain<double>(cfg)};
+    }
+    catch (...) {
+        return nullptr;
+    }
+}
+
+void mutap_aec_destroy(MutapAec* h) {
+    delete h;
+}
+
+void mutap_aec_process(MutapAec* h, const double* x, const double* y, double* e) {
+    if (h != nullptr) {
+        h->impl.process_block(x, y, e);
+    }
+}
+
+size_t mutap_aec_block_size(const MutapAec* h) {
+    return h != nullptr ? h->impl.block_size() : 0;
+}
+
+double mutap_aec_echo_explained(const MutapAec* h) {
+    return h != nullptr ? h->impl.postfilter().echo_explained() : 0.0;
+}
+
+int mutap_aec_converged(const MutapAec* h) {
+    return (h != nullptr && h->impl.converged()) ? 1 : 0;
+}
+
+void mutap_aec_set_adaptation(MutapAec* h, int enabled) {
+    if (h != nullptr) {
+        h->impl.set_adaptation(enabled != 0);
+    }
+}
+
+void mutap_aec_reset(MutapAec* h) {
+    if (h != nullptr) {
+        h->impl.reset();
+    }
+}
+
+MutapAec* mutap_aec_clone(const MutapAec* h) {
+    try {
+        return h != nullptr ? new MutapAec{*h} : nullptr;
     }
     catch (...) {
         return nullptr;

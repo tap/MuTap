@@ -247,6 +247,41 @@ work (CMSIS-DSP/Helium mapping, instruction-count ratchets) and the
 Hexagon data-layout work on real hardware (VTCM residency, FastRPC
 offload).
 
+## ITU-T compliance
+
+The echo-cancellation chain — `mutap::aec_chain` configured by
+`mutap::aec_chain_preset` (and exposed as `mutap.aec~ @postfilter 1` in
+[MuTap-Max](https://github.com/tap/MuTap-Max)) — **meets every
+requirement of the in-force ITU-T automotive/hands-free recommendations
+at both required rates, 48 kHz and 16 kHz**, on one pinned
+configuration. Measured margins over the requirements (worst rate,
+cabin path):
+
+| Claim | Requirement | Measured (worst rate) | Margin |
+|---|---|---|---|
+| Terminal coupling loss (P.1110/P.1120 §11.11.1) | ≥ 46 dB | 68.4 dB | +22 dB |
+| Single-talk echo level (§11.11.2) | < −58 dBm0(A) | −76.4 | +18 dB |
+| Attenuation spectrum vs the WB mask (§11.11.3) | mask | mask +13.3 dB | +13 dB |
+| Convergence from cold start (§11.11.4) | ≥ 40 dB by 1.2 s | 45.4 dB | +5.4 dB |
+| Convergence in driving noise (§11.11.5) | at ref by 1.5 s | at ref by 0.75 s | 2× |
+| Double-talk send attenuation (P.340 Cat. 1) | ≤ 3 dB | 0.9 dB integrated | +2.1 dB |
+| Double-talk echo loss, every band (P.340 Cat. 1) | ≥ 27 dB | 37.5 dB | +10 dB |
+| Comfort-noise level match (§11.13) | +2/−5 dB | −2.15 dB | inside |
+| Closed-loop stability (P.1110 Annex E) | stable | stable at 0 dB far-end ERL | sweep floor |
+| Algorithmic delay | ≤ 70 ms budget | 10.7 / 32 ms | ≥ 2× |
+
+Scope, honestly stated: G.168's battery is reported as **G.168-adapted**
+(the rec disclaims acoustic scope); G.167 is withdrawn and **run and
+reported**, not claimed; compressed real speech is method-equivalent
+pending ITU test-vector procurement (synthetic P.501 signals generated
+from the recommendations' algorithmic descriptions); and self-imposed
+margin *targets* missed at 16 kHz are documented regression gates, never
+silent. The clause-by-clause matrix is
+[`docs/itu-compliance.md`](docs/itu-compliance.md); every row is
+asserted by the test suite on every CI run, and
+[`notebooks/itu_compliance.ipynb`](notebooks/itu_compliance.ipynb)
+re-measures the whole battery live and renders the trajectories.
+
 ## Quick start
 
 ```cmake

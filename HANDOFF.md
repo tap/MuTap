@@ -375,6 +375,19 @@ make_chain_config) must be kept in lockstep until then. Note: Stage 4's
 notebook ended up NOT needing the C ABI (its dump harness includes the
 test machinery directly), so the "C ABI extension" item is now about
 FFI consumers generally — scope it when the MuTap half lands.*
+*CORE HALF DONE — `mutap::aec_chain_preset<Sample>(block, partitions,
+fs)` lives in postfilter.h (the follow-up above, resolved: the preset
+generalizes the per-rate floor-bias calibration by interpolating
+between the two measured points, clamped to the measured neighborhood);
+tests/support/itu_chain.h chain_config() is now a one-line call into it,
+so any preset change lands as a failing gate, never silent drift — the
+full suite re-verified green after the refactor. C ABI grew the
+`mutap_aec_*` family (create-from-preset / process / echo_explained /
+converged / clone; probed via a C driver). README gained the
+compliance-claims table with margins; the book's echo chapter gained
+"The last 30 dB: @postfilter" plus the two new knobs. REMAINING in
+MuTap-Max, after this merges: re-pin the submodule and switch the
+external's make_chain_config to call the library preset.*
 
 ---
 

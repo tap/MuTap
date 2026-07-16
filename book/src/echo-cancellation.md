@@ -153,7 +153,79 @@ directions of this trade so neither silently erodes.
 
 The latency contract is identical to `mutap.afc~`: the cleaned output is
 delayed by exactly `@block` samples (256 by default, 5.3 ms at 48 kHz),
-and that is the only latency the object adds.
+and that is the only latency the object adds — until `@postfilter`, which
+adds one more block (next section).
+
+## The last 30 dB: `@postfilter`
+
+A linear canceller subtracts its best estimate of the echo, and its best
+estimate is never the whole story: the estimate converges asymptotically,
+the room drifts, and small nonlinearities in the speaker never fit a
+linear filter at all. What survives subtraction is **residual echo** —
+far quieter than the original, still audibly *there* on a quiet line.
+Telephony standards do not grade "much quieter"; they grade *inaudible*,
+with numbers attached.
+
+`@postfilter 1` engages MuTap's answer, and it is a different kind of
+machine than everything before it. The canceller *subtracts*; the
+post-filter *decides*. Per frequency band, it asks: does what is left in
+the microphone still **cohere** with what the canceller believes the echo
+is? Where the answer is yes, the leftover is residual echo, and the band
+is turned down — by a learned amount, deep only where the evidence is.
+Where the answer is no, the leftover is *you*, and the band passes
+untouched. Double-talk transparency is not a detector bolted on the side;
+it is the shape of the rule, because your voice destroys exactly the
+coherence that would justify suppression.
+
+Two companions make the decision maker livable:
+
+- **Comfort noise** (`@comfort`, default on). Turning bands down also
+  removes the room tone under them, and a noise floor that breathes —
+  present while you talk, gone while the far end talks — is more
+  annoying than the echo was. So the post-filter tracks the *real*
+  noise floor during pauses (by watching minima, which speech cannot
+  fake) and fills what it suppresses back to exactly that level. Fill
+  only, never subtraction: turn it off and suppressed bands go silent
+  instead.
+- **The receive guard.** For the first fraction of a second of a call
+  the canceller has learned nothing, its echo estimate is zero, and a
+  coherence rule that references it is structurally blind — raw echo
+  would pass. The guard applies a modest switched loss (< 14 dB, inside
+  the standards' own switching allowance) only while the far end is
+  active and convergence is uncertified, then latches off permanently.
+  Measured latch: under half a second of far-end speech.
+
+The combination is not tuned to taste; it is the configuration MuTap's
+**ITU-T compliance battery** certifies — every requirement of the
+in-force automotive/hands-free recommendations (P.1110/P.1120 clause 11,
+P.340 full-duplex Category 1, the G.168-adapted battery) met at both
+required rates, 48 and 16 kHz. Headlines from the measured tables:
+single-talk residual below **−76 dBm0(A)** where the clause wants −58,
+double-talk cost to your voice about **1 dB** integrated, comfort noise
+matched within ~1–2 dB of the true floor, full-duplex echo loss
+**≥ 37 dB in every band** while both sides talk. The full
+requirement/measured/margin story — with the trajectories, and the one
+documented deviation (deep re-convergence after an *abrupt* path change
+is slow; the mask element still holds) — lives in MuTap's
+`docs/itu-compliance.md` and the executed proof notebook
+`notebooks/itu_compliance.ipynb`.
+
+The fine print. `@postfilter` selects its own engine — the raw Kalman
+canceller, because the battery measured the PEM engines dozens of dB
+worse on open-loop echo (there is no closed-loop bias for prewhitening
+to fix out here, so its predictor refit is pure gradient noise) — which
+means `@mu`, `@warp` and `@kalman` are ignored while it is on, and
+`@gate` selects the receive guard. The right outlet switches from IPC to
+the suppressor's **echo-explained** fraction (0..1 — watch it climb as
+the canceller converges; the guard releases at 0.9). And the constrained
+gain filter that keeps the suppression click-free costs one extra block
+of latency, 10.7 ms total at the defaults.
+
+When to use it: any conversation — calls, conferencing, streams — where
+the far end must not hear themselves; this is the product mode. When to
+leave it off: measurement and monitoring patches where you want the
+linear path untouched, or any time you need the bare canceller's output
+to study what it learned.
 
 ## The knobs, revisited
 
@@ -202,6 +274,13 @@ what changes is the advice.
   engine for the same reason as chapter 1: seniority, and one
   default-engine decision for the package, made once, after real-room
   listening.)
+- **`@postfilter`.** The residual-echo suppressor + comfort noise +
+  receive guard of the previous section — the ITU-certified chain. On
+  for conversation, off for measurement. Ignores `@mu`/`@warp`/`@kalman`
+  while on; `@gate` becomes the receive guard; +1 block of latency.
+- **`@comfort`.** With `@postfilter` on: fill suppressed bands to the
+  room's tracked noise floor (default on). Off = suppressed bands go
+  silent — useful when metering how much the suppressor is doing.
 - **`reset`.** Same as chapter 1: after physically moving speaker or
   mic, a fresh start beats un-learning.
 
