@@ -99,9 +99,14 @@ namespace mutap_test::itu {
             // from 1/(s + w), bilinear with PER-POLE frequency prewarping
             // (k_w = w / tan(w / 2fs)) so each pole lands at its analog
             // frequency — the plain transform shades the 12.2 kHz pole
-            // pair by ~1.5 dB at 10 kHz at audio rates.
+            // pair by ~1.5 dB at 10 kHz at audio rates. Prewarping is
+            // only defined below Nyquist; a pole above it (the 12.2 kHz
+            // pair at fs = 16 kHz) is clamped to 0.45 fs — it shapes
+            // nothing in band there, but tan() past pi/2 flips sign and
+            // the filter output went NaN (measured, 16 kHz chain tests).
             auto pole = [&](double w) {
-                const double kw = w / std::tan(w / (2.0 * fs));
+                const double wc = std::min(w, 2.0 * pi * 0.45 * fs);
+                const double kw = wc / std::tan(wc / (2.0 * fs));
                 return std::pair<double, double>{kw + w, w - kw}; // a0, a1
             };
             const auto [p1a0, p1a1] = pole(w1);

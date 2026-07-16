@@ -187,6 +187,23 @@ algorithmically complete. What exists today:
   double-talk the warped predictor beat the speech cascade's suppression
   in **all 18 room × seed pairs** measured (per-room medians 17.3…19.6 vs
   15.2…16.7 dB, Kalman core).
+- **Residual-echo post-filter + comfort noise**
+  ([`mutap/postfilter.h`](include/mutap/postfilter.h)) — the Stage 2
+  deliverable of the [ITU compliance plan](docs/itu-compliance.md):
+  a per-bin Wiener suppressor driven by mic-vs-echo-estimate coherence
+  gating a learned leakage estimate, comfort noise matched to the
+  near-end floor by two-window minimum statistics, and `mutap::aec_chain`
+  composing it with a linear canceller (default: the **raw** FD-Kalman
+  core — open-loop AEC has an exogenous far end, so PEM's decorrelation
+  buys nothing and its predictor refit floors misalignment near −20 dB
+  where the raw core reaches −75 dBm0(A) bare). Measured on the ITU
+  battery ([`tests/test_postfilter.cpp`](tests/test_postfilter.cpp)):
+  single-talk residual **−80.5/−89.7 dBm0(A)** (cabin/studio; the P.1120
+  clause wants < −58, our margin target < −64), double-talk near-end
+  attenuation **1.14 dB** (clause ≤ 3, target ≤ 1.5), double-talk echo
+  loss **≥ 34.2 dB in every band** (clause ≥ 27, target ≥ 33), comfort
+  noise matched **−1.5 dB / ≤ 1.7 dB per band** (clause +2/−5, half-mask
+  spectrum), noise pumping 2.9 dB, near-end build-up 11.6 ms.
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance

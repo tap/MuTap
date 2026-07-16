@@ -38,7 +38,8 @@ add_executable(mutap_tests
     test_closed_loop.cpp
     test_rir_fixtures.cpp
     test_aec.cpp
-    test_itu_signals.cpp)
+    test_itu_signals.cpp
+    test_postfilter.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)
