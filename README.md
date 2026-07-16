@@ -204,6 +204,22 @@ algorithmically complete. What exists today:
   loss **≥ 34.1 dB in every band** (clause ≥ 27, target ≥ 33), comfort
   noise matched **−1.2 dB / ≤ 1.7 dB per band** (clause +2/−5, half-mask
   spectrum), noise pumping 3.3 dB, near-end build-up 20.9 ms.
+- **The Tier A ITU compliance suite** (Stage 3) — one test per matrix
+  row at **both required rates (48 and 16 kHz)** on one pinned chain
+  configuration: echo battery (TCL 68/81 dB vs the 46 dB clause,
+  spectral masks +13 dB clear, convergence and time-variant-path rows),
+  double-talk battery (P.340 **Category 1 full duplex**: echo loss
+  ≥ 37 dB in every band during double talk at ≤ 1 dB near-end cost),
+  switching/comfort-noise/pumping dynamics, and the **Annex E stability
+  sweep: stable at 0 dB far-end ERL — the sweep's floor — at both
+  rates**. Every ITU requirement met; the handful of self-imposed
+  half-margin targets missed at 16 kHz are documented regression gates,
+  never silent passes ([`docs/itu-compliance.md`](docs/itu-compliance.md)
+  "Stage 3 delivered" carries the full measured table). The chain grew
+  an initial receive guard (switched send loss until convergence
+  certifies) because no echo-estimate-referenced suppressor can see
+  echo while the canceller is fresh — the convergence-in-noise mask is
+  unmeetable without it.
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance

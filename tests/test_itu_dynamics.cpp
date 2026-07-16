@@ -34,7 +34,9 @@ namespace {
         double at48;
         double at16;
     };
-    double expected(const rate_pair& p, const rate_setup& rs) { return rs.fs == 48000.0 ? p.at48 : p.at16; }
+    double expected(const rate_pair& p, const rate_setup& rs) {
+        return rs.fs == 48000.0 ? p.at48 : p.at16;
+    }
 
     // ITU_ActivationSend + ITU_P340_BuildUpSingle/VoiceSwitchBuildUp:
     // near-end CSS onset at the -26 dBPa target activation level from
@@ -48,10 +50,10 @@ namespace {
             compliance_chain c(chain_config(rs));
             const auto       path = compliance_path(room::cabin, rs);
             css_config       cd;
-            cd.periods = 10;
-            cd.kind    = css_kind::double_talk;
-            cd.shaped  = true;
-            auto v     = make_css_at(cd, rs.fs);
+            cd.periods      = 10;
+            cd.kind         = css_kind::double_talk;
+            cd.shaped       = true;
+            auto         v  = make_css_at(cd, rs.fs);
             const double vg = dbpa_to_rms(-26.0) / rms_of(v.data(), v.size());
             for (auto& s : v) {
                 s *= vg;
@@ -67,10 +69,9 @@ namespace {
             exp_level_meter m(rs.fs, 0.005);
             const auto      tr = m.trace_dbm0(seg);
             ASSERT_GE(tr.size(), pre + static_cast<size_t>(2 * rs.fs));
-            std::vector<double> settled(tr.begin() + static_cast<long>(pre + rs.fs),
-                                        tr.begin() + static_cast<long>(pre + 2 * rs.fs));
-            std::nth_element(settled.begin(), settled.begin() + static_cast<long>(settled.size() / 2),
-                             settled.end());
+            const long          s0 = static_cast<long>(pre) + static_cast<long>(rs.fs);
+            std::vector<double> settled(tr.begin() + s0, tr.begin() + s0 + static_cast<long>(rs.fs));
+            std::nth_element(settled.begin(), settled.begin() + static_cast<long>(settled.size() / 2), settled.end());
             const double target = settled[settled.size() / 2];
             size_t       t_hit  = tr.size();
             for (size_t i = pre; i < tr.size(); ++i) {
@@ -91,7 +92,7 @@ namespace {
     // within 0.5 s.
     TEST(ItuDynamics, HangoverRecoveryAfterDoubleTalk) {
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
+            compliance_chain                  c(chain_config(rs));
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -115,11 +116,13 @@ namespace {
             for (size_t i = n_dt; i < v.size(); ++i) {
                 v[i] = 0.0;
             }
-            auto       rr = run_chain_on(sim, c, rs.block, x, &v);
-            erl_reader erl(rr.echo, rr.out, rs.fs);
+            auto         rr = run_chain_on(sim, c, rs.block, x, &v);
+            erl_reader   erl(rr.echo, rr.out, rs.fs);
             const double t_end = static_cast<double>(n_dt) / rs.fs;
-            // Measured at +0.5 s: 30.5 dB (48 kHz, target met) / 16.7 dB
-            // (16 kHz — target missed; gate at the measured value).
+            // Measured at +0.5 s: 30.6 dB (48 kHz, target met) / 18.9 dB
+            // (16 kHz — target missed; gate at the measured value). At
+            // +1.0 s: 45.0 / 23.1 dB against the [20 dB] provisional
+            // requirement.
             EXPECT_GE(erl.by(t_end + 0.5), expected({26.0, 15.0}, rs)) << "fs " << rs.fs;
             // The [20 dB within 1 s] provisional requirement.
             EXPECT_GE(erl.by(t_end + 1.0), 20.0) << "fs " << rs.fs;
@@ -131,14 +134,14 @@ namespace {
     // source's own 35 ms meter span measures ~3).
     TEST(ItuDynamics, TransmittedNoiseFluctuation) {
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
-            const auto       path = compliance_path(room::cabin, rs);
-            const size_t     n    = static_cast<size_t>(10 * rs.fs);
+            compliance_chain    c(chain_config(rs));
+            const auto          path = compliance_path(room::cabin, rs);
+            const size_t        n    = static_cast<size_t>(10 * rs.fs);
             std::vector<double> x(n, 0.0);
             auto                noise = make_hoth_noise(n, 7, rs.fs);
             set_level_dbm0(noise, -46.0);
-            auto rr = run_chain(c, path, rs.block, x, &noise);
-            auto tr = level_trace_dbm0a(rr.out, rs.fs);
+            auto   rr   = run_chain(c, path, rs.block, x, &noise);
+            auto   tr   = level_trace_dbm0a(rr.out, rs.fs);
             double vmax = -1e9;
             double vmin = 1e9;
             for (size_t i = static_cast<size_t>(1.0 * rs.fs); i < tr.size(); ++i) {
@@ -178,8 +181,10 @@ namespace {
             auto         ta    = aw.apply(talk);
             auto         qa    = aw.apply(quiet);
             const double delta = level_dbov(ta.data(), ta.size()) - level_dbov(qa.data(), qa.size());
-            // Measured -1.31 dB (48 kHz) / -2.91 (16 kHz: the -2.5 target
-            // floor is missed by 0.4 dB — requirement -5 met by 2.1).
+            // Measured -1.31 dB (48 kHz, target met) / -2.91 (16 kHz:
+            // the -2.5 target floor is missed by 0.4 dB — requirement
+            // -5 met by 2.1; fewer meter samples per minimum-statistics
+            // window at 16 ms blocks bias the floor deeper).
             EXPECT_LE(delta, 1.0) << "fs " << rs.fs;
             EXPECT_GE(delta, expected({-2.5, -3.3}, rs)) << "fs " << rs.fs;
 
@@ -187,7 +192,7 @@ namespace {
             const auto   bq      = welch_psd_db(quiet, 8192);
             const double fmax    = std::min(8000.0, rs.fs / 2 * 0.94);
             const double edges[] = {200, 400, 800, 1600, 3150, 6300, 8000};
-            const double mask[]  = {6, 6, 5, 3.5, 3.5, 3.5}; // half-mask (+0.5 dB gate, measured table)
+            const double mask[]  = {6, 6, 5, 3, 3, 3}; // half-mask; worst measured -3.46 / +0.83
             for (size_t b = 0; b + 1 < 7; ++b) {
                 if (edges[b] >= fmax) {
                     break;
@@ -201,8 +206,7 @@ namespace {
                     st += std::pow(10.0, bt[k] / 10.0);
                     sq += std::pow(10.0, bq[k] / 10.0);
                 }
-                EXPECT_LE(std::abs(10.0 * std::log10(st / sq)), mask[b])
-                    << "fs " << rs.fs << " band " << edges[b];
+                EXPECT_LE(std::abs(10.0 * std::log10(st / sq)), mask[b]) << "fs " << rs.fs << " band " << edges[b];
             }
         }
     }
@@ -216,9 +220,9 @@ namespace {
     TEST(ItuDynamics, NoisePumpingAcrossFarEndBursts) {
         for (const auto& rs : required_rates()) {
             compliance_chain c(chain_config(rs));
-            const auto       path = compliance_path(room::cabin, rs);
-            const double     pre  = 15.0;
-            const size_t     n    = static_cast<size_t>((pre + 16.0) * rs.fs);
+            const auto       path  = compliance_path(room::cabin, rs);
+            const double     pre   = 15.0;
+            const size_t     n     = static_cast<size_t>((pre + 16.0) * rs.fs);
             auto             noise = make_driving_noise(n, 7, rs.fs);
             {
                 a_weighting  aw(rs.fs);
@@ -276,15 +280,15 @@ namespace {
         for (const auto& rs : required_rates()) {
             const auto path = compliance_path(room::cabin, rs);
             css_config cc;
-            cc.periods = 14;
-            cc.shaped  = true;
-            auto v     = make_css_at(cc, rs.fs);
+            cc.periods      = 14;
+            cc.shaped       = true;
+            auto         v  = make_css_at(cc, rs.fs);
             const double vg = dbpa_to_rms(-1.7) / rms_of(v.data(), v.size());
             for (auto& s : v) {
                 s *= vg;
             }
             for (double erl = 50.0; erl >= -0.5; erl -= 5.0) {
-                compliance_chain c(chain_config(rs));
+                compliance_chain                         c(chain_config(rs));
                 typename closed_loop_sim<double>::config lc;
                 lc.feedback_path   = path;
                 lc.block_size      = rs.block;
@@ -292,7 +296,7 @@ namespace {
                 lc.forward_gain_db = -erl;
                 lc.speaker_limit   = 4.0;
                 closed_loop_sim<double> sim(lc);
-                bool howl = false;
+                bool                    howl = false;
                 for (size_t blk = 0; blk + 1 <= v.size() / rs.block; ++blk) {
                     const double r = sim.step(&v[blk * rs.block], &c);
                     if (!std::isfinite(r) || r > 1.0) {

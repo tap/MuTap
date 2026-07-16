@@ -383,3 +383,99 @@ Still Stage 3's to prove: the full per-row multi-rate suite (both
 required rates x both cores x all rooms), the spectral echo mask, the
 switching/activation battery, stability sweep, G.168-adapted rows, and
 the TCL / time-variant-path rows.
+
+## Stage 3 delivered: the Tier A compliance suite
+
+`tests/support/itu_chain.h` (the pinned compliance chain + scenario
+machinery) and three row-per-test batteries, every row at BOTH required
+rates: `tests/test_itu_echo.cpp` (11.11.x echo performance),
+`tests/test_itu_doubletalk.cpp` (11.12/11.13 + P.340 Table 5),
+`tests/test_itu_dynamics.cpp` (switching, comfort noise, pumping,
+Annex E stability, delay). Thresholds measured-first as always; the
+full per-row numbers live in the test file headers. **Tier B
+(G.168-adapted) is a follow-up stage** — unstarted, not partially done.
+
+**The pinned chain** (one configuration for every row): raw FD-Kalman,
+transition 0.9998, initial uncertainty 10, canceller noise smoothing
+and all suppressor time constants rescaled to physical time per block
+duration; 48 kHz = block 256 / 2048 taps, 16 kHz = block 256 / 1024
+taps (block 128 collapses the partitioned Kalman's convergence —
+measured 8.9 vs 22.5 dB ERL by 600 ms); low-band suppression cap
+< 300 Hz with 0.3 s sustained certification; initial receive guard.
+
+### Measured, 48 kHz / 16 kHz (cabin path; studio where the row sweeps rooms)
+
+| Row | Required | Target | Measured 48k | Measured 16k |
+|---|---|---|---|---|
+| ITU_TCL | >= 46 dB | >= 52 | **68.4** | **80.6** |
+| ITU_EchoLevel (cabin/studio) | < -58 dBm0(A) | < -64 | **-76.4 / -85.7** | **-81.0 / -101.2** |
+| ITU_EchoStability | <= 6 dB | <= 3 | **2.75** | 4.02 (T) |
+| ITU_EchoSpectral (worst margin) | mask | mask+6 | **+13.3** | **+22.9** |
+| ITU_ConvergenceQuiet (600/1200 ms) | 40 dB @ 1200 | 40 @ 600, 46 @ 1200 | 33.6 (T) / **47.8** | 34.1 (T) / **46.2** |
+| ITU_ConvergenceNoise (driving, -30 dBm0(A)) | mask | by 750 ms | **pass all points** | **pass all points** |
+| ITU_TimeVariantPath (-30 dB reflector) | < -52 dBm0(A) | < -58 | **-58.3** | -55.6 (T) |
+| ITU_ActivationSend build-up | <= 50 ms | <= 25 | **15.7** | **21.1** |
+| ITU_DtSendAtten (integrated) | <= 3 dB | <= 1.5 | **0.91** | **-0.30** |
+| ITU_DtSentSpeech (worst band) | <= 3 dB | <= 1.5 | 1.61 (T) | 2.02 (T) |
+| ITU_DtEchoLoss (worst band) | >= 27 dB | >= 33 | **37.5** | **37.9** |
+| ITU_P340_Type1Transfer | +-3 dB | +-1.5 | 2.74 (T) | 2.23 (T) |
+| ITU_P340_HangoverRecovery (0.5 s / 1 s) | [20 dB @ 1 s] | 26 @ 0.5 s | **30.6 / 45.0** | 18.9 (T) / 23.1 |
+| ITU_P340_NoiseFluctuation | +-3 dB | span 3 | **3.09 span** | **2.90 span** |
+| ITU_ComfortNoiseLevel | +2/-5 dB | +1/-2.5 | **-1.31** | -2.91 (T) |
+| ITU_ComfortNoiseSpectrum (worst band) | mask | half-mask | **-1.58** | **-3.46** |
+| ITU_NoisePumpFarEnd (segment avg) | <= 10 dB | <= 5 | 8.0 (T) | 9.9 (T) |
+| ITU_StabilitySweep | stable at 0 dB ERL | — | **stable, floor reached** | **stable, floor reached** |
+| ITU_AlgorithmicDelay | 70 ms budget | <= 35 | **10.7 ms** | **32 ms** |
+
+**(T)** = our own margin target missed while the ITU REQUIREMENT is
+met (each is a comment-documented regression gate in the owning test,
+never a silent pass). Every requirement in the table is met at both
+required rates. Recurring 16 kHz theme: 16 ms blocks mean fewer
+adaptation steps and meter samples per unit time — early convergence,
+hangover recovery and minimum-statistics bias all read a few dB behind
+the 48 kHz chain.
+
+### Rows resolved without a test (recorded, not asserted)
+
+- `ITU_ActivationReceive`, `ITU_AttenRangeReceive`, `ITU_DtReceiveAtten`:
+  the chain performs NO receive-path processing — receive activation is
+  immediate and receive attenuation identically 0 dB.
+- `ITU_AttenRangeSend`: the switched range IS the initial receive guard
+  by construction (< 14 dB, inside the < 20 dB clause), engaged only
+  until convergence certifies (latch measured 160 / 384 ms of nominal
+  receive) and never again.
+- `ITU_P340_BuildUpSingle/Double`, `ITU_P340_VoiceSwitchBuildUp`:
+  covered by the ActivationSend build-up measurement (15.7 / 21.1 ms);
+  P.340's bracketed [20 ms] is provisional and superseded by the
+  in-force automotive series' 50 ms.
+- The quiet-noise ConvergenceNoise variant (Hoth at -46 dBm0) meets the
+  mask only from ~600 ms: with echo 30 dB above BGN+10 at onset, the
+  first mask segment demands more switched loss than the A_H,S
+  allowance permits any terminal. The asserted scenario is the
+  automotive driving-noise condition the clause is defined for.
+
+### Chain elements Stage 3 forced (all measured-first, postfilter.h)
+
+1. **Initial receive guard** (aec_chain): switched < 14 dB send loss
+   while receive is active and convergence is uncertified, latched off
+   at certification. No Yhat-referenced suppressor can see echo while
+   the canceller's estimate is ~0; the convergence masks are unmeetable
+   without switched loss, which is exactly what the switching clauses
+   budget for.
+2. **Release snap + floor-initialized gains**: activation build-up in
+   one block; suppression from block one after reset.
+3. **Coherence-gated low-band cap with sustained certification**:
+   protects voice fundamentals where no realizable resolution separates
+   them from echo (P.340 transfer bound); certification must survive
+   0.3 s of active echo dominance so double-talk pauses cannot leak it
+   open.
+4. **REJECTED: a noise-floor gain bound** ("stop suppressing at the
+   tracked floor") — in near-silence the minimum-statistics floor rides
+   the residual's own pause decay and the bound self-limits the
+   suppressor ~6 dB above its reachable depth (EchoLevel lost 6 dB,
+   TimeVariantPath fell to the requirement wire). The comfort FILL is
+   the right shape: it only ever adds.
+
+Remaining for Stage 3b: the Tier B G.168-adapted battery and the
+G.167 historical row. Then Stage 4 (proof notebook) and Stage 5
+(externals/docs).

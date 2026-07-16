@@ -24,11 +24,11 @@
 
 #include "../fixtures/rir_cabin.h"
 #include "../fixtures/rir_studio.h"
-#include "mutap/fd_kalman.h"
-#include "mutap/postfilter.h"
 #include "echo_scenario.h"
 #include "itu_levels.h"
 #include "itu_signals.h"
+#include "mutap/fd_kalman.h"
+#include "mutap/postfilter.h"
 
 namespace mutap_test::itu {
 
@@ -45,9 +45,15 @@ namespace mutap_test::itu {
     /// with block 128 at 16 kHz (ERL 8.9 dB by 600 ms vs 22.5 at block
     /// 256, which then beats even the 48 kHz reference by 1200 ms:
     /// 47.1 vs 43.6). Filter span stays 64 ms (4 partitions).
-    inline rate_setup setup_48k() { return {48000.0, 256, 2048}; }
-    inline rate_setup setup_16k() { return {16000.0, 256, 1024}; }
-    inline std::vector<rate_setup> required_rates() { return {setup_48k(), setup_16k()}; }
+    inline rate_setup setup_48k() {
+        return {48000.0, 256, 2048};
+    }
+    inline rate_setup setup_16k() {
+        return {16000.0, 256, 1024};
+    }
+    inline std::vector<rate_setup> required_rates() {
+        return {setup_48k(), setup_16k()};
+    }
 
     inline compliance_chain::config chain_config(const rate_setup& rs) {
         compliance_chain::config cfg;
@@ -66,18 +72,19 @@ namespace mutap_test::itu {
         // observation-noise tracker reacted 3x slower in wall time and
         // double talk dragged its filter (hangover recovery measured
         // 16.4 dB bare where 48 kHz reads 42.6).
-        cfg.canceller.transition      = 0.9998; // NOT rescaled: rescaling traded TimeVariantPath to the wire (-52.3 vs req -52) for hangover
+        cfg.canceller.transition =
+            0.9998; // NOT rescaled: rescaling traded TimeVariantPath to the wire (-52.3 vs req -52) for hangover
         cfg.canceller.noise_smoothing = std::pow(0.9, ratio);
-        auto& pf = cfg.postfilter;
-        pf.leakage_smoothing = std::pow(pf.leakage_smoothing, ratio);
-        pf.gain_attack       = std::pow(pf.gain_attack, ratio);
-        pf.gain_release      = std::pow(pf.gain_release, ratio);
-        pf.floor_smoothing   = std::pow(pf.floor_smoothing, ratio);
-        pf.floor_window      = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
+        auto& pf                      = cfg.postfilter;
+        pf.leakage_smoothing          = std::pow(pf.leakage_smoothing, ratio);
+        pf.gain_attack                = std::pow(pf.gain_attack, ratio);
+        pf.gain_release               = std::pow(pf.gain_release, ratio);
+        pf.floor_smoothing            = std::pow(pf.floor_smoothing, ratio);
+        pf.floor_window = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
         // Low-band suppression cap at 300 Hz (see postfilter.h): protect
         // voice fundamentals where no analysis resolution can separate
         // them from echo; the canceller owns low-frequency echo.
-        const size_t n_analysis = pf.analysis_blocks * rs.block;
+        const size_t n_analysis    = pf.analysis_blocks * rs.block;
         pf.low_band_bins           = static_cast<size_t>(300.0 * static_cast<double>(n_analysis) / rs.fs) + 1;
         pf.low_band_certify_blocks = std::max<size_t>(8, static_cast<size_t>(56.0 / ratio));
         return cfg;
@@ -89,8 +96,8 @@ namespace mutap_test::itu {
     /// go through the NOTE 2 resampler and keep the full RT inside the
     /// 64 ms tap budget).
     inline std::vector<double> compliance_path(room r, const rate_setup& rs) {
-        const float* rir  = (r == room::cabin) ? fixtures::k_rir_cabin : fixtures::k_rir_studio;
-        const size_t base = 4096;
+        const float*        rir  = (r == room::cabin) ? fixtures::k_rir_cabin : fixtures::k_rir_studio;
+        const size_t        base = 4096;
         std::vector<double> p(rir, rir + base);
         if (rs.fs != 48000.0) {
             p = resample(p, 48000.0, rs.fs, 0);
@@ -156,9 +163,8 @@ namespace mutap_test::itu {
     /// Max of an A-weighted level trace over [from, to) samples, skipping
     /// nothing — callers position the window.
     inline double max_level_dbm0a(const std::vector<double>& x, double fs, size_t from, size_t to) {
-        auto tr = level_trace_dbm0a(std::vector<double>(x.begin() + static_cast<long>(from),
-                                                        x.begin() + static_cast<long>(to)),
-                                    fs);
+        auto tr = level_trace_dbm0a(
+            std::vector<double>(x.begin() + static_cast<long>(from), x.begin() + static_cast<long>(to)), fs);
         return *std::max_element(tr.begin() + static_cast<long>(0.1 * fs), tr.end());
     }
 
@@ -168,7 +174,8 @@ namespace mutap_test::itu {
     class erl_reader {
       public:
         erl_reader(const std::vector<double>& mic, const std::vector<double>& out, double fs, double window_s = 0.35)
-            : m_fs(fs), m_win(window_s) {
+            : m_fs(fs)
+            , m_win(window_s) {
             exp_level_meter m_y(fs, 0.035);
             exp_level_meter m_e(fs, 0.035);
             m_try = m_y.trace_dbm0(mic);

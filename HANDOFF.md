@@ -315,6 +315,25 @@ stay host-side).*
 **Stage 3 — Compliance suite** (`tests/test_itu_*.cpp`). One gtest per
 matrix row asserting requirement + margin policy. Swept across fixture
 rooms + synthetic rooms + car cabins where the clause demands.
+*TIER A DONE — `tests/support/itu_chain.h` (the pinned compliance
+chain) + `test_itu_echo.cpp` / `test_itu_doubletalk.cpp` /
+`test_itu_dynamics.cpp`: every Tier A row at BOTH required rates, one
+measured table in the matrix's "Stage 3 delivered" section. Every ITU
+REQUIREMENT met at both rates; our own half-margin targets miss on a
+handful of 16 kHz rows (early convergence, hangover, minimum-statistics
+bias — 16 ms blocks mean fewer adaptation steps per unit time), each a
+documented regression gate. Chain elements the measurements forced:
+the initial receive guard (switched < 14 dB send loss until convergence
+certifies — the convergence-in-noise mask is unmeetable without it),
+release snap + floor-initialized gains, the coherence-gated low-band
+suppression cap with sustained certification (P.340 transfer bound),
+and one REJECTED design recorded in postfilter.h (a noise-floor gain
+bound that self-references the residual's pause minima in near-
+silence). Geometry discovery worth keeping: the partitioned Kalman's
+convergence collapses at block 128 / 16 kHz (8.9 vs 22.5 dB ERL by
+600 ms at block 256) — open investigation item, worked around by
+pinning block 256 at both rates. STILL OPEN (Stage 3b): the Tier B
+G.168-adapted battery and the G.167 historical row.*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,
