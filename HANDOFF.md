@@ -2,6 +2,17 @@
 
 > Context brief for a Claude Code session. Captures decisions and technical direction so the next session can start working without re-deriving anything. Can be adapted into a `CLAUDE.md` for persistent project context.
 >
+> **Rev 5** — planning revision, no code. Rev 4's effort is fully merged
+> (both repos); the next effort is chosen and staged: **ITU compliance
+> for the AEC, with margin** — prove, via a requirements matrix, a
+> calibrated ITU-signal layer, a new residual-echo post-filter, a
+> compliance test suite and a proof notebook, that the AEC chain passes
+> the applicable clauses of G.167 / P.340 / a G.168-adapted battery /
+> P.1100-P.1120 (automotive) with asserted headroom. Scope decisions
+> settled with Tim; see "The next effort (Rev 5)". BLOCKER for Stage 0:
+> `itu.int` must be allowlisted in the dev environment's network policy
+> (Tim's action) so the rec texts can be read.
+>
 > **Rev 4** — planning revision, no code. The next effort is chosen and
 > staged: **AEC objects + the echo-cancellation book chapter** (former
 > "What's next" items 5+6 — chosen because items 1–2 need Tim in a real
@@ -195,6 +206,77 @@ notebook section 8), plus the MuTap-side rename sweep (chapter 1,
 introduction, README, notebook). The whole effort is complete; what
 remains of the AEC line is real-call listening, which folds into
 "What's next" item 1.*
+
+## The next effort (Rev 5): ITU compliance for the AEC, with margin
+
+Goal (Tim's directive): the AEC passes the applicable ITU specifications,
+preferably with LARGE margin, proven by tests/harness and notebooks. What
+this repo can prove is **algorithmic compliance with margin**: the AEC
+chain, driven by the standardized test signals through simulated and
+physically-modeled echo paths, meets every testable clause — each margin
+regression-tested, plus a notebook showing requirement vs measured vs
+margin per clause. Device-level certification (real transducers, HATS
+rigs, TCLw of a physical terminal) inherently needs a lab; this effort
+builds the evidence package that makes the lab visit boring.
+
+Scope decisions settled with Tim (2026-07-16):
+- **Normative anchors**: P.340 (hands-free terminal: TCLw, duplex
+  categories) + G.167 (the AEC-specific rec) + a G.168-adapted battery
+  (its tests are for line echo; we adapt them to acoustic paths as a
+  supplementary suite) + **the automotive series P.1100/P.1110/P.1120**.
+  The automotive recs cover the whole terminal chain — the matrix must
+  mark which clauses concern the AEC vs out-of-scope terminal items
+  (frequency response, noise reduction), and they bring two new
+  simulation axes: car-cabin echo paths and driving-noise conditions.
+- **Post-filter approved**: linear cancellation measures ~20 dB; the
+  single-talk attenuation targets are 40+ dB. Stage 2 builds the
+  residual-echo suppressor + matched comfort noise as a new pluggable
+  MuTap stage, plus an integrated AEC-chain type (the specs measure the
+  chain, not the filter).
+- **Spec access**: itu.int gets allowlisted in the dev environment's
+  network policy (BLOCKER, Tim's action — environment settings on
+  claude.ai/code). The rec PDFs are free downloads; nothing gets
+  committed to the repo but our own distilled matrix. P.501 signals are
+  GENERATED from their algorithmic descriptions, never redistributed.
+- **Margin policy (proposed, confirm in Stage 0)**: every requirement
+  asserted with >= 6 dB (level clauses) or >= 2x (time clauses) headroom,
+  so margin EROSION fails CI, not just outright failure.
+
+**Stage 0 — Requirements matrix.** Read the recs; distill
+`docs/itu-compliance.md`: every testable clause -> requirement -> margin
+target -> owning test name. Pick the target terminal category and
+bandwidth classes here, with the real numbers in view (MuTap runs
+fullband; several clause sets are per-bandwidth). Matrix rows become
+test names; everything downstream keys off this document.
+
+**Stage 1 — Calibrated ITU signal layer** (`tests/support/`). Level
+calibration conventions (dBov/activity-gated levels), a deterministic
+P.501 CSS generator, the P.501 double-talk sequences, per-bandwidth
+band-limiting, driving-noise generator + car-cabin echo paths for the
+P.1100 series (modeled first; Tim's measured cabin RIRs can join via the
+existing fixture pipeline). Pass: generated signals match published
+spectral/temporal properties.
+
+**Stage 2 — Residual-echo post-filter + comfort noise.** The big DSP
+item. New header (working name `mutap/postfilter.h`): coherence-based
+residual-echo estimate, spectral suppression, comfort noise matched to
+the near-end noise floor; plus the integrated chain type. House
+workflow: scratch-measure first, thresholds with margin, rooms from both
+generator families. RT contract as everywhere.
+
+**Stage 3 — Compliance suite** (`tests/test_itu_*.cpp`). One gtest per
+matrix row asserting requirement + margin policy. Swept across fixture
+rooms + synthetic rooms + car cabins where the clause demands.
+
+**Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
+-> `notebooks/itu_compliance.ipynb`: one section per requirement group,
+requirement/measured/margin table per section, convergence curves vs the
+specs' time masks, double-talk timelines vs the P.340 windows.
+
+**Stage 5 — Externals + docs.** Post-filter attribute on `mutap.aec~`,
+C ABI extension for the notebook, maxref/help updates, book-chapter
+section, README compliance claims with margins. (Submodule dance,
+working note 6, as always.)
 
 ---
 
