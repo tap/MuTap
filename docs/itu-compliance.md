@@ -411,7 +411,7 @@ measured 8.9 vs 22.5 dB ERL by 600 ms); low-band suppression cap
 | ITU_EchoLevel (cabin/studio) | < -58 dBm0(A) | < -64 | **-76.4 / -85.7** | **-81.0 / -101.2** |
 | ITU_EchoStability | <= 6 dB | <= 3 | **2.75** | 4.02 (T) |
 | ITU_EchoSpectral (worst margin) | mask | mask+6 | **+13.3** | **+22.9** |
-| ITU_ConvergenceQuiet (600/1200 ms) | 40 dB @ 1200 | 40 @ 600, 46 @ 1200 | 33.6 (T) / **47.8** | 34.1 (T) / **46.2** |
+| ITU_ConvergenceQuiet (600/1200 ms) | 40 dB @ 1200 | 40 @ 600, 46 @ 1200 | 33.6 (T) / **47.8** | 34.1 (T) / 45.4 (T) |
 | ITU_ConvergenceNoise (driving, -30 dBm0(A)) | mask | by 750 ms | **pass all points** | **pass all points** |
 | ITU_TimeVariantPath (-30 dB reflector) | < -52 dBm0(A) | < -58 | **-58.3** | -55.6 (T) |
 | ITU_ActivationSend build-up | <= 50 ms | <= 25 | **15.7** | **21.1** |
