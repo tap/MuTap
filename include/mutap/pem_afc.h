@@ -178,6 +178,12 @@ namespace mutap {
         /// Current feedback-path estimate as filter_length() time-domain taps.
         void copy_impulse_response(Sample* dest) noexcept { m_fdaf.copy_impulse_response(dest); }
 
+        /// The echo estimate of the LAST processed block — block_size()
+        /// time-domain samples of what the cancellation subtracted (the
+        /// residual suppressor's reference, postfilter.h). Valid until
+        /// the next process_block()/reset().
+        const Sample* echo_estimate_block() const noexcept { return m_time.data() + block_size(); }
+
       private:
         static config validated(const config& cfg) {
             if (cfg.analysis_window < 2 * cfg.fdaf.block_size) {
