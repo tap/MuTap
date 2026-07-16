@@ -181,12 +181,13 @@ namespace {
             auto         ta    = aw.apply(talk);
             auto         qa    = aw.apply(quiet);
             const double delta = level_dbov(ta.data(), ta.size()) - level_dbov(qa.data(), qa.size());
-            // Measured -1.31 dB (48 kHz, target met) / -2.91 (16 kHz:
-            // the -2.5 target floor is missed by 0.4 dB — requirement
-            // -5 met by 2.1; fewer meter samples per minimum-statistics
-            // window at 16 ms blocks bias the floor deeper).
+            // Measured -1.31 dB (48 kHz) / -2.15 (16 kHz) — both inside
+            // the +1/-2.5 target. The 16 kHz figure is why the preset
+            // calibrates floor_bias per rate (5.6 at 16 ms blocks;
+            // uncalibrated it read -2.91 and G.168's +-2 step-tracking
+            // requirement failed outright).
             EXPECT_LE(delta, 1.0) << "fs " << rs.fs;
-            EXPECT_GE(delta, expected({-2.5, -3.3}, rs)) << "fs " << rs.fs;
+            EXPECT_GE(delta, -2.5) << "fs " << rs.fs;
 
             const auto   bt      = welch_psd_db(talk, 8192);
             const auto   bq      = welch_psd_db(quiet, 8192);
@@ -214,7 +215,7 @@ namespace {
     // ITU_NoisePumpFarEnd: send level variation across far-end CSS
     // bursts in driving noise at -30 dBm0(A), 15 s pre-conditioning,
     // per-segment average levels (the rec compares segment levels).
-    // Requirement <= 10 dB; measured 8.0 / 9.9 dB — the <= 5 target is
+    // Requirement <= 10 dB; measured 8.0 / 9.6 dB — the <= 5 target is
     // not met in driving noise (~3 dB of the reading is the synthetic
     // noise's own slow drift), recorded in the matrix.
     TEST(ItuDynamics, NoisePumpingAcrossFarEndBursts) {
