@@ -39,7 +39,10 @@ add_executable(mutap_tests
     test_rir_fixtures.cpp
     test_aec.cpp
     test_itu_signals.cpp
-    test_postfilter.cpp)
+    test_postfilter.cpp
+    test_itu_echo.cpp
+    test_itu_doubletalk.cpp
+    test_itu_dynamics.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)
