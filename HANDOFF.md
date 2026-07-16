@@ -280,7 +280,12 @@ collapses to 19 dB if any guard band is added (recorded in the test).
 Existing fixtures verified bit-reproducible with pyroomacoustics 0.10.1
 before generating the cabin (--only flag added to the generator). Still
 open from this stage: the ITU real-speech attachment WAVs
-(tests/data/itu/, git-ignored) for the three signal-exact rows.*
+(tests/data/itu/, git-ignored) for the three signal-exact rows.
+AMENDED (Tim's directive): 48 kHz and 16 kHz are REQUIRED operating
+rates (44.1 kHz stays the P.501-native reference) — the NOTE 2
+resampler was built (ripple <= 0.014 dB, alias rejection 101 dB), the
+formula generators take fs directly, and make_css_at() emits
+sample-exact periods at every required rate; matrix policy updated.*
 
 **Stage 2 — Residual-echo post-filter + comfort noise.** The big DSP
 item. New header (working name `mutap/postfilter.h`): coherence-based
