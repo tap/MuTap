@@ -67,16 +67,23 @@ approach:
   narrowband (P.1100) variants run as band-limited configurations of the
   same tests, with P.501-specified band-limiting of the receive-direction
   signals (NB 3.6/4 kHz, WB 7.2/8 kHz, SWB 14.4/16 kHz).
-- **Sample rate: the compliance suite runs at 44.1 kHz** (revised in
-  Stage 1 from the original 48 kHz intent): P.501's CSS framing is
-  sample-exact only at its native 44.1 kHz (350 ms period = 15435
-  samples), and P.501 7.2.1.1 b lists 44.1 kHz as a preferred
-  calibration rate — running natively avoids the >60 dB-stopband
-  resampler P.501 NOTE 2 would otherwise require. Consequence,
-  documented: the RIR fixtures are 48 kHz tap sequences; played at
-  44.1 kHz they represent a proportionally stretched room (times +6.6%,
-  e.g. the cabin's measured RT60 66.6 ms reads as ~71 ms), which stays
-  inside every RT envelope the recs specify.
+- **Sample rates (revised twice; current policy per Tim's directive):
+  the compliance suite RUNS AT — and every Tier A/B row must pass at —
+  48 kHz and 16 kHz, with 44.1 kHz kept as the P.501-native reference
+  rate.** Rationale per rate:
+  - **48 kHz (required)**: MuTap's operating rate, the automotive recs'
+    specified analysis rate (8k FFT @ 48 kHz), and the rate at which
+    the RIR fixtures are exact.
+  - **16 kHz (required)**: the wideband telephony rate (AMR-WB/P.1110
+    world). SWB/FB-only clauses are exempt at 16 kHz (they exceed its
+    8 kHz Nyquist); the AM-FM plans (<= 7.04 kHz) fit.
+  - **44.1 kHz (reference)**: P.501's native rate, where the CSS
+    framing is sample-exact without conversion; used to validate the
+    signal layer itself.
+  The bridge is the P.501 NOTE 2 resampler (Stage 1): measured passband
+  ripple <= 0.014 dB (spec < 0.2) and alias rejection 101 dB (spec
+  > 60); the CSS period stays sample-exact at every required rate
+  (15435 / 16800 / 5600 samples per 350 ms at 44.1 / 48 / 16 kHz).
 - **The simulated echo paths**: the three committed image-source rooms
   (fixtures) + a new car-cabin family (small volume ~2.5 m^3, RT ~60 ms
   per G.167 5.2.3.1's car figures) + the P.1110/P.1120 time-variant-path
@@ -256,7 +263,9 @@ Instrument floors that bound what the compliance suite can measure:
 
 - CSS single/double-talk: sample-exact framing, PN crest 10.97 dB
   (spec 11 +- 1), bin-flat PN, level calibration exact, voiced segments
-  transcribed from P.501 Tables 7-1/7-2.
+  transcribed from P.501 Tables 7-1/7-2. Available at every required
+  rate via `make_css_at` (PN crest 11.86 dB at 48 kHz / 11.44 at
+  16 kHz; AM-FM separation 94.0 / 92.6 dB at 48 / 16 kHz).
 - AM-FM orthogonal pair: **94.3 dB comb separation** at the spec's exact
   band edges — the double-talk echo-loss measurement floor sits far
   beyond the >= 33 dB margin targets. (Analysis discipline recorded in

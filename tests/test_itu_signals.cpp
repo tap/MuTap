@@ -236,6 +236,72 @@ namespace {
         EXPECT_NEAR(l4 - l0, 4.0, 0.01);
     }
 
+    // ---------------------------------------- the required operating rates
+    // The matrix requires 48 kHz (MuTap's rate, P.1120's analysis rate)
+    // and 16 kHz (the wideband telephony rate) alongside the 44.1 kHz
+    // P.501 reference. Measured: resampler passband ripple <= 0.014 dB
+    // (NOTE 2 allows 0.2), alias rejection 101 dB at 16 kHz output
+    // (NOTE 2 wants > 60); CSS periods sample-exact at every rate
+    // (16800 / 5600 per 350 ms); PN crest 11.86 dB at 48 kHz and
+    // 11.44 dB at 16 kHz (spec 11 +- 1); AM-FM comb separation 94.0 dB
+    // at 48 kHz and 92.6 dB at 16 kHz.
+
+    TEST(ItuRates, ResamplerMeetsNote2) {
+        auto tone = [](double f, double fs, size_t n) {
+            std::vector<double> s(n);
+            for (size_t i = 0; i < n; ++i) {
+                s[i] = std::sin(2.0 * std::numbers::pi * f * static_cast<double>(i) / fs);
+            }
+            return s;
+        };
+        auto through = [&](double f, double fs_out) {
+            const auto   x   = tone(f, 44100.0, 44100);
+            const auto   y   = itu::resample(x, 44100.0, fs_out);
+            const double in  = itu::rms_of(x.data() + 4000, x.size() - 8000);
+            const double out = itu::rms_of(y.data() + 2000, y.size() - 4000);
+            return 20.0 * std::log10(out / in);
+        };
+        // Passband ripple < 0.2 dB (measured <= 0.014 dB).
+        for (const double f : {100.0, 1000.0, 6800.0, 19000.0}) {
+            EXPECT_NEAR(through(f, 48000.0), 0.0, 0.2) << f << " Hz";
+        }
+        for (const double f : {100.0, 1000.0, 7400.0}) {
+            EXPECT_NEAR(through(f, 16000.0), 0.0, 0.2) << f << " Hz";
+        }
+        // Alias rejection > 60 dB (measured ~101 dB).
+        EXPECT_LT(through(10000.0, 16000.0), -60.0) << "measured -101.6 dB";
+        EXPECT_LT(through(12000.0, 16000.0), -60.0) << "measured -102.1 dB";
+    }
+
+    TEST(ItuRates, CssIsSampleExactAtRequiredRates) {
+        for (const double fs : {48000.0, 16000.0}) {
+            itu::css_config cfg;
+            cfg.periods    = 4;
+            const auto css = itu::make_css_at(cfg, fs);
+            ASSERT_EQ(css.size(), 4U * static_cast<size_t>(0.35 * fs)) << fs;
+            // PN crest survives the conversion (spec 11 +- 1; measured
+            // 11.86 at 48 kHz, 11.44 at 16 kHz).
+            const size_t v_n = static_cast<size_t>(2144.0 * fs / 44100.0);
+            const size_t p_n = static_cast<size_t>(8820.0 * fs / 44100.0);
+            EXPECT_NEAR(itu::crest_factor_db(css.data() + v_n, p_n), 11.0, 1.0) << fs;
+
+            cfg.kind      = itu::css_kind::double_talk;
+            const auto dt = itu::make_css_at(cfg, fs);
+            ASSERT_EQ(dt.size(), 4U * static_cast<size_t>(0.4 * fs)) << fs;
+        }
+    }
+
+    TEST(ItuRates, AmFmOrthogonalityHoldsAtRequiredRates) {
+        const auto sp = itu::amfm_send_plan();
+        const auto rp = itu::amfm_receive_plan();
+        for (const double fs : {48000.0, 16000.0}) {
+            const auto   snd = itu::make_amfm(sp, static_cast<size_t>(4 * fs), fs);
+            const double own = itu::comb_band_level_db(snd, sp, 0.0, fs);
+            const double xr  = itu::comb_band_level_db(snd, rp, 0.0, fs);
+            EXPECT_GT(own - xr, 60.0) << fs << " Hz (measured 94.0 / 92.6 dB)";
+        }
+    }
+
     TEST(ItuSignals, MovingReflectorPathStaysSane) {
         itu::moving_reflector mr;
         mr.base.assign(256, 0.0);

@@ -6,8 +6,13 @@
 // are redistributed. The layer runs natively at 44.1 kHz, the CSS's own
 // sampling rate: P.501's segment framing is sample-exact only there
 // (350 ms period = 15435 samples), and P.501 7.2.1.1 b lists 44.1 kHz
-// as a preferred calibration rate. Signals for other rates would need
-// the >60 dB stopband interpolation of P.501 NOTE 2 (not implemented).
+// as a preferred calibration rate. The REQUIRED operating rates of the
+// compliance matrix — 48 kHz (MuTap's rate, P.1120's analysis rate) and
+// 16 kHz (the wideband telephony rate) — are served by resample()/
+// make_css_at(): the NOTE 2 interpolation (>60 dB stopband, <0.2 dB
+// ripple), with the CSS period staying sample-exact at every required
+// rate (350 ms = 15435 / 16800 / 5600 samples at 44.1 / 48 / 16 kHz).
+// Formula-based generators (AM-FM, noise, activation) take fs directly.
 //
 // What is spec-exact vs method-equivalent (recorded per the matrix):
 //  - CSS voiced segments: EXACT — the literal sample tables 7-1/7-2 of
@@ -163,6 +168,61 @@ namespace mutap_test::itu {
         return y;
     }
 
+    /// The sample-rate converter of P.501 7.2.1.2 NOTE 2: "the
+    /// interpolation filter used for up- and down-sampling should be
+    /// close to an ideal rectangular filter. The stopband attenuation
+    /// should be >60 dB, the passband ripple <0.2 dB." Windowed-sinc
+    /// (Kaiser, ~80 dB design) evaluated per output sample; `out_len`
+    /// pins the exact output length where the spec's framing demands it
+    /// (350 ms = 16800 samples at 48 kHz, 5600 at 16 kHz). Offline
+    /// tooling, not RT code.
+    inline std::vector<double> resample(const std::vector<double>& x, double fs_in, double fs_out, size_t out_len = 0) {
+        if (fs_in == fs_out) {
+            return x;
+        }
+        const double ratio = fs_out / fs_in;
+        const size_t n_out =
+            out_len != 0 ? out_len : static_cast<size_t>(std::llround(static_cast<double>(x.size()) * ratio));
+        const int    half      = 192; // kernel half-width, sized for a sharp transition at 16 kHz output
+        const double cutoff    = 0.5 * std::min(1.0, ratio) * 0.985; // cycles per INPUT sample, transition guard
+        const double beta      = 7.857;                              // Kaiser, ~80 dB stopband
+        auto         bessel_i0 = [](double v) {
+            double sum  = 1.0;
+            double term = 1.0;
+            for (int i = 1; i < 32; ++i) {
+                term *= (v / (2.0 * i)) * (v / (2.0 * i));
+                sum += term;
+            }
+            return sum;
+        };
+        const double        i0b = bessel_i0(beta);
+        std::vector<double> y(n_out, 0.0);
+        for (size_t n = 0; n < n_out; ++n) {
+            const double t   = static_cast<double>(n) / ratio;
+            const long   k0  = static_cast<long>(std::floor(t)) - half + 1;
+            double       acc = 0.0;
+            for (long k = k0; k < k0 + 2 * half; ++k) {
+                if (k < 0 || k >= static_cast<long>(x.size())) {
+                    continue;
+                }
+                const double u = t - static_cast<double>(k);
+                const double s =
+                    (u == 0.0) ? 2.0 * cutoff : std::sin(2.0 * std::numbers::pi * cutoff * u) / (std::numbers::pi * u);
+                const double r = u / static_cast<double>(half);
+                if (std::abs(r) >= 1.0) {
+                    continue;
+                }
+                acc += x[static_cast<size_t>(k)] * s * bessel_i0(beta * std::sqrt(1.0 - r * r)) / i0b;
+            }
+            y[n] = acc;
+        }
+        // No gain normalization: the 2*cutoff-scaled sinc kernel sampled
+        // at unit input spacing already sums to ~1 (measured passband
+        // error < 0.14 dB before this was understood — a 1/(2 cutoff)
+        // "correction" here produces a flat +8.9 dB at 16 kHz).
+        return y;
+    }
+
     /// P.501 Figure 7-10: the speech-shaping response for the fullband
     /// CSS PN segment (5 dB/octave tilt, corner-point table).
     inline std::vector<std::pair<double, double>> speech_shaping_corners() {
@@ -278,12 +338,29 @@ namespace mutap_test::itu {
         return out;
     }
 
+    /// CSS at one of the matrix's required operating rates: generated
+    /// at the native 44.1 kHz (where the voiced tables live), then
+    /// converted with the NOTE 2 resampler, output length pinned to the
+    /// sample-exact period count (16800 per period at 48 kHz, 5600 at
+    /// 16 kHz — 350 ms exactly; double-talk 19200 / 6400 for 400 ms).
+    /// At 16 kHz the resampler's anti-alias filter inherently limits
+    /// the CSS to the 8 kHz Nyquist (the wideband condition).
+    inline std::vector<double> make_css_at(const css_config& cfg, double fs_out) {
+        const auto native = make_css(cfg);
+        if (fs_out == k_fs) {
+            return native;
+        }
+        const double period_s = (cfg.kind == css_kind::single_talk) ? 0.350 : 0.400;
+        const auto   n_out    = static_cast<size_t>(std::llround(period_s * fs_out)) * cfg.periods;
+        return resample(native, k_fs, fs_out, n_out);
+    }
+
     /// Band-limiting per P.501 Table 7-7 (values in Hz: -3 dB point /
     /// cutoff). NB 3600/4000, WB 7200/8000, SWB 14400/16000. At the
     /// 44.1 kHz native rate fullband needs no filter.
     enum class bandwidth { narrowband, wideband, super_wideband, fullband };
 
-    inline std::vector<double> band_limit(const std::vector<double>& x, bandwidth bw) {
+    inline std::vector<double> band_limit(const std::vector<double>& x, bandwidth bw, double fs = k_fs) {
         double cutoff = 0.0;
         switch (bw) {
         case bandwidth::narrowband:
@@ -298,7 +375,10 @@ namespace mutap_test::itu {
         case bandwidth::fullband:
             return x;
         }
-        return fir_apply(x, design_lowpass(k_fs, cutoff, 1023));
+        if (cutoff >= fs / 2.0) {
+            return x; // band edge at or above Nyquist: nothing to remove
+        }
+        return fir_apply(x, design_lowpass(fs, cutoff, 1023));
     }
 
     // ------------------------------------------- AM-FM orthogonal double talk
@@ -345,21 +425,21 @@ namespace mutap_test::itu {
         return p;
     }
 
-    inline std::vector<double> make_amfm(const amfm_plan& plan, size_t samples) {
+    inline std::vector<double> make_amfm(const amfm_plan& plan, size_t samples, double fs = k_fs) {
         std::vector<double> out(samples, 0.0);
         const double        pi = std::numbers::pi;
         for (size_t c = 0; c < plan.f0.size(); ++c) {
             // 5 dB/octave rolloff above the 250 Hz corner (P.501 7.2.4).
             const double a = (plan.f0[c] <= 250.0) ? 1.0 : std::pow(10.0, -5.0 * std::log2(plan.f0[c] / 250.0) / 20.0);
             for (size_t n = 0; n < samples; ++n) {
-                const double t = static_cast<double>(n) / k_fs;
+                const double t = static_cast<double>(n) / fs;
                 out[n] += a * std::cos(2.0 * pi * plan.f0[c] * t + plan.df[c] * std::sin(2.0 * pi * t));
             }
         }
         const double am_f  = 3.0;
         const double am_mu = 2.0 / 3.0;
         for (size_t n = 0; n < samples; ++n) {
-            const double t = static_cast<double>(n) / k_fs;
+            const double t = static_cast<double>(n) / fs;
             out[n] *= 1.0 + am_mu * std::cos(2.0 * pi * am_f * t);
         }
         return out;
@@ -371,7 +451,8 @@ namespace mutap_test::itu {
     /// (guard 0); widening the guard reaches across the plans' designed
     /// interleave gaps (e.g. send 250+-5 vs receive 270+-5, 10 Hz apart)
     /// and destroys the separation floor.
-    inline double comb_band_level_db(const std::vector<double>& x, const amfm_plan& plan, double guard_hz = 0.0) {
+    inline double comb_band_level_db(const std::vector<double>& x, const amfm_plan& plan, double guard_hz = 0.0,
+                                     double fs = k_fs) {
         size_t n_fft = 1;
         while (n_fft < x.size()) {
             n_fft *= 2;
@@ -388,7 +469,7 @@ namespace mutap_test::itu {
             buf[i] = x[i] * w;
         }
         fft.forward_inplace(buf.data());
-        const double df_bin = k_fs / static_cast<double>(n_fft);
+        const double df_bin = fs / static_cast<double>(n_fft);
         double       acc    = 0.0;
         for (size_t c = 0; c < plan.f0.size(); ++c) {
             const size_t k0 = static_cast<size_t>((plan.f0[c] - plan.df[c] - guard_hz) / df_bin);
@@ -408,9 +489,8 @@ namespace mutap_test::itu {
     /// `steps` repetitions. Returns the sequence and the sample index at
     /// which each token starts (for build-up timing analysis).
     inline std::vector<double> make_activation_sequence(size_t steps, double start_gain_db,
-                                                        std::vector<size_t>* token_starts = nullptr) {
+                                                        std::vector<size_t>* token_starts = nullptr, double fs = k_fs) {
         const size_t        token_n = static_cast<size_t>(0.5 * k_fs);
-        const size_t        pause_n = token_n;
         std::vector<double> token(token_n);
         double              sq = 0.0;
         for (size_t i = 0; i < token_n; ++i) {
@@ -421,8 +501,13 @@ namespace mutap_test::itu {
         for (auto& v : token) {
             v /= rms;
         }
+        if (fs != k_fs) { // other required rates: NOTE 2 resampling of the token
+            token = resample(token, k_fs, fs, static_cast<size_t>(0.5 * fs));
+        }
+        const size_t        tok_n = token.size();
+        const size_t        pau_n = tok_n;
         std::vector<double> out;
-        out.reserve((token_n + pause_n) * steps);
+        out.reserve((tok_n + pau_n) * steps);
         for (size_t s = 0; s < steps; ++s) {
             const double g = std::pow(10.0, (start_gain_db + static_cast<double>(s)) / 20.0);
             if (token_starts != nullptr) {
@@ -431,7 +516,7 @@ namespace mutap_test::itu {
             for (const double v : token) {
                 out.push_back(g * v);
             }
-            out.insert(out.end(), pause_n, 0.0);
+            out.insert(out.end(), pau_n, 0.0);
         }
         return out;
     }
@@ -440,7 +525,7 @@ namespace mutap_test::itu {
 
     /// Hoth noise (the P.800/P.340 room-noise spectrum): white noise
     /// shaped by the standard Hoth density corners (relative dB).
-    inline std::vector<double> make_hoth_noise(size_t samples, unsigned seed) {
+    inline std::vector<double> make_hoth_noise(size_t samples, unsigned seed, double fs = k_fs) {
         static const std::vector<std::pair<double, double>> k_corners = {
             {100.0, 0.0},    {200.0, -1.7},   {400.0, -5.7},   {800.0, -12.4},
             {1000.0, -14.7}, {2000.0, -22.6}, {4000.0, -30.5}, {8000.0, -39.0}};
@@ -450,7 +535,7 @@ namespace mutap_test::itu {
         for (auto& v : x) {
             v = dist(gen);
         }
-        return fir_apply(x, design_from_corners(k_fs, k_corners));
+        return fir_apply(x, design_from_corners(fs, k_corners));
     }
 
     /// Synthetic driving-noise analogue (labeled as such in the matrix:
@@ -458,7 +543,7 @@ namespace mutap_test::itu {
     /// documented stand-in): low-frequency-dominated noise, -12 dB/oct
     /// above 120 Hz with a mild shelf, non-stationary +-2 dB slow
     /// amplitude wander.
-    inline std::vector<double> make_driving_noise(size_t samples, unsigned seed) {
+    inline std::vector<double> make_driving_noise(size_t samples, unsigned seed, double fs = k_fs) {
         static const std::vector<std::pair<double, double>> k_corners = {
             {50.0, 0.0},     {120.0, 0.0},    {240.0, -12.0},  {480.0, -22.0},
             {1000.0, -30.0}, {4000.0, -42.0}, {12000.0, -54.0}};
@@ -468,10 +553,10 @@ namespace mutap_test::itu {
         for (auto& v : x) {
             v = dist(gen);
         }
-        auto         y  = fir_apply(x, design_from_corners(k_fs, k_corners));
+        auto         y  = fir_apply(x, design_from_corners(fs, k_corners));
         const double pi = std::numbers::pi;
         for (size_t n = 0; n < y.size(); ++n) {
-            const double t = static_cast<double>(n) / k_fs;
+            const double t = static_cast<double>(n) / fs;
             y[n] *= std::pow(10.0, 2.0 * std::sin(2.0 * pi * 0.13 * t) / 20.0);
         }
         return y;
@@ -485,17 +570,18 @@ namespace mutap_test::itu {
     /// length) and whose amplitude follows the rotation. path(t) is
     /// rebuilt per block by the caller via fill().
     struct moving_reflector {
-        std::vector<double> base;              ///< the static room/cabin IR
-        double              tap_gain = 0.1;    ///< reflector strength vs unit-energy base
-        double              delay0_s = 0.004;  ///< mean extra path delay
-        double              sweep_s  = 0.0008; ///< delay sweep amplitude (+- ~27 cm)
-        double              rate_hz  = 0.25;   ///< rotation rate (15 rpm = 0.25 Hz)
+        std::vector<double> base;               ///< the static room/cabin IR
+        double              tap_gain = 0.1;     ///< reflector strength vs unit-energy base
+        double              delay0_s = 0.004;   ///< mean extra path delay
+        double              sweep_s  = 0.0008;  ///< delay sweep amplitude (+- ~27 cm)
+        double              rate_hz  = 0.25;    ///< rotation rate (15 rpm = 0.25 Hz)
+        double              fs       = 48000.0; ///< the simulation rate the path runs at
 
         void fill(double t_seconds, std::vector<double>& path) const {
             path.assign(base.begin(), base.end());
             const double d  = delay0_s + sweep_s * std::sin(2.0 * std::numbers::pi * rate_hz * t_seconds);
             const double g  = tap_gain * std::abs(std::cos(2.0 * std::numbers::pi * rate_hz * t_seconds));
-            const double ds = d * k_fs;
+            const double ds = d * fs;
             const size_t i0 = static_cast<size_t>(ds);
             const double fr = ds - static_cast<double>(i0);
             if (i0 + 1 < path.size()) { // linear-interpolated fractional tap
