@@ -380,11 +380,11 @@ namespace mutap {
                 // INSTANTANEOUS |E|^2 when it exceeds the smoothed power
                 // — a near-end onset inside the smoother's lag must ride
                 // through, not get clipped by yesterday's S_ee.
-                const Sample se  = m_see[k] > pe ? m_see[k] : pe;
-                Sample       r   = m_leak[k] * m_syy[k] / (se + eps);
-                r                = r > Sample(1) ? Sample(1) : r;
-                Sample g = Sample(1) - m_cfg.over_subtraction * r;
-                g        = g < m_g_min ? m_g_min : (g > Sample(1) ? Sample(1) : g);
+                const Sample se = m_see[k] > pe ? m_see[k] : pe;
+                Sample       r  = m_leak[k] * m_syy[k] / (se + eps);
+                r               = r > Sample(1) ? Sample(1) : r;
+                Sample g        = Sample(1) - m_cfg.over_subtraction * r;
+                g               = g < m_g_min ? m_g_min : (g > Sample(1) ? Sample(1) : g);
                 if (k < m_cfg.low_band_bins) {
                     if (m_syy[k] > eps * Sample(100)) { // real echo estimate present
                         if (coh > m_cfg.leakage_gate) {
@@ -611,7 +611,7 @@ namespace mutap {
         std::vector<Sample>    m_gspec; ///< constrained gain spectrum (packed)
         std::vector<Sample>    m_gtime; ///< gain impulse response workspace
         Sample                 m_echo_explained = Sample(0);
-        std::uint32_t          m_rng = 0x2545F491U;
+        std::uint32_t          m_rng            = 0x2545F491U;
     };
 
     /// The unit the compliance matrix measures: a linear canceller
@@ -740,8 +740,8 @@ namespace mutap {
                 m_conv_count = 0;
             }
 
-            const Sample target = receive_active ? std::pow(Sample(10), -m_cfg.guard_attenuation_db / Sample(20))
-                                                 : Sample(1);
+            const Sample target =
+                receive_active ? std::pow(Sample(10), -m_cfg.guard_attenuation_db / Sample(20)) : Sample(1);
             // ~10 ms transitions at block 256 / 48 kHz; click-free.
             m_guard += Sample(0.5) * (target - m_guard);
             for (size_t i = 0; i < b; ++i) {

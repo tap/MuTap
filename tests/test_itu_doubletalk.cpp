@@ -32,7 +32,9 @@ namespace {
         double at48;
         double at16;
     };
-    double expected(const rate_pair& p, const rate_setup& rs) { return rs.fs == 48000.0 ? p.at48 : p.at16; }
+    double expected(const rate_pair& p, const rate_setup& rs) {
+        return rs.fs == 48000.0 ? p.at48 : p.at16;
+    }
 
     template <typename Proc>
     void converge_css(Proc& p, echo_sim<double>& sim, const rate_setup& rs, unsigned seed = 501) {
@@ -77,7 +79,7 @@ namespace {
     // target <= 1.5. One run grades both.
     TEST(ItuDoubleTalk, SendAttenuationDuringDoubleTalk) {
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
+            compliance_chain                  c(chain_config(rs));
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -88,8 +90,7 @@ namespace {
             const auto oh = settled_half(o.out, o.n);
             const auto sp = amfm_send_plan();
 
-            const double integ =
-                comb_band_level_db(vh, sp, 0.0, rs.fs) - comb_band_level_db(oh, sp, 0.0, rs.fs);
+            const double integ = comb_band_level_db(vh, sp, 0.0, rs.fs) - comb_band_level_db(oh, sp, 0.0, rs.fs);
             EXPECT_LE(integ, 1.5) << "fs " << rs.fs; // measured: see header table
 
             double worst = -1e9;
@@ -100,8 +101,8 @@ namespace {
                 amfm_plan one;
                 one.f0.push_back(sp.f0[b]);
                 one.df.push_back(sp.df[b]);
-                worst = std::max(worst, comb_band_level_db(vh, one, 0.0, rs.fs)
-                                            - comb_band_level_db(oh, one, 0.0, rs.fs));
+                worst =
+                    std::max(worst, comb_band_level_db(vh, one, 0.0, rs.fs) - comb_band_level_db(oh, one, 0.0, rs.fs));
             }
             EXPECT_LE(worst, expected({2.0, 2.5}, rs)) << "fs " << rs.fs;
         }
@@ -112,16 +113,16 @@ namespace {
     // EACH receive band 200-6950 Hz.
     TEST(ItuDoubleTalk, EchoLossDuringDoubleTalkPerBand) {
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
+            compliance_chain                  c(chain_config(rs));
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
             echo_sim<double> sim(sc);
             converge_css(c, sim, rs);
-            const auto o  = run_amfm_dt(c, sim, rs, -25.7);
-            const auto xh = settled_half(o.x, o.n);
-            const auto oh = settled_half(o.out, o.n);
-            const auto rp = amfm_receive_plan();
+            const auto o     = run_amfm_dt(c, sim, rs, -25.7);
+            const auto xh    = settled_half(o.x, o.n);
+            const auto oh    = settled_half(o.out, o.n);
+            const auto rp    = amfm_receive_plan();
             double     worst = 1e9;
             for (size_t b = 0; b < rp.f0.size(); ++b) {
                 if (rp.f0[b] < 200.0 || rp.f0[b] > 6950.0 || rp.f0[b] > rs.fs / 2 * 0.9) {
@@ -130,8 +131,8 @@ namespace {
                 amfm_plan one;
                 one.f0.push_back(rp.f0[b]);
                 one.df.push_back(rp.df[b]);
-                worst = std::min(worst, comb_band_level_db(xh, one, 0.0, rs.fs)
-                                            - comb_band_level_db(oh, one, 0.0, rs.fs));
+                worst =
+                    std::min(worst, comb_band_level_db(xh, one, 0.0, rs.fs) - comb_band_level_db(oh, one, 0.0, rs.fs));
             }
             EXPECT_GE(worst, expected({33.0, 33.0}, rs)) << "fs " << rs.fs;
         }
@@ -146,7 +147,7 @@ namespace {
     // predicts (a simulation artifact worth 0.5 dB, recorded here).
     TEST(ItuDoubleTalk, TransferFunctionConstancy) {
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
+            compliance_chain                  c(chain_config(rs));
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -183,10 +184,10 @@ namespace {
             const auto   t_dt =
                 attenuation_spectrum(ph(v, static_cast<size_t>(rs.fs), n_half),
                                      ph(rr.out, static_cast<size_t>(rs.fs), n_half), rs.fs, 8192, 200.0, fmax);
-            const auto t_st = attenuation_spectrum(
-                ph(v, n_half + static_cast<size_t>(rs.fs), 2 * n_half),
-                ph(rr.out, n_half + static_cast<size_t>(rs.fs), 2 * n_half), rs.fs, 8192, 200.0, fmax);
-            double worst = 0.0;
+            const auto t_st  = attenuation_spectrum(ph(v, n_half + static_cast<size_t>(rs.fs), 2 * n_half),
+                                                    ph(rr.out, n_half + static_cast<size_t>(rs.fs), 2 * n_half), rs.fs,
+                                                    8192, 200.0, fmax);
+            double     worst = 0.0;
             for (size_t i = 0; i < t_dt.f_center.size() && i < t_st.f_center.size(); ++i) {
                 worst = std::max(worst, std::abs(t_dt.atten_db[i] - t_st.atten_db[i]));
             }
