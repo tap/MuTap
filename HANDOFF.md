@@ -363,6 +363,18 @@ byte-identical output verified; the signal layer is untouched.*
 C ABI extension for the notebook, maxref/help updates, book-chapter
 section, README compliance claims with margins. (Submodule dance,
 working note 6, as always.)
+*MAX HALF DONE — `mutap.aec~ @postfilter` engages the certified chain
+(raw Kalman + suppressor + comfort noise + receive guard) with the
+compliance preset's time-constant rescaling replicated for arbitrary
+(block, sample rate); maxref/help/README updated. CORE FOLLOW-UP FILED:
+the pinned compliance preset (tests/support/itu_chain.h chain_config)
+belongs in the library proper — e.g. a `mutap::aec_chain_preset(block,
+fs)` factory — so the Max external and any future consumer stop
+duplicating the scaling rule; the external's copy (mutap.aec_tilde.cpp
+make_chain_config) must be kept in lockstep until then. Note: Stage 4's
+notebook ended up NOT needing the C ABI (its dump harness includes the
+test machinery directly), so the "C ABI extension" item is now about
+FFI consumers generally — scope it when the MuTap half lands.*
 
 ---
 
