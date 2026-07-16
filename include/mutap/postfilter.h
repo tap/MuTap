@@ -118,6 +118,46 @@ namespace mutap {
             /// measures 15.7 ms and slower release saturates there.
             Sample gain_attack  = Sample(0.98);
             Sample gain_release = Sample(0.85);
+            /// Release SNAP: when the target gain exceeds the smoothed
+            /// gain by more than this factor, the smoothing is bypassed
+            /// and the gain jumps in one block (0 disables). Release-
+            /// direction only, so double-talk transparency and echo
+            /// containment are untouched — an echo burst raises |Yhat|^2
+            /// with |E|^2 and never produces a high target gain. What it
+            /// buys (measured, Stage 3): gains can START at the floor
+            /// (see reset()) so activation/convergence-phase echo is
+            /// suppressed from block one — the P.1110 convergence-in-
+            /// noise mask (echo <= BGN+10 dB from 100 ms) and G.168's
+            /// combined-loss-at-t0 clauses are unmeetable without it —
+            /// while a genuine near-end onset still opens the path in a
+            /// single block.
+            Sample release_snap = Sample(4);
+            /// LOW-BAND SUPPRESSION CAP: analysis bins below this index
+            /// whose coherence does NOT certify them echo-dominant never
+            /// suppress more than low_band_cap_db (0 bins = off, the
+            /// default). Rationale (Stage 3, measured): below ~300 Hz
+            /// the P.501 double-talk material and its echo overlap inside
+            /// any realizable analysis resolution, so suppression there
+            /// takes near-end voice fundamentals 1-for-1 — P.340's
+            /// transfer-function constancy bound (+-3 dB) measured a
+            /// 3.5 dB violation at the 200 Hz band. The cap is GATED on
+            /// the same coherence that gates the leakage learner: an
+            /// echo-certified bin (single talk, or an echo-only comb
+            /// line) still suppresses fully — an unconditional cap
+            /// measurably cost 12 dB of unweighted early convergence,
+            /// speech-shaped CSS being low-frequency-heavy. The
+            /// compliance chain preset caps bins below 300 Hz at 1.5 dB;
+            /// the library default leaves the cap off. Certification is
+            /// SUSTAINED: a bin uncaps only after this many consecutive
+            /// echo-dominant blocks with real echo-estimate power —
+            /// frozen (not reset) while the far end is silent, reset by
+            /// active contamination. Instantaneous certification leaked
+            /// through the near end's own pauses inside double talk
+            /// (P.501 DT CSS pauses 127 ms every 400 ms) and the P.340
+            /// transfer bound failed again (measured 3.21 dB).
+            size_t low_band_bins           = 0;
+            Sample low_band_cap_db         = Sample(1.5);
+            size_t low_band_certify_blocks = 56;
             /// Noise-floor tracker (two-window minimum statistics on
             /// smoothed |E|^2): power smoothing [0, 1), window length in
             /// blocks (floor reacts within 1-2 windows; speech bursts
@@ -136,6 +176,7 @@ namespace mutap {
             , m_n(cfg.analysis_blocks * cfg.block_size)
             , m_fft(m_n)
             , m_g_min(std::pow(Sample(10), -cfg.max_suppression_db / Sample(20)))
+            , m_g_low(std::pow(Sample(10), -cfg.low_band_cap_db / Sample(20)))
             , m_input(m_n)
             , m_ywin(m_n)
             , m_yspec(m_n)
@@ -150,6 +191,7 @@ namespace mutap {
             , m_see(m_n / 2 + 1)
             , m_leak(m_n / 2 + 1)
             , m_gain(m_n / 2 + 1)
+            , m_low_cnt(m_n / 2 + 1)
             , m_psm(m_n / 2 + 1)
             , m_min_cur(m_n / 2 + 1)
             , m_min_prev(m_n / 2 + 1)
@@ -172,6 +214,11 @@ namespace mutap {
         /// The learned per-bin leakage lam (the canceller's effective
         /// per-bin misalignment; 1 until first certified echo-dominant).
         Sample leakage_at(size_t k) const noexcept { return m_leak[k]; }
+        /// Broadband fraction of smoothed mic power the echo estimate
+        /// explains (0 with an unconverged canceller, -> ~1 in echo-
+        /// dominant single talk). aec_chain's initial receive guard
+        /// certifies convergence on this.
+        Sample echo_explained() const noexcept { return m_echo_explained; }
 
         void reset() noexcept {
             for (size_t i = 0; i < m_n; ++i) { // Hann for the ESTIMATION ffts
@@ -204,11 +251,19 @@ namespace mutap {
             for (auto& v : m_syy) {
                 v = Sample(0);
             }
+            // Gains START at the floor: until the estimators have seen
+            // evidence, the safe state is "suppress" — a fresh (or
+            // reset) canceller passes raw echo, and the convergence
+            // masks begin at t = 0. A genuine near-end onset is rescued
+            // by the release snap within one block.
             for (auto& v : m_gain) {
-                v = Sample(1);
+                v = m_g_min;
             }
             for (auto& v : m_psm) {
                 v = Sample(0);
+            }
+            for (auto& v : m_low_cnt) {
+                v = 0;
             }
             // The PREVIOUS-window minimum starts at 0: the floor — and
             // with it the comfort fill — stays OFF until one full window
@@ -263,8 +318,9 @@ namespace mutap {
             m_fft.forward_inplace(m_yspec.data());
 
             // Pass 1 per analysis bin: gated power-domain leakage ->
-            // Wiener gain -> time smoothing (attack 0 = same-block
-            // suppression, so talk onsets cannot burst through).
+            // Wiener gain -> time smoothing.
+            Sample sum_syy = Sample(0);
+            Sample sum_sdd = Sample(0);
             for (size_t k = 0; k < bins; ++k) {
                 Sample d_re;
                 Sample d_im;
@@ -297,6 +353,8 @@ namespace mutap {
                 // saturates at 0.34 while adapting — the update keeps E
                 // orthogonal to its reference, so the canceller output
                 // is the one signal the echo estimate cannot explain.)
+                sum_syy += py;
+                sum_sdd += pd;
                 const Sample a_r = m_cfg.leakage_smoothing;
                 m_sdy_re[k] += (Sample(1) - a_r) * ((d_re * y_re + d_im * y_im) - m_sdy_re[k]);
                 m_sdy_im[k] += (Sample(1) - a_r) * ((d_im * y_re - d_re * y_im) - m_sdy_im[k]);
@@ -325,11 +383,33 @@ namespace mutap {
                 const Sample se  = m_see[k] > pe ? m_see[k] : pe;
                 Sample       r   = m_leak[k] * m_syy[k] / (se + eps);
                 r                = r > Sample(1) ? Sample(1) : r;
-                Sample g         = Sample(1) - m_cfg.over_subtraction * r;
-                g                = g < m_g_min ? m_g_min : (g > Sample(1) ? Sample(1) : g);
-                const Sample a_g = g < m_gain[k] ? m_cfg.gain_attack : m_cfg.gain_release;
-                m_gain[k] += (Sample(1) - a_g) * (g - m_gain[k]);
+                Sample g = Sample(1) - m_cfg.over_subtraction * r;
+                g        = g < m_g_min ? m_g_min : (g > Sample(1) ? Sample(1) : g);
+                if (k < m_cfg.low_band_bins) {
+                    if (m_syy[k] > eps * Sample(100)) { // real echo estimate present
+                        if (coh > m_cfg.leakage_gate) {
+                            if (m_low_cnt[k] < m_cfg.low_band_certify_blocks) {
+                                ++m_low_cnt[k];
+                            }
+                        }
+                        else {
+                            m_low_cnt[k] = 0; // active contamination: back to capped
+                        }
+                    }
+                    if (m_low_cnt[k] < m_cfg.low_band_certify_blocks && g < m_g_low) {
+                        g = m_g_low; // uncertified low bin: protect the near end
+                    }
+                }
+                if (m_cfg.release_snap > Sample(0) && g > m_cfg.release_snap * m_gain[k]) {
+                    m_gain[k] = g; // release snap: overwhelming evidence, open now
+                }
+                else {
+                    const Sample a_g = g < m_gain[k] ? m_cfg.gain_attack : m_cfg.gain_release;
+                    m_gain[k] += (Sample(1) - a_g) * (g - m_gain[k]);
+                }
             }
+
+            m_echo_explained = sum_syy / (sum_sdd + eps);
 
             // Pass 2: CONSTRAIN the gain response to a causal block_size-
             // tap linear-phase filter (the postfilter's version of the
@@ -399,6 +479,15 @@ namespace mutap {
                 if (m_psm[k] < m_min_cur[k]) {
                     m_min_cur[k] = m_psm[k];
                 }
+                // NOISE-FLOOR GAIN BOUND for the next block's gain rule:
+                // suppression must stop AT the tracked near-end floor —
+                // the Wiener rule otherwise PARTIALLY suppresses bins
+                // where echo and loud noise share power, landing above
+                // the per-bin floor where the comfort fill cannot
+                // engage, and the transmitted noise pumps with the far
+                // end's cadence (measured 20 dB in driving noise at
+                // -30 dBm0(A); the fill-only design read 2.9 dB in
+                // quiet Hoth and hid this).
                 if (m_cfg.comfort_noise) {
                     const Sample fl = m_cfg.floor_bias * (m_min_cur[k] < m_min_prev[k] ? m_min_cur[k] : m_min_prev[k]);
                     const Sample po = out_re * out_re + out_im * out_im;
@@ -452,6 +541,9 @@ namespace mutap {
             if (cfg.floor_window == 0 || cfg.floor_bias <= Sample(0)) {
                 throw std::invalid_argument("residual_suppressor: floor_window/floor_bias must be positive");
             }
+            if (cfg.release_snap < Sample(0)) {
+                throw std::invalid_argument("residual_suppressor: release_snap must be >= 0");
+            }
             return cfg;
         }
 
@@ -496,6 +588,7 @@ namespace mutap {
         size_t                 m_n; ///< FFT size, 2 * block_size
         basic_real_fft<Sample> m_fft;
         Sample                 m_g_min;
+        Sample                 m_g_low;
         std::vector<Sample>    m_input; ///< sliding analysis window of e
         std::vector<Sample>    m_ywin;  ///< sliding analysis window of the echo estimate
         std::vector<Sample>    m_yspec; ///< Hann-windowed estimation spectrum of the echo estimate
@@ -510,12 +603,14 @@ namespace mutap {
         std::vector<Sample>    m_see;      ///< smoothed |E|^2
         std::vector<Sample>    m_leak;     ///< per-bin leakage lam (residual per unit Yhat power)
         std::vector<Sample>    m_gain;     ///< smoothed per-bin gain
+        std::vector<size_t>    m_low_cnt;  ///< consecutive certified blocks per low bin
         std::vector<Sample>    m_psm;      ///< smoothed |E|^2 for the floor tracker
         std::vector<Sample>    m_min_cur;  ///< current-window minimum of m_psm
         std::vector<Sample>    m_min_prev; ///< previous-window minimum
         size_t                 m_min_count = 0;
         std::vector<Sample>    m_gspec; ///< constrained gain spectrum (packed)
         std::vector<Sample>    m_gtime; ///< gain impulse response workspace
+        Sample                 m_echo_explained = Sample(0);
         std::uint32_t          m_rng = 0x2545F491U;
     };
 
@@ -545,13 +640,40 @@ namespace mutap {
         struct config {
             typename Canceller::config                   canceller;
             typename residual_suppressor<Sample>::config postfilter;
+            /// INITIAL RECEIVE GUARD: switched send attenuation while the
+            /// far end is active and the canceller has not yet certified
+            /// convergence, latched OFF permanently once it has. An
+            /// Yhat-referenced suppressor is structurally blind during
+            /// initial convergence (the echo estimate is ~0, so nothing
+            /// marks the mic signal as echo) and raw echo passes for the
+            /// first few hundred ms — the P.1110 convergence masks
+            /// (echo <= BGN+10 dB from 100 ms in noise) are unmeetable
+            /// without switched loss, which is exactly what the recs'
+            /// switching allowance (A_H,S < 20 dB, attenuation in send
+            /// when receive-active) exists for. Depth stays inside the
+            /// margin target (< 14 dB) so the guard itself remains
+            /// switching-compliant. 0 disables.
+            Sample guard_attenuation_db = Sample(14);
+            /// Receive-activity threshold: x block power must exceed this
+            /// factor times the tracked x floor (16 = +12 dB).
+            Sample guard_activity_ratio = Sample(16);
+            /// Convergence certification: echo_explained() must exceed
+            /// this fraction for guard_hold_blocks consecutive blocks.
+            /// 0.9 is where the suppressor's own coherence gate opens —
+            /// the guard hands over exactly when the Wiener rule can
+            /// take the load (0.5 released after ~3 dB of ERLE and the
+            /// convergence-in-noise mask was missed by 12 dB).
+            Sample guard_converge_ratio = Sample(0.9);
+            size_t guard_hold_blocks    = 20;
         };
 
         explicit aec_chain(const config& cfg)
-            : m_afc(cfg.canceller)
+            : m_cfg(cfg)
+            , m_afc(cfg.canceller)
             , m_post(matched(cfg.postfilter, m_afc.block_size()))
             , m_mid(m_afc.block_size())
-            , m_yhat(m_afc.block_size()) {}
+            , m_yhat(m_afc.block_size())
+            , m_guard_gain(std::pow(Sample(10), -cfg.guard_attenuation_db / Sample(20))) {}
 
         size_t block_size() const noexcept { return m_afc.block_size(); }
 
@@ -563,7 +685,15 @@ namespace mutap {
         void reset() noexcept {
             m_afc.reset();
             m_post.reset();
+            m_x_floor    = Sample(0);
+            m_conv_count = 0;
+            m_converged  = false;
+            m_guard      = Sample(1);
         }
+
+        /// True once the initial receive guard has certified convergence
+        /// (always true when the guard is disabled).
+        bool converged() const noexcept { return m_converged || m_cfg.guard_attenuation_db <= Sample(0); }
 
         void set_adaptation(bool enabled) noexcept { m_afc.set_adaptation(enabled); }
 
@@ -576,6 +706,7 @@ namespace mutap {
                 m_afc.process_block(x, y, m_mid.data());
                 m_post.process_block(m_mid.data(), m_afc.echo_estimate_block(), e);
             }
+            apply_guard(x, e);
         }
 
       private:
@@ -585,10 +716,49 @@ namespace mutap {
             return pf;
         }
 
+        void apply_guard(const Sample* x, Sample* e) noexcept {
+            if (m_cfg.guard_attenuation_db <= Sample(0) || m_converged) {
+                return;
+            }
+            const size_t b     = block_size();
+            Sample       x_pow = Sample(0);
+            for (size_t i = 0; i < b; ++i) {
+                x_pow += x[i] * x[i];
+            }
+            // Asymmetric floor: fast fall, slow rise (rides under talk).
+            const Sample a_f = x_pow < m_x_floor ? Sample(0.7) : Sample(0.999);
+            m_x_floor += (Sample(1) - a_f) * (x_pow - m_x_floor);
+            const bool receive_active = x_pow > m_cfg.guard_activity_ratio * m_x_floor + Sample(1e-20);
+
+            if (m_post.echo_explained() > m_cfg.guard_converge_ratio) {
+                if (++m_conv_count >= m_cfg.guard_hold_blocks) {
+                    m_converged = true; // latch: the guard never re-engages
+                    return;
+                }
+            }
+            else {
+                m_conv_count = 0;
+            }
+
+            const Sample target = receive_active ? std::pow(Sample(10), -m_cfg.guard_attenuation_db / Sample(20))
+                                                 : Sample(1);
+            // ~10 ms transitions at block 256 / 48 kHz; click-free.
+            m_guard += Sample(0.5) * (target - m_guard);
+            for (size_t i = 0; i < b; ++i) {
+                e[i] *= m_guard;
+            }
+        }
+
+        config                      m_cfg;
         Canceller                   m_afc;
         residual_suppressor<Sample> m_post;
         std::vector<Sample>         m_mid;
         std::vector<Sample>         m_yhat;
+        Sample                      m_guard_gain;
+        Sample                      m_x_floor    = Sample(0);
+        size_t                      m_conv_count = 0;
+        bool                        m_converged  = false;
+        Sample                      m_guard      = Sample(1);
     };
 
 } // namespace mutap
