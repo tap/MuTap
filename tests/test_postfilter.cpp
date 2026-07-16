@@ -25,17 +25,19 @@
 // stated):
 //
 //   single-talk max residual, A-weighted 35 ms meter, CSS at -16 dBm0:
-//     kalman+pf cabin  -80.5 dBm0(A)   kalman+pf studio -89.7
-//     nlms+pf   cabin  -66.2           kalman 16 kHz cabin -70.7
+//     kalman+pf cabin  -79.9 dBm0(A)   kalman+pf studio -88.9
+//     nlms+pf   cabin  -65.0           kalman 16 kHz cabin -69.1
 //   double-talk (AM-FM orthogonal pair, P.501 Table 7-6):
-//     send atten (send -1.7 dBPa):   cabin 1.14 dB   studio 1.03
+//     send atten (send -1.7 dBPa):   cabin 1.05 dB   studio 0.93
 //     echo loss worst band 200-6950 Hz (send -25.7 dBPa):
-//                                    cabin 37.9 dB   studio 34.2 (both @ 270 Hz)
+//                                    cabin 38.0 dB (6660 Hz)   studio 34.1 (270 Hz)
 //   convergence from cold start (CSS -16 dBm0, 35 ms meters):
 //     ERL 43.2 dB by 600 ms, 46.9 by 1200, 55.3 by 2000, 60.6 by 5000
 //   comfort noise (Hoth at -46 dBm0 near end, CSS -16 dBm0 far end):
-//     level delta -1.50 dB; band spectrum deviation <= 1.69 dB;
-//     noise pumping 2.9 dB; DT-onset build-up 11.6 ms
+//     level delta -1.20 dB; band spectrum deviation <= 1.69 dB;
+//     noise pumping 3.3 dB; DT-onset build-up 20.9 ms (gain_release
+//     0.85; 0.9 measured 26.0 ms against the switching rows' 25 ms
+//     margin target, which is what set the default)
 //
 // Matrix margin targets asserted: ST residual < -64 dBm0(A)
 // (ITU_EchoLevel), DT send atten <= 1.5 dB (ITU_DtSendAtten /
@@ -186,7 +188,7 @@ namespace {
     // ---------------------------------------------------------------- tests
 
     // ITU_EchoLevel margin target: < -64 dBm0(A) single-talk residual.
-    // Measured: cabin -80.5, studio -89.7 dBm0(A).
+    // Measured: cabin -79.9, studio -88.9 dBm0(A).
     TEST(ItuChain, SingleTalkResidualKalman) {
         {
             chain_kalman c(aec_config<chain_kalman>());
@@ -198,14 +200,14 @@ namespace {
         }
     }
 
-    // The NLMS-core chain also meets the margin target (measured -66.2).
+    // The NLMS-core chain also meets the margin target (measured -65.0).
     TEST(ItuChain, SingleTalkResidualNlmsCore) {
         chain_nlms c(aec_config<chain_nlms>());
         EXPECT_LT(single_talk_residual(c, cabin_path(), k_fs, k_block), -64.0);
     }
 
     // 16 kHz is a REQUIRED operating rate (matrix sample-rate policy).
-    // Cabin path resampled with the NOTE 2 resampler; measured -70.7.
+    // Cabin path resampled with the NOTE 2 resampler; measured -69.1.
     TEST(ItuChain, SingleTalkResidualAt16k) {
         const double        fs16 = 16000.0;
         std::vector<double> cab48(fixtures::k_rir_cabin, fixtures::k_rir_cabin + 4096);
@@ -217,7 +219,7 @@ namespace {
 
     // ITU_DtSendAtten / ITU_DtSentSpeech margin target: <= 1.5 dB near-end
     // attenuation during double talk, send at -1.7 dBPa. Measured: cabin
-    // 1.14, studio 1.03 dB (bare canceller -0.41: the postfilter's whole
+    // 1.05, studio 0.93 dB (bare canceller -0.41: the postfilter's whole
     // cost is ~1.4 dB, spent at the comb bins the analysis cannot split).
     TEST(ItuChain, DoubleTalkSendAttenuation) {
         const auto sp = itu::amfm_send_plan();
@@ -234,7 +236,7 @@ namespace {
 
     // ITU_DtEchoLoss margin target: >= 33 dB echo loss during double talk
     // in EACH receive band 200-6950 Hz, send at -25.7 dBPa. Measured worst
-    // bands: cabin 37.9 dB, studio 34.2 dB (both at the 270 Hz line the
+    // bands: cabin 38.0 dB (6660 Hz), studio 34.1 dB (the 270 Hz line the
     // gain constraint cannot notch selectively — the canceller carries it).
     TEST(ItuChain, DoubleTalkEchoLossPerBand) {
         const auto   rp               = itu::amfm_receive_plan();
@@ -308,8 +310,8 @@ namespace {
     // ITU_ComfortNoiseLevel (+1/-2.5 dB target), ITU_ComfortNoiseSpectrum
     // (half-mask: +-6 dB 200-800 Hz, +-5 to 2 kHz, +-3 above) and
     // ITU_NoisePump* (<= 5 dB target): Hoth noise at -46 dBm0 in the near
-    // end, far-end CSS bursts. Measured: level delta -1.50 dB, worst band
-    // deviation 1.69 dB, pumping 2.9 dB.
+    // end, far-end CSS bursts. Measured: level delta -1.20 dB, worst band
+    // deviation 1.69 dB, pumping 3.3 dB.
     TEST(ItuChain, ComfortNoiseMatchesFloor) {
         chain_kalman                      c(aec_config<chain_kalman>());
         typename echo_sim<double>::config sc;
@@ -401,7 +403,7 @@ namespace {
     }
 
     // Switching build-up target <= 25 ms: near-end onset mid-double-talk
-    // reaches within 3 dB of its settled send level in 11.6 ms (measured).
+    // reaches within 3 dB of its settled send level in 20.9 ms (measured).
     TEST(ItuChain, NearEndBuildUpTime) {
         chain_kalman                      c(aec_config<chain_kalman>());
         typename echo_sim<double>::config sc;
@@ -421,8 +423,12 @@ namespace {
         cd.shaped  = true;
         auto v     = itu::make_css_at(cd, k_fs);
         v.resize(x.size(), 0.0);
-        const double        vg = itu::dbpa_to_rms(-1.7) / itu::rms_of(v.data(), v.size() / 2);
-        const size_t        t0 = (x.size() / k_block / 6) * 5 * k_block; // last sixth
+        const double vg = itu::dbpa_to_rms(-1.7) / itu::rms_of(v.data(), v.size() / 2);
+        // Onset at 2/3 of the run — the settled-level window below needs
+        // 2 s of trace after it. (An onset at 5/6 left only 1.75 s and the
+        // window read past the trace: ASan aborted, MSVC compared against
+        // a garbage median. The other platforms' passes were luck.)
+        const size_t        t0 = (x.size() / k_block * 2 / 3) * k_block;
         std::vector<double> vv(x.size(), 0.0);
         for (size_t i = t0; i < x.size(); ++i) {
             vv[i] = vg * v[i - t0];
@@ -437,8 +443,9 @@ namespace {
         auto                 seg = aw.apply(std::vector<double>(out.begin() + static_cast<long>(t0) - 4800, out.end()));
         itu::exp_level_meter m(k_fs, 0.005);
         const auto           tr = m.trace_dbm0(seg);
-        std::vector<double>  settled(tr.begin() + 4800 + static_cast<long>(k_fs),
-                                     tr.begin() + 4800 + static_cast<long>(2 * k_fs));
+        ASSERT_GE(tr.size(), 4800 + static_cast<size_t>(2 * k_fs));
+        std::vector<double> settled(tr.begin() + 4800 + static_cast<long>(k_fs),
+                                    tr.begin() + 4800 + static_cast<long>(2 * k_fs));
         std::nth_element(settled.begin(), settled.begin() + static_cast<long>(settled.size() / 2), settled.end());
         const double target = settled[settled.size() / 2];
         size_t       t_hit  = tr.size();

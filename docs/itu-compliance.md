@@ -344,15 +344,15 @@ defaults:
 
 | Deliverable | Margin target | Measured |
 |---|---|---|
-| ST residual, cabin / studio | < -64 dBm0(A) | **-80.5 / -89.7** |
-| ST residual, NLMS core / 16 kHz | < -64 dBm0(A) | -66.2 / -70.7 |
-| DT send attenuation, cabin / studio | <= 1.5 dB | **1.14 / 1.03** |
-| DT echo loss, worst band 200-6950 Hz | >= 33 dB | **37.9 / 34.2** (270 Hz) |
+| ST residual, cabin / studio | < -64 dBm0(A) | **-79.9 / -88.9** |
+| ST residual, NLMS core / 16 kHz | < -64 dBm0(A) | -65.0 / -69.1 |
+| DT send attenuation, cabin / studio | <= 1.5 dB | **1.05 / 0.93** |
+| DT echo loss, worst band 200-6950 Hz | >= 33 dB | **38.0 / 34.1** |
 | ERL by 600 / 1200 ms | >= 40 / >= 46 dB | 43.2 / 46.9 |
-| Comfort-noise level match | +1 / -2.5 dB | -1.50 |
+| Comfort-noise level match | +1 / -2.5 dB | -1.20 |
 | Comfort-noise spectrum, worst band | half-mask (+-3..6) | 1.69 dB |
-| Noise pumping | <= 5 dB | 2.9 |
-| Near-end build-up at DT onset | <= 25 ms | 11.6 ms |
+| Noise pumping | <= 5 dB | 3.3 |
+| Near-end build-up at DT onset | <= 25 ms | 20.9 ms |
 
 Design decisions the numbers forced (full derivations in
 postfilter.h's comments, rejected designs kept in git history):
