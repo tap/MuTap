@@ -348,6 +348,16 @@ margins.*
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,
 requirement/measured/margin table per section, convergence curves vs the
 specs' time masks, double-talk timelines vs the P.340 windows.
+*DONE — the notebook's first cell compiles `tools/notebook/itu_dump.cpp`
+(option `MUTAP_BUILD_ITU_DUMP`) and re-measures the whole battery live
+(~6 min): the dump includes the test suite's own itu_chain.h machinery,
+so every notebook number is the number the assertions gate. Nine
+sections: steady state, Tier A convergence vs masks, G.168 Figures
+9/11 + the re-convergence deviation (honest figure), double talk vs
+P.340, comfort noise/pumping, path dynamics, stability/delay, G.167
+run-and-reported. CSS generation (NOTE 2 resampler from 44.1 kHz
+native) dominates the dump's runtime — memoized in the dump only,
+byte-identical output verified; the signal layer is untouched.*
 
 **Stage 5 — Externals + docs.** Post-filter attribute on `mutap.aec~`,
 C ABI extension for the notebook, maxref/help updates, book-chapter

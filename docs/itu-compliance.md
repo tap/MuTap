@@ -538,4 +538,31 @@ comfort-noise step tracking against G.168's +-2 requirement, -1.72
 after; the Tier A ComfortNoiseLevel row moves from -2.91 (target miss)
 to -2.15 (target met) at 16 kHz.
 
-Remaining: Stage 4 (proof notebook) and Stage 5 (externals/docs).
+## Stage 4 delivered: the compliance proof notebook
+
+`tools/notebook/build_itu_compliance.py` assembles and executes
+`notebooks/itu_compliance.ipynb`: one section per requirement group,
+a requirement/measured/margin table per section, the convergence
+trajectories drawn against the recommendations' time masks (quiet,
+in-noise, G.168 Figures 9/11), the double-talk rows against the P.340
+windows (per-band send attenuation and echo loss, transfer constancy,
+hangover, build-up), comfort noise/pumping, path dynamics with an
+honest figure of the re-convergence deviation, the Annex E sweep, and
+the G.167 run-and-reported row with the TCLwdt finding.
+
+Nothing in the notebook is transcribed by hand except the
+recommendations' requirement values: its first cell compiles
+`tools/notebook/itu_dump.cpp` (CMake option `MUTAP_BUILD_ITU_DUMP`,
+built in a dedicated `build-itu/` tree) and re-runs the full battery
+live (~6 minutes, deterministic seeds). The dump program includes the
+SAME `tests/support/itu_chain.h` machinery the test suite gates with —
+same pinned chain, same signals, same meters — and its scenario
+recipes mirror the gtest rows line for line, so a number in the
+notebook is the number the suite asserts. The gtest files remain the
+assertion authority; the notebook exists so a human can see the
+trajectories the assertions compress into pass/fail. (Measurement
+note: CSS generation through the NOTE 2 resampler dominates the dump's
+runtime, so it memoizes `make_css_at` — verified byte-identical output
+against the uncached run.)
+
+Remaining: Stage 5 (externals/docs).

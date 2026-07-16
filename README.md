@@ -230,6 +230,16 @@ algorithmically complete. What exists today:
   figures as an informative row. One documented deviation: deep
   re-convergence after *abrupt* path changes (the Kalman
   uncertainty-re-inflation follow-up in HANDOFF).
+- **The compliance proof notebook** (Stage 4) —
+  [`notebooks/itu_compliance.ipynb`](notebooks/itu_compliance.ipynb):
+  requirement/measured/margin tables for every row above, convergence
+  trajectories drawn against the recommendations' time masks, the
+  double-talk timelines against the P.340 windows, and an honest figure
+  of the re-convergence deviation. Nothing in it is pasted in: the first
+  cell compiles [`tools/notebook/itu_dump.cpp`](tools/notebook/itu_dump.cpp)
+  (`-DMUTAP_BUILD_ITU_DUMP=ON`) — a C++ battery reusing the test suite's
+  own scenario machinery and meters — and re-measures everything live
+  (~6 minutes, deterministic seeds).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
@@ -272,7 +282,10 @@ material, IPC, burst survival — see
 [notebooks/afc_demo.ipynb](notebooks/afc_demo.ipynb), which drives the
 library through its C ABI (`-DMUTAP_BUILD_CAPI=ON`, `tools/capi/`) via
 ctypes (Python needs `numpy` and `matplotlib`; the first cell builds the
-shared library if needed).
+shared library if needed). The echo-canceller counterpart is
+[notebooks/itu_compliance.ipynb](notebooks/itu_compliance.ipynb) — the
+ITU compliance proof, every number re-measured live by a compiled C++
+battery.
 
 ## Layout
 
@@ -281,7 +294,8 @@ include/mutap/       the library (header-only; umbrella header mutap.h)
 third_party/ooura/   vendored Ooura FFT (see THIRD_PARTY_NOTICES.md)
 tests/               GoogleTest suite (fetched at configure time)
 tools/capi/          C ABI shared library for FFI consumers (notebooks)
-notebooks/           demo notebook (ctypes over the C ABI)
+tools/notebook/      notebook builders + the ITU measurement dump (C++)
+notebooks/           demo + compliance-proof notebooks (build products)
 book/                "Quieting the Loop" (mdBook) — the user-facing field guide
 platform/            Cortex-M55 bare-metal board support (startup, linker)
 cmake/               cross toolchain files (Cortex-M55 MPS3, Hexagon musl)
