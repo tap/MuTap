@@ -87,6 +87,14 @@ namespace mutap_test::itu {
         const size_t n_analysis    = pf.analysis_blocks * rs.block;
         pf.low_band_bins           = static_cast<size_t>(300.0 * static_cast<double>(n_analysis) / rs.fs) + 1;
         pf.low_band_certify_blocks = std::max<size_t>(8, static_cast<size_t>(56.0 / ratio));
+        // Comfort-noise floor bias, calibrated per rate: at 16 ms blocks
+        // the minimum-statistics window holds 3x fewer meter samples and
+        // the minima bias deeper (measured -2.8 dB comfort-noise step
+        // tracking at bias 4, against G.168's +-2 requirement; 5.6
+        // restores the 48 kHz calibration).
+        if (rs.fs != 48000.0) {
+            pf.floor_bias = 5.6;
+        }
         return cfg;
     }
 
