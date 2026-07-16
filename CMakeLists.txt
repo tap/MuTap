@@ -58,3 +58,10 @@ option(MUTAP_BUILD_CAPI "Build the C ABI shared library" OFF)
 if(MUTAP_BUILD_CAPI)
     add_subdirectory(tools/capi)
 endif()
+
+# Measurement dump for the ITU compliance proof notebook
+# (tools/notebook/build_itu_compliance.py -> notebooks/itu_compliance.ipynb).
+option(MUTAP_BUILD_ITU_DUMP "Build the ITU compliance measurement dump" OFF)
+if(MUTAP_BUILD_ITU_DUMP)
+    add_subdirectory(tools/notebook)
+endif()
