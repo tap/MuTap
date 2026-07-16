@@ -334,6 +334,15 @@ convergence collapses at block 128 / 16 kHz (8.9 vs 22.5 dB ERL by
 600 ms at block 256) — open investigation item, worked around by
 pinning block 256 at both rates. STILL OPEN (Stage 3b): the Tier B
 G.168-adapted battery and the G.167 historical row.*
+*STAGE 3b DONE — `tests/test_g168.cpp`: all twelve adapted rows at both
+required rates + the G.167 historical row; measured table and the one
+documented deviation in the matrix's "Stage 3b delivered" section.
+CORE FOLLOW-UP FILED: fd_kalman uncertainty re-inflation on sustained
+innovation excess — after an abrupt path change the converged filter's
+small state uncertainty makes deep re-convergence take ~7 s (48 kHz) /
+>10 s (16 kHz) where initial convergence (P(0) = 10) reaches Figure 9
+in 1.4 s; would also lift the TimeVariantPath and 16 kHz hangover
+margins.*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,

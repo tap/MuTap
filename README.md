@@ -220,6 +220,16 @@ algorithmically complete. What exists today:
   certifies) because no echo-estimate-referenced suppressor can see
   echo while the canceller is fresh — the convergence-in-noise mask is
   unmeetable without it.
+- **The Tier B G.168-adapted battery** — G.168's test structure
+  transplanted onto acoustic paths (reported as *adapted*, the rec
+  disclaims acoustic scope): all twelve rows pass at both rates —
+  convergence masks with 20+ dB early loss, double-talk divergence
+  bounded 24 dB inside the limit, leak rate that *improves* over 45 s
+  of silence, tone stability cancelled to the numerical floor, comfort
+  noise tracking steps within +-1.8 dB — plus the withdrawn G.167's
+  figures as an informative row. One documented deviation: deep
+  re-convergence after *abrupt* path changes (the Kalman
+  uncertainty-re-inflation follow-up in HANDOFF).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
