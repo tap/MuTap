@@ -242,12 +242,26 @@ Scope decisions settled with Tim (2026-07-16):
   asserted with >= 6 dB (level clauses) or >= 2x (time clauses) headroom,
   so margin EROSION fails CI, not just outright failure.
 
-**Stage 0 — Requirements matrix.** Read the recs; distill
-`docs/itu-compliance.md`: every testable clause -> requirement -> margin
-target -> owning test name. Pick the target terminal category and
-bandwidth classes here, with the real numbers in view (MuTap runs
-fullband; several clause sets are per-bandwidth). Matrix rows become
-test names; everything downstream keys off this document.
+**Stage 0 — Requirements matrix.** *DONE — `docs/itu-compliance.md`.
+Editions read: P.1110/P.1100 (03/2017), P.1120 (10/2025), P.340
+(05/2000), P.501 (04/2025), G.168 (04/2015), G.167 (03/1993, withdrawn),
+G.131 (11/2003). Findings that shaped the matrix: (1) the AUTOMOTIVE
+series is the operative modern AEC battery (concrete masks: TCL >= 46 dB,
+residual < -58 dBm0(A), ERL >= 40 dB by 1.2 s, spectral masks, switching
+dynamics, comfort-noise tolerances); (2) P.1120 (2025) normatively cites
+P.340 (2000) — the edition in hand — and restates all category tables,
+so the P.340-2019 procurement gap is moot for the operative rows;
+(3) P.340/G.167 explicitly permit simulated echo paths and P.1110
+clause 8 defines digital insertion interfaces for exactly this kind of
+testing; (4) targets chosen: P.340 CATEGORY 1 (full duplex) on all three
+double-talk tables, WB+SWB/FB primary bandwidths at 48 kHz; (5) the
+P.1110 Annex E stability sweep (far-end ERL 50 -> 0 dB, no howling) is a
+closed-loop test — AFC home turf; (6) real-speech gap: three core tests
+use ITU attachment WAVs (P.501 7.3.2/7.3.3/7.3.5) — Stage 1 attempts
+download for local git-ignored test use, else documented synthetic
+stand-ins marked method-equivalent; (7) P.502 still unobtained —
+analysis methods reconstructed from the P.340/P.111x test descriptions.
+Rec PDFs live in the session scratchpad only (never committed).*
 
 **Stage 1 — Calibrated ITU signal layer** (`tests/support/`). Level
 calibration conventions (dBov/activity-gated levels), a deterministic
