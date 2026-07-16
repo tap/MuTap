@@ -7,3 +7,7 @@ CMakeUserPresets.json
 .claude/
 book/book/
 __pycache__/
+
+# ITU real-speech test vectors: local test use only, never committed
+# (download from the ITU test-signal database; see docs/itu-compliance.md)
+tests/data/itu/
