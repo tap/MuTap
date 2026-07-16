@@ -111,11 +111,13 @@ namespace mutap {
             /// measured 3 dB off the 250 Hz near-end comb line during
             /// double talk (1.6 dB integrated; 1.0 dB at 0.98). Echo
             /// containment doesn't need the postfilter to be fast — the
-            /// canceller's Kalman gain is the fast defense. Release
-            /// (~50 ms) is the near-end onset path: the switching
-            /// clauses' build-up budget (T_r <= 25 ms recommended).
+            /// canceller's Kalman gain is the fast defense. Release is
+            /// the near-end onset path — the switching clauses' build-up
+            /// budget (T_r <= 25 ms target): 0.9 measured 26.0 ms to
+            /// within 3 dB of the settled double-talk send level, 0.8
+            /// measures 15.7 ms and slower release saturates there.
             Sample gain_attack  = Sample(0.98);
-            Sample gain_release = Sample(0.9);
+            Sample gain_release = Sample(0.85);
             /// Noise-floor tracker (two-window minimum statistics on
             /// smoothed |E|^2): power smoothing [0, 1), window length in
             /// blocks (floor reacts within 1-2 windows; speech bursts

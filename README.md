@@ -198,12 +198,12 @@ algorithmically complete. What exists today:
   buys nothing and its predictor refit floors misalignment near −20 dB
   where the raw core reaches −75 dBm0(A) bare). Measured on the ITU
   battery ([`tests/test_postfilter.cpp`](tests/test_postfilter.cpp)):
-  single-talk residual **−80.5/−89.7 dBm0(A)** (cabin/studio; the P.1120
+  single-talk residual **−79.9/−88.9 dBm0(A)** (cabin/studio; the P.1120
   clause wants < −58, our margin target < −64), double-talk near-end
-  attenuation **1.14 dB** (clause ≤ 3, target ≤ 1.5), double-talk echo
-  loss **≥ 34.2 dB in every band** (clause ≥ 27, target ≥ 33), comfort
-  noise matched **−1.5 dB / ≤ 1.7 dB per band** (clause +2/−5, half-mask
-  spectrum), noise pumping 2.9 dB, near-end build-up 11.6 ms.
+  attenuation **1.05 dB** (clause ≤ 3, target ≤ 1.5), double-talk echo
+  loss **≥ 34.1 dB in every band** (clause ≥ 27, target ≥ 33), comfort
+  noise matched **−1.2 dB / ≤ 1.7 dB per band** (clause +2/−5, half-mask
+  spectrum), noise pumping 3.3 dB, near-end build-up 20.9 ms.
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
