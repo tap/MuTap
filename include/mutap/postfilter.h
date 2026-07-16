@@ -795,14 +795,14 @@ namespace mutap {
         cfg.canceller.partitions          = partitions;
         cfg.canceller.transition          = Sample(0.9998); // the measured AEC sweet spot; NOT rescaled (see above)
         cfg.canceller.initial_uncertainty = Sample(10);
-        const double ratio            = (static_cast<double>(block_size) / sample_rate) / (256.0 / 48000.0);
-        cfg.canceller.noise_smoothing = Sample(std::pow(0.9, ratio));
-        auto& pf             = cfg.postfilter;
-        pf.leakage_smoothing = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
-        pf.gain_attack       = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
-        pf.gain_release      = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
-        pf.floor_smoothing   = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
-        pf.floor_window      = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
+        const double ratio                = (static_cast<double>(block_size) / sample_rate) / (256.0 / 48000.0);
+        cfg.canceller.noise_smoothing     = Sample(std::pow(0.9, ratio));
+        auto& pf                          = cfg.postfilter;
+        pf.leakage_smoothing              = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
+        pf.gain_attack                    = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
+        pf.gain_release                   = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
+        pf.floor_smoothing                = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
+        pf.floor_window = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
         // Low-band suppression cap from 300 Hz (protect voice fundamentals
         // no analysis resolution can separate from echo; the canceller
         // owns low-frequency echo) with sustained certification held at
