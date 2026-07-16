@@ -131,6 +131,14 @@ namespace mutap_test {
         const std::vector<Sample>& error_block() const { return m_e; }
         const std::vector<Sample>& echo_block() const { return m_d; }
 
+        /// Replace the echo path with one of the SAME length (keeps the
+        /// input history), for time-variant-path scenarios (ITU Stage 1:
+        /// the rotating-reflector analogue rebuilds the path per block).
+        void set_echo_path(const Sample* path, size_t n) {
+            assert(n == m_cfg.echo_path.size());
+            std::copy(path, path + n, m_cfg.echo_path.begin());
+        }
+
       private:
         config              m_cfg;
         std::vector<Sample> m_x_work; ///< x history + current block, for the F convolution

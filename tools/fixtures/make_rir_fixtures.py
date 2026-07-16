@@ -72,6 +72,18 @@ ROOMS = {
         mic=[9.5, 4.2, 1.6],
         blurb="reverberant hall, mic 5.6 m out — the PA scenario",
     ),
+    # The automotive scenario for the ITU compliance suite (Stage 1):
+    # ~2.6 m^3 enclosure, heavy absorption, RT ~60 ms — the car-interior
+    # figures G.167 5.2.3.1 specifies for mobile echo paths. Speaker in
+    # the footwell, mic at the mirror position.
+    "cabin": dict(
+        dims=[1.9, 1.45, 0.95],
+        absorption=0.75,
+        max_order=40,
+        speaker=[0.35, 0.4, 0.25],
+        mic=[1.1, 0.7, 0.85],
+        blurb="car cabin, mic at the mirror, speaker in the footwell",
+    ),
 }
 
 
@@ -122,10 +134,12 @@ def emit_header(name: str, rir: np.ndarray, provenance: str) -> None:
     print(f"wrote {path} ({len(rir)} taps)")
 
 
-def generate_modeled() -> None:
+def generate_modeled(only: str | None = None) -> None:
     import pyroomacoustics as pra
 
     for name, spec in ROOMS.items():
+        if only is not None and name != only:
+            continue
         room = pra.ShoeBox(
             spec["dims"],
             fs=FS,
@@ -188,11 +202,13 @@ def from_wav(wav_path: str, name: str, source: str) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--generate", action="store_true", help="rebuild the modeled rooms")
+    ap.add_argument("--only", default=None, help="with --generate: rebuild a single room "
+                    "(committed fixtures are baselines — never regenerate rooms you are not changing)")
     ap.add_argument("--from-wav", nargs=2, metavar=("WAV", "NAME"), help="import a measured RIR")
     ap.add_argument("--source", default="", help="provenance + license text for --from-wav")
     args = ap.parse_args()
     if args.generate:
-        generate_modeled()
+        generate_modeled(args.only)
     elif args.from_wav:
         if not args.source:
             raise SystemExit("--from-wav requires --source (provenance/license is not optional)")

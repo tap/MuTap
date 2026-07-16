@@ -65,9 +65,18 @@ approach:
   detector-free double-talk adaptation is MuTap's measured strength.
 - **Bandwidth: wideband (P.1110) and SWB/FB (P.1120) are primary**;
   narrowband (P.1100) variants run as band-limited configurations of the
-  same tests. Everything executes at 48 kHz with P.501-specified
-  band-limiting of the receive-direction signals (NB 3.6/4 kHz, WB
-  7.2/8 kHz, SWB 14.4/16 kHz, FB 20 kHz low-pass).
+  same tests, with P.501-specified band-limiting of the receive-direction
+  signals (NB 3.6/4 kHz, WB 7.2/8 kHz, SWB 14.4/16 kHz).
+- **Sample rate: the compliance suite runs at 44.1 kHz** (revised in
+  Stage 1 from the original 48 kHz intent): P.501's CSS framing is
+  sample-exact only at its native 44.1 kHz (350 ms period = 15435
+  samples), and P.501 7.2.1.1 b lists 44.1 kHz as a preferred
+  calibration rate — running natively avoids the >60 dB-stopband
+  resampler P.501 NOTE 2 would otherwise require. Consequence,
+  documented: the RIR fixtures are 48 kHz tap sequences; played at
+  44.1 kHz they represent a proportionally stretched room (times +6.6%,
+  e.g. the cabin's measured RT60 66.6 ms reads as ~71 ms), which stays
+  inside every RT envelope the recs specify.
 - **The simulated echo paths**: the three committed image-source rooms
   (fixtures) + a new car-cabin family (small volume ~2.5 m^3, RT ~60 ms
   per G.167 5.2.3.1's car figures) + the P.1110/P.1120 time-variant-path
@@ -238,7 +247,35 @@ implementation budget.
 
 ---
 
-## Simulation assets required (feeds Stage 1)
+## Simulation assets delivered by Stage 1
+
+`tests/support/itu_levels.h` + `tests/support/itu_signals.h` +
+`tests/fixtures/rir_cabin.h`, validated by `tests/test_itu_signals.cpp`
+(measured-first thresholds; the file header carries every number).
+Instrument floors that bound what the compliance suite can measure:
+
+- CSS single/double-talk: sample-exact framing, PN crest 10.97 dB
+  (spec 11 +- 1), bin-flat PN, level calibration exact, voiced segments
+  transcribed from P.501 Tables 7-1/7-2.
+- AM-FM orthogonal pair: **94.3 dB comb separation** at the spec's exact
+  band edges — the double-talk echo-loss measurement floor sits far
+  beyond the >= 33 dB margin targets. (Analysis discipline recorded in
+  the test: any added guard band collapses the floor.)
+- A-weighting: -19.18 / 0.00 / -1.76 dB at 100 / 1k / 10 kHz
+  (prewarped bilinear; IEC class-1 envelope).
+- NB band-limiter: -85 dB at 4 kHz. Cabin fixture: RT60 66.6 ms.
+- P.56 active-level meter: definitionally consistent on sparse speech
+  (activity 0.312, delta = 10 log10(1/activity) exactly); on CSS the
+  101 ms pause sits inside the 200 ms hangover, so the G.168
+  active-part constants (+1.49 / +1.66 dB) are applied arithmetically.
+
+**ITU real-speech attachments** (P.501 7.3.2/7.3.3/7.3.5): still to be
+procured — download from the ITU test-signal database into
+`tests/data/itu/` (git-ignored; local test use only, never committed).
+Until then the affected rows run on the CSS/AM-FM signals and are
+reported `method-equivalent`.
+
+## Simulation assets required (original Stage 1 list, for reference)
 
 **Signals (all generatable from P.501's algorithmic descriptions):**
 - CSS single-talk, fullband: voiced 48.62 ms (literal sample table 7-1,

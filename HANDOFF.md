@@ -263,13 +263,24 @@ stand-ins marked method-equivalent; (7) P.502 still unobtained —
 analysis methods reconstructed from the P.340/P.111x test descriptions.
 Rec PDFs live in the session scratchpad only (never committed).*
 
-**Stage 1 — Calibrated ITU signal layer** (`tests/support/`). Level
-calibration conventions (dBov/activity-gated levels), a deterministic
-P.501 CSS generator, the P.501 double-talk sequences, per-bandwidth
-band-limiting, driving-noise generator + car-cabin echo paths for the
-P.1100 series (modeled first; Tim's measured cabin RIRs can join via the
-existing fixture pipeline). Pass: generated signals match published
-spectral/temporal properties.
+**Stage 1 — Calibrated ITU signal layer** (`tests/support/`). *DONE —
+`itu_levels.h` (dBov/dBm0/dBPa conventions, prewarped-bilinear
+A-weighting, 35/5 ms integrators, sliding peak, P.56-style active-level
+meter) + `itu_signals.h` (CSS single/double-talk with the P.501
+Table 7-1/7-2 voiced segments transcribed from the PDF, 8192-pt PN
+adaptive-systems variant, shaping + band-limit filters, AM-FM
+orthogonal pair + comb analysis, activation sequence, Hoth + synthetic
+driving noise, moving-reflector time-variant path) +
+`tests/fixtures/rir_cabin.h` (image-source cabin, RT60 66.6 ms) +
+`test_itu_signals.cpp` (12 tests, measured-first). KEY DECISION made in
+stage: the suite runs natively at 44.1 kHz (CSS is sample-exact only
+there; matrix updated). Measured instrument floor worth knowing: the
+AM-FM comb separation is 94.3 dB at the spec's exact band edges — and
+collapses to 19 dB if any guard band is added (recorded in the test).
+Existing fixtures verified bit-reproducible with pyroomacoustics 0.10.1
+before generating the cabin (--only flag added to the generator). Still
+open from this stage: the ITU real-speech attachment WAVs
+(tests/data/itu/, git-ignored) for the three signal-exact rows.*
 
 **Stage 2 — Residual-echo post-filter + comfort noise.** The big DSP
 item. New header (working name `mutap/postfilter.h`): coherence-based
