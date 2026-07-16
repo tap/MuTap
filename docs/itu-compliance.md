@@ -333,3 +333,53 @@ analogues), Hoth-spectrum noise for the P.340 rows.
 - Switching dynamics inside 25 ms build-up at the margin targets.
 - No noise pumping beyond 5 dB around speech bursts.
 - The chain's ERL trajectory above the convergence masks at 2x speed.
+
+### Stage 2 delivered (mutap/postfilter.h + tests/test_postfilter.cpp)
+
+All of the above, measured against this file's margin targets on the
+golden model (double, block 256, 2048-tap unit-energy paths, 48 kHz;
+one required-rate check at 16 kHz). Chain = RAW partitioned FD-Kalman
+(transition 0.9998, initial uncertainty 10) + residual suppressor at
+defaults:
+
+| Deliverable | Margin target | Measured |
+|---|---|---|
+| ST residual, cabin / studio | < -64 dBm0(A) | **-80.5 / -89.7** |
+| ST residual, NLMS core / 16 kHz | < -64 dBm0(A) | -66.2 / -70.7 |
+| DT send attenuation, cabin / studio | <= 1.5 dB | **1.14 / 1.03** |
+| DT echo loss, worst band 200-6950 Hz | >= 33 dB | **37.9 / 34.2** (270 Hz) |
+| ERL by 600 / 1200 ms | >= 40 / >= 46 dB | 43.2 / 46.9 |
+| Comfort-noise level match | +1 / -2.5 dB | -1.50 |
+| Comfort-noise spectrum, worst band | half-mask (+-3..6) | 1.69 dB |
+| Noise pumping | <= 5 dB | 2.9 |
+| Near-end build-up at DT onset | <= 25 ms | 11.6 ms |
+
+Design decisions the numbers forced (full derivations in
+postfilter.h's comments, rejected designs kept in git history):
+
+1. **The AEC chain does not use PEM.** Open-loop AEC has an exogenous
+   far end — no closed-loop bias to remove — and the predictor's
+   block-by-block refit injects gradient noise that floors misalignment
+   near -20 dB. The raw Kalman core measures -75.6 dBm0(A) bare on the
+   same scenario where PEM-Kalman plateaus at -28.9, and its per-bin
+   noise-PSD tracking IS the double-talk defense (post-DT residual
+   -70.9). PEM remains the right structure for the closed loop (AFC),
+   and aec_chain still composes with pem_afc.
+2. **The suppressor's discriminator correlates the MIC (E + Yhat),
+   never E, against Yhat**: a converged adaptive filter keeps E
+   orthogonal to its reference, so coh(E, Yhat) saturates at 0.34 while
+   adapting; coh(D, Yhat) measures 0.99.
+3. **Suppression depth comes from a leakage estimate gated by that
+   coherence, not from the coherence itself** — the AM-FM plans
+   interleave 20 Hz apart at the low end, no realizable gain filter
+   notches that selectively, and a coherence-proportional gain measured
+   5.5 dB of near-end attenuation there. The Wiener-on-E form rides to
+   unity wherever near-end energy inflates |E|^2.
+4. **Comfort noise fills to a two-window minimum-statistics floor
+   (bias x4)** — asymmetric-rate one-pole trackers measured either
+   -8 dB undershoot (raw-minimum bias) or tens-of-seconds acquisition.
+
+Still Stage 3's to prove: the full per-row multi-rate suite (both
+required rates x both cores x all rooms), the spectral echo mask, the
+switching/activation battery, stability sweep, G.168-adapted rows, and
+the TCL / time-variant-path rows.

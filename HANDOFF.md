@@ -293,6 +293,24 @@ residual-echo estimate, spectral suppression, comfort noise matched to
 the near-end noise floor; plus the integrated chain type. House
 workflow: scratch-measure first, thresholds with margin, rooms from both
 generator families. RT contract as everywhere.
+*DONE — `mutap/postfilter.h` (`residual_suppressor` + `aec_chain`) +
+`tests/test_postfilter.cpp` (12 tests, measured-first; every Stage 2
+deliverable inside its margin target — the measured table and the four
+design decisions the numbers forced live in the matrix's "Stage 2
+delivered" section). The headline discovery: the AEC chain must NOT
+use PEM — open-loop AEC has an exogenous far end and the predictor
+refit floors misalignment near -20 dB where the raw FD-Kalman core
+(transition 0.9998, initial uncertainty 10 — the measured AEC sweet
+spot) reaches -75 dBm0(A) bare with double-talk immunity from its own
+noise-PSD tracker. The suppressor correlates the MIC, not E, against
+the echo estimate (orthogonality principle: coh(E,Yhat) saturates at
+0.34 while adapting), and takes suppression DEPTH from a
+coherence-gated leakage estimate so double-talk transparency is the
+shape of the rule, not a detector. Two instrument fixes en route:
+A-weighting poles above Nyquist now prewarp-clamped (16 kHz tests went
+NaN), and pem_afc grew echo_estimate_block(). mutap.h includes the new
+header; emulated-target selections unchanged (double-only ITU suites
+stay host-side).*
 
 **Stage 3 — Compliance suite** (`tests/test_itu_*.cpp`). One gtest per
 matrix row asserting requirement + margin policy. Swept across fixture
