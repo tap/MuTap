@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -697,6 +698,40 @@ namespace mutap {
             Sample rescue_drop_ratio      = Sample(0.5);
             size_t rescue_hold_blocks     = 24;
             size_t rescue_cooldown_blocks = 375;
+            /// SHADOW COMPARATOR — the rescue's second trigger, for the
+            /// direction over-explanation cannot see (a change toward a
+            /// LOUDER path). A small fast canceller (shadow_partitions
+            /// of the main's partitions; transition shadow_transition,
+            /// fast enough that it never deep-converges but always
+            /// tracks coarse) runs on the same (x, y), and the smoothed
+            /// residual-power ratio main/shadow is compared: normally
+            /// the converged main wins (ratio < 1); when the freshly
+            /// adapting shadow out-cancels the main by shadow_ratio for
+            /// shadow_hold_blocks consecutive receive-active blocks,
+            /// the main's estimate is worse than a cold start would
+            /// already be — fire the same one-shot uncertainty lift.
+            /// The comparison is double-talk-immune BY CONSTRUCTION: a
+            /// near end lands in both residuals equally, so it moves
+            /// the ratio toward 1, never past the threshold (measured:
+            /// zero fires across the loud/quiet AM-FM double-talk and
+            /// noise-pumping batteries at both rates — the performance
+            /// comparison succeeds where three correlation-family
+            /// detectors failed, see fd_kalman.h). The loud-DT onset
+            /// transient (~0.5 s of ratio inflation from smoothing
+            /// dynamics) is bounded by the sustained-hold requirement
+            /// plus the activity tracker's slow-rise floor, which
+            /// freezes counting on CONTINUOUS material. Measured wins
+            /// (cabin swap toward 10 dB louder coupling): fires at
+            /// 0.8 s / 1.8 s (48 / 16 kHz) and the deep steady moves
+            /// from -47 to -79 dBm0 (48 kHz) and -47 to -84 (16 kHz).
+            /// shadow_partitions 0 disables (also disabled for
+            /// cancellers without reinflate_uncertainty()). Cost when
+            /// on: shadow_partitions/partitions of the canceller
+            /// (~25 % at the preset geometry).
+            size_t shadow_partitions  = 2;
+            Sample shadow_transition  = Sample(0.999);
+            Sample shadow_ratio       = Sample(2); ///< 3 dB
+            size_t shadow_hold_blocks = 56;        ///< ~0.3 s at the reference geometry
         };
 
         explicit aec_chain(const config& cfg)
@@ -705,7 +740,17 @@ namespace mutap {
             , m_post(matched(cfg.postfilter, m_afc.block_size()))
             , m_mid(m_afc.block_size())
             , m_yhat(m_afc.block_size())
-            , m_guard_gain(std::pow(Sample(10), -cfg.guard_attenuation_db / Sample(20))) {}
+            , m_guard_gain(std::pow(Sample(10), -cfg.guard_attenuation_db / Sample(20))) {
+            if constexpr (requires(Canceller& c) { c.reinflate_uncertainty(); }) {
+                if (cfg.shadow_partitions > 0 && cfg.rescue_drop_ratio > Sample(0)) {
+                    auto sc       = cfg.canceller;
+                    sc.partitions = cfg.shadow_partitions;
+                    sc.transition = cfg.shadow_transition;
+                    m_shadow.emplace(sc);
+                    m_shadow_e.resize(m_afc.block_size());
+                }
+            }
+        }
 
         size_t block_size() const noexcept { return m_afc.block_size(); }
 
@@ -723,6 +768,12 @@ namespace mutap {
             m_guard           = Sample(1);
             m_drop_count      = 0;
             m_rescue_cooldown = 0;
+            if (m_shadow.has_value()) {
+                m_shadow->reset();
+            }
+            m_pm           = Sample(0);
+            m_ps           = Sample(0);
+            m_shadow_count = 0;
         }
 
         /// True once the initial receive guard has certified convergence
@@ -743,6 +794,7 @@ namespace mutap {
             const bool receive_active = track_receive_activity(x);
             apply_guard(receive_active, e);
             apply_rescue(receive_active);
+            apply_shadow(x, y, receive_active);
         }
 
       private:
@@ -823,6 +875,45 @@ namespace mutap {
             }
         }
 
+        /// The shadow comparator (see the config comment): the rescue's
+        /// second trigger. No-op unless the shadow was constructed.
+        void apply_shadow(const Sample* x, const Sample* y, bool receive_active) noexcept {
+            if constexpr (requires(Canceller& c) { c.reinflate_uncertainty(); }) {
+                if (!m_shadow.has_value()) {
+                    return;
+                }
+                m_shadow->process_block(x, y, m_shadow_e.data());
+                const size_t b  = block_size();
+                Sample       m2 = Sample(0);
+                Sample       s2 = Sample(0);
+                for (size_t i = 0; i < b; ++i) {
+                    m2 += m_mid[i] * m_mid[i];
+                    s2 += m_shadow_e[i] * m_shadow_e[i];
+                }
+                const Sample beta = m_cfg.canceller.noise_smoothing;
+                m_pm += (Sample(1) - beta) * (m2 - m_pm);
+                m_ps += (Sample(1) - beta) * (s2 - m_ps);
+                if (!converged() || m_rescue_cooldown > 0 || !receive_active) {
+                    return; // cooldown decrement is apply_rescue's job
+                }
+                if (m_pm <= m_cfg.shadow_ratio * m_ps + m_cfg.canceller.regularization) {
+                    m_shadow_count /= 2;
+                    return;
+                }
+                if (++m_shadow_count >= m_cfg.shadow_hold_blocks) {
+                    m_afc.reinflate_uncertainty();
+                    m_shadow_count    = 0;
+                    m_drop_count      = 0;
+                    m_rescue_cooldown = m_cfg.rescue_cooldown_blocks;
+                }
+            }
+            else {
+                (void)x;
+                (void)y;
+                (void)receive_active;
+            }
+        }
+
         config                      m_cfg;
         Canceller                   m_afc;
         residual_suppressor<Sample> m_post;
@@ -835,6 +926,11 @@ namespace mutap {
         Sample                      m_guard           = Sample(1);
         size_t                      m_drop_count      = 0;
         size_t                      m_rescue_cooldown = 0;
+        std::optional<Canceller>    m_shadow;
+        std::vector<Sample>         m_shadow_e;
+        Sample                      m_pm           = Sample(0); ///< smoothed main residual power
+        Sample                      m_ps           = Sample(0); ///< smoothed shadow residual power
+        size_t                      m_shadow_count = 0;
     };
 
     /// THE COMPLIANCE PRESET: the aec_chain configuration MuTap's ITU-T
@@ -877,6 +973,7 @@ namespace mutap {
         // hold is ~1 s, the cooldown ~2 s; see the chain config).
         cfg.rescue_hold_blocks     = std::max<size_t>(4, static_cast<size_t>(24.0 / ratio));
         cfg.rescue_cooldown_blocks = std::max<size_t>(16, static_cast<size_t>(375.0 / ratio));
+        cfg.shadow_hold_blocks     = std::max<size_t>(6, static_cast<size_t>(56.0 / ratio));
         auto& pf                   = cfg.postfilter;
         pf.leakage_smoothing       = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
         pf.gain_attack             = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
