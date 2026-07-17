@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <vector>
@@ -83,7 +84,49 @@ namespace mutap {
             /// and leaves burst hardening opt-in for fixed-gain
             /// deployments.
             Sample transient_floor_ratio = Sample(0);
-            bool   constrained           = true; ///< gradient constraint, as in partitioned_fdaf
+            /// Excitation-novelty covariance discount (0 = off, the
+            /// default): one-pole smoothing, in [0, 1), of a per-bin
+            /// magnitude-coherence between successive input block
+            /// spectra; the per-bin P decrement is scaled by
+            /// (1 - coherence), floored at novelty_floor. Rationale
+            /// (measured, the block-128 notch): the P decrement
+            /// 1 - c g|U|^2 is innovation-independent — correct for the
+            /// joint Kalman, but under the diagonal approximation a
+            /// PERIODIC input (P.501's CSS voiced segment is a 329 Hz
+            /// comb) repeats the same regressor block after block and
+            /// each repeat claims a fresh information gain it does not
+            /// deliver. Where the analysis window resolves the comb
+            /// (16 ms window = 8 ms hop), P burns to the floor during
+            /// the voiced segment, the noise tracker then absorbs the
+            /// still-unmodeled echo, and initial convergence self-locks
+            /// exactly like the post-swap failure reinflate_uncertainty
+            /// rescues (ERL 8.9 dB by 600 ms at block 128 / 16 kHz vs
+            /// 22.5 at block 256; the notch follows the 8 ms hop to
+            /// block 256 at 32 kHz). White/PN-like input decorrelates
+            /// block to block (coherence ~0) and keeps the exact
+            /// stock decrement. Requires partitions >= 2 (the previous
+            /// block's spectrum is read from the partition ring);
+            /// silently inactive at partitions == 1.
+            Sample novelty_smoothing = Sample(0);
+            Sample novelty_floor     = Sample(0); ///< lower bound of the discount scale
+            /// Per-partition initial-uncertainty decay r in (0, 1]
+            /// (1 = off, the default): partition p starts at
+            /// P(0) = initial_uncertainty * r^p, encoding "echo paths
+            /// decay along the filter" as a Kalman prior. On
+            /// rank-deficient (periodic) excitation the filter cannot
+            /// identify the partition distribution and splits its
+            /// minimum-norm solution proportional to P — a flat prior
+            /// spreads it uniformly (measured at the notch: misalignment
+            /// lands ABOVE 0 dB, worse than an empty filter), a decaying
+            /// prior lands it like an impulse response. The trade is
+            /// real and measured: a path with heavy bulk delay (energy
+            /// arriving partitions deep) converges slower by roughly the
+            /// prior ratio until the process noise re-opens the late
+            /// partitions (32 ms of dead delay at 16 kHz / block 128:
+            /// ERL by 600 ms 21.1 -> 16.8 dB at r = 0.5), so keep this
+            /// off where bulk delay is expected and uncompensated.
+            Sample initial_uncertainty_decay = Sample(1);
+            bool   constrained               = true; ///< gradient constraint, as in partitioned_fdaf
         };
 
         explicit partitioned_fdkf(const config& cfg)
@@ -98,7 +141,10 @@ namespace mutap {
             , m_time(m_n)
             , m_p(cfg.partitions * (cfg.block_size + 1))
             , m_psi_s(cfg.block_size + 1)
-            , m_denom(cfg.block_size + 1) {
+            , m_denom(cfg.block_size + 1)
+            , m_coh_num(2 * (cfg.block_size + 1))
+            , m_coh_den(cfg.block_size + 1)
+            , m_nov(cfg.block_size + 1) {
             reset();
         }
 
@@ -148,19 +194,36 @@ namespace mutap {
         /// cold starts under double talk / noise are the regime Psi_s
         /// keeps conservative by design.
         void reinflate_uncertainty() noexcept {
-            for (auto& x : m_p) {
-                x = x < m_cfg.initial_uncertainty ? m_cfg.initial_uncertainty : x;
+            const size_t stride = m_cfg.block_size + 1;
+            Sample       p0     = m_cfg.initial_uncertainty;
+            for (size_t p = 0; p < m_cfg.partitions; ++p) {
+                for (size_t k = 0; k < stride; ++k) {
+                    Sample& x = m_p[p * stride + k];
+                    x         = x < p0 ? p0 : x;
+                }
+                p0 *= m_cfg.initial_uncertainty_decay;
             }
         }
 
-        /// Zero the filter and histories, restore the initial uncertainty.
+        /// Zero the filter and histories, restore the initial uncertainty
+        /// (shaped by initial_uncertainty_decay when configured).
         void reset() noexcept {
             fill_zero(m_input);
             fill_zero(m_u);
             fill_zero(m_h);
             fill_zero(m_psi_s);
-            for (auto& x : m_p) {
-                x = m_cfg.initial_uncertainty;
+            fill_zero(m_coh_num);
+            fill_zero(m_coh_den);
+            const size_t stride = m_cfg.block_size + 1;
+            Sample       p0     = m_cfg.initial_uncertainty;
+            for (size_t p = 0; p < m_cfg.partitions; ++p) {
+                for (size_t k = 0; k < stride; ++k) {
+                    m_p[p * stride + k] = p0;
+                }
+                p0 *= m_cfg.initial_uncertainty_decay;
+            }
+            for (auto& x : m_nov) {
+                x = Sample(1);
             }
             m_head = m_cfg.partitions - 1;
         }
@@ -187,6 +250,38 @@ namespace mutap {
                 u_new[i] = m_input[i];
             }
             m_fft.forward_inplace(u_new);
+
+            // Excitation-novelty discount: per-bin coherence between this
+            // block's spectrum and the previous one (partition-1 ring
+            // slot). Coherent (repeating) excitation suspends the P
+            // decrement below; decorrelated excitation keeps it exact.
+            if (m_cfg.novelty_smoothing > Sample(0) && p_n >= 2) {
+                const Sample* up  = &m_u[((m_head + p_n - 1) % p_n) * m_n];
+                const Sample  bc  = m_cfg.novelty_smoothing;
+                const Sample  ob  = Sample(1) - bc;
+                const auto    upd = [&](size_t bin, Sample nr, Sample ni, Sample mag) noexcept {
+                    m_coh_num[2 * bin]     = bc * m_coh_num[2 * bin] + ob * nr;
+                    m_coh_num[2 * bin + 1] = bc * m_coh_num[2 * bin + 1] + ob * ni;
+                    m_coh_den[bin]         = bc * m_coh_den[bin] + ob * mag;
+                    const Sample num =
+                        m_coh_num[2 * bin] * m_coh_num[2 * bin] + m_coh_num[2 * bin + 1] * m_coh_num[2 * bin + 1];
+                    const Sample den = m_coh_den[bin] * m_coh_den[bin] + m_cfg.regularization;
+                    Sample       nu  = Sample(1) - num / den;
+                    nu               = nu < m_cfg.novelty_floor ? m_cfg.novelty_floor : nu;
+                    m_nov[bin]       = nu > Sample(1) ? Sample(1) : nu;
+                };
+                const Sample d0 = u_new[0] * up[0];
+                upd(0, d0, Sample(0), d0 < Sample(0) ? -d0 : d0);
+                const Sample dn = u_new[1] * up[1];
+                upd(half, dn, Sample(0), dn < Sample(0) ? -dn : dn);
+                for (size_t k = 1; k < half; ++k) {
+                    const Sample ar = u_new[2 * k];
+                    const Sample ai = u_new[2 * k + 1];
+                    const Sample br = up[2 * k];
+                    const Sample bi = up[2 * k + 1];
+                    upd(k, ar * br + ai * bi, ai * br - ar * bi, std::sqrt((ar * ar + ai * ai) * (br * br + bi * bi)));
+                }
+            }
 
             fill_zero(m_accum);
             for (size_t p = 0; p < p_n; ++p) {
@@ -255,12 +350,12 @@ namespace mutap {
                 {
                     const Sample g = pp[0] / m_denom[0];
                     h[0] += g * u[0] * m_espec[0];
-                    pp[0] *= Sample(1) - Sample(0.5) * g * u[0] * u[0];
+                    pp[0] *= Sample(1) - Sample(0.5) * g * u[0] * u[0] * m_nov[0];
                 }
                 {
                     const Sample g = pp[half] / m_denom[half];
                     h[1] += g * u[1] * m_espec[1];
-                    pp[half] *= Sample(1) - Sample(0.5) * g * u[1] * u[1];
+                    pp[half] *= Sample(1) - Sample(0.5) * g * u[1] * u[1] * m_nov[half];
                 }
                 for (size_t k = 1; k < half; ++k) {
                     const Sample g  = pp[k] / m_denom[k];
@@ -270,7 +365,7 @@ namespace mutap {
                     const Sample ei = m_espec[2 * k + 1];
                     h[2 * k] += g * (ur * er + ui * ei);
                     h[2 * k + 1] += g * (ur * ei - ui * er);
-                    pp[k] *= Sample(1) - Sample(0.5) * g * (ur * ur + ui * ui);
+                    pp[k] *= Sample(1) - Sample(0.5) * g * (ur * ur + ui * ui) * m_nov[k];
                 }
                 if (m_cfg.constrained) {
                     m_fft.inverse(h, m_time.data());
@@ -336,6 +431,15 @@ namespace mutap {
             if (!(cfg.transient_floor_ratio >= Sample(0))) {
                 throw std::invalid_argument("partitioned_fdkf: transient_floor_ratio must be >= 0");
             }
+            if (!(cfg.novelty_smoothing >= Sample(0)) || !(cfg.novelty_smoothing < Sample(1))) {
+                throw std::invalid_argument("partitioned_fdkf: novelty_smoothing must be in [0, 1)");
+            }
+            if (!(cfg.novelty_floor >= Sample(0)) || !(cfg.novelty_floor <= Sample(1))) {
+                throw std::invalid_argument("partitioned_fdkf: novelty_floor must be in [0, 1]");
+            }
+            if (!(cfg.initial_uncertainty_decay > Sample(0)) || !(cfg.initial_uncertainty_decay <= Sample(1))) {
+                throw std::invalid_argument("partitioned_fdkf: initial_uncertainty_decay must be in (0, 1]");
+            }
             return cfg;
         }
 
@@ -348,15 +452,18 @@ namespace mutap {
         config                 m_cfg;
         size_t                 m_n; ///< FFT size N = 2 * block_size
         basic_real_fft<Sample> m_fft;
-        std::vector<Sample>    m_input; ///< sliding 2B-sample input window
-        std::vector<Sample>    m_u;     ///< P input-block spectra (ring, newest at m_head)
-        std::vector<Sample>    m_h;     ///< P filter-partition spectra (the state mean)
-        std::vector<Sample>    m_accum; ///< output-spectrum accumulator
-        std::vector<Sample>    m_espec; ///< error-block spectrum
-        std::vector<Sample>    m_time;  ///< time-domain scratch
-        std::vector<Sample>    m_p;     ///< per-partition, per-bin state variance
-        std::vector<Sample>    m_psi_s; ///< per-bin near-end PSD estimate
-        std::vector<Sample>    m_denom; ///< per-bin innovation power, this block
+        std::vector<Sample>    m_input;   ///< sliding 2B-sample input window
+        std::vector<Sample>    m_u;       ///< P input-block spectra (ring, newest at m_head)
+        std::vector<Sample>    m_h;       ///< P filter-partition spectra (the state mean)
+        std::vector<Sample>    m_accum;   ///< output-spectrum accumulator
+        std::vector<Sample>    m_espec;   ///< error-block spectrum
+        std::vector<Sample>    m_time;    ///< time-domain scratch
+        std::vector<Sample>    m_p;       ///< per-partition, per-bin state variance
+        std::vector<Sample>    m_psi_s;   ///< per-bin near-end PSD estimate
+        std::vector<Sample>    m_denom;   ///< per-bin innovation power, this block
+        std::vector<Sample>    m_coh_num; ///< novelty: packed complex <U_t conj(U_t-1)> accumulator
+        std::vector<Sample>    m_coh_den; ///< novelty: |U_t||U_t-1| accumulator
+        std::vector<Sample>    m_nov;     ///< novelty: per-bin P-decrement scale, this block
         size_t                 m_head  = 0;
         bool                   m_adapt = true;
     };

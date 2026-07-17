@@ -41,10 +41,15 @@ namespace mutap_test::itu {
         size_t taps;
     };
     /// 16 kHz runs block 256 like 48 kHz — NOT a scaled-down 128. Measured
-    /// (Stage 3 scratch): the partitioned Kalman's convergence collapses
+    /// (Stage 3 scratch): the partitioned Kalman's convergence collapsed
     /// with block 128 at 16 kHz (ERL 8.9 dB by 600 ms vs 22.5 at block
     /// 256, which then beats even the 48 kHz reference by 1200 ms:
-    /// 47.1 vs 43.6). Filter span stays 64 ms (4 partitions).
+    /// 47.1 vs 43.6). Since diagnosed (a CSS-voiced-comb x ~8 ms-hop
+    /// rank-deficiency notch, fd_kalman.h has the story) and closed by
+    /// preset knobs enabled only inside the prone hop band — block 256
+    /// stays the certified geometry here and is untouched by the fix
+    /// (gated by ItuChain.PresetNoveltyPolicy). Filter span stays 64 ms
+    /// (4 partitions).
     inline rate_setup setup_48k() {
         return {48000.0, 256, 2048};
     }
