@@ -334,19 +334,29 @@ table(["rate", "NLP on: loss 0-50 ms (≥ 6)", "loss 50 ms-1 s (≥ 20)", "stead
        "NLP off: loss 0-50 ms (≥ 6)", "loss 1-10 s (≥ 20)", "steady vs Fig 11 (≤ 0)"], rows,
       "G.168-adapted convergence, worst level of the sweep — combined-loss elements and the figures' bounds.")''')
 
-md("""### Re-convergence after an abrupt path change — the documented deviation
+md("""### Re-convergence after an abrupt path change — the rescue
 
 Swap the room mid-call (cabin at 6 dB coupling → studio at 16 dB, no
-reset) and the combined-loss mask element recovers on schedule — ≥ 20 dB
-within the mask's second — but the *deep* Figure-9 steady state takes
-**~7 s at 48 kHz and > 10 s at 16 kHz**, where initial convergence took
-1.4 s. The cause is structural, not a tuning miss: a converged Kalman's
-state uncertainty is small, and nothing re-inflates it when the path
-changes (a cold start gets P(0) = 10; a path change does not).
-*"Uncertainty re-inflation on sustained innovation excess"* is filed in
-[`HANDOFF.md`](../HANDOFF.md) as the core follow-up; until it lands, the
-re-convergence rows assert the mask element plus regression gates at the
-measured trajectory.
+reset). A converged Kalman's structural failure mode here is a
+self-lock: its state uncertainty is orders of magnitude below the
+cold-start value, and within ~100 ms its noise tracker absorbs the
+unmodeled-echo residual — the filter books its own error as near-end
+noise and re-converges at a gain ~20× too small (the deep steady state
+used to take ~7 s at 48 kHz and > 10 s at 16 kHz, where a cold start
+takes 1.4 s).
+
+The chain's **re-convergence rescue** closes this: when the
+suppressor's echo-explained ratio shows sustained *over*-explanation —
+the estimate exceeding the mic, the one mismatch signal a near end
+cannot fake, since double talk only *adds* mic power — the canceller's
+uncertainty is lifted back to its cold-start value once (weights kept,
+2 s cooldown), and the descent below runs at cold-start speed. The
+deliberate limit: a change toward a *louder* path does not
+over-explain and keeps the old trajectory (coarse recovery on the mask
+schedule, deep steady slow) — the dual-path comparator that could
+close that direction is filed in [`HANDOFF.md`](../HANDOFF.md), along
+with the measured failures of three detector variants that tried to
+see it and lost to the AM-FM combs.
 """)
 
 code(r'''fig, ax = plt.subplots(figsize=(8, 3.6))
@@ -359,8 +369,8 @@ ax.axhline(-65, color=C_TGT, ls=":", lw=1.4)
 ax.annotate("Figure 9 steady bound\n(initial convergence reaches it in 1.4 s)",
             (10.4, -67), fontsize=8, color=C_TGT, ha="right", va="top")
 ax.set_xlabel("time from the path swap (s)"); ax.set_ylabel("returned echo (dBm0)")
-ax.set_ylim(-115, -20)
-ax.set_title("re-convergence after an abrupt path change — honest view of the slow deep descent")
+ax.set_ylim(-132, -20)
+ax.set_title("re-convergence after an abrupt path change, rescue engaged")
 ax.legend(fontsize=9, frameon=False, loc="lower left")
 plt.tight_layout(); plt.show()
 for r, lbl in ((R48, "48 kHz"), (R16, "16 kHz")):

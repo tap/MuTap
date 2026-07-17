@@ -21,16 +21,20 @@
 //   Figures 10a/12a: combined loss >= 6 dB to 50 ms, >= 20 dB from
 //                        50 ms (NLP on) / 1 s (NLP off)
 //
-// KNOWN DEVIATION, documented here and in the matrix: after an ABRUPT
-// path change the chain re-reaches the ">= 20 dB combined loss" element
-// within 1 s at both rates, but the deep Figure-9 steady state only
-// after ~7 s at 48 kHz and >10 s at 16 kHz — a converged Kalman's state
-// uncertainty is small and nothing re-inflates it on a path change
-// (initial convergence gets P(0) = 10; re-convergence does not).
-// Re-convergence rows therefore assert the 20 dB mask element plus
-// regression gates at the measured trajectory, and "uncertainty
-// re-inflation on sustained innovation excess" is filed in HANDOFF as
-// the core follow-up. Initial convergence meets Figure 9 within 1.4 s.
+// RE-CONVERGENCE after an ABRUPT path change: the chain's rescue
+// (postfilter.h — a one-shot uncertainty lift triggered by the
+// over-explained echo ratio, the one signal double talk cannot fake)
+// fires on changes toward a quieter/different path, and re-convergence
+// then runs at cold-start speed: the swap rows measure 46/49 dB
+// combined loss in [1,2] s and deep steadies of -96/-123 dBm0 — the
+// former documented deviation (~7 s at 48 kHz, >10 s at 16 kHz) closes
+// for this direction. A change toward a LOUDER path does not
+// over-explain (double talk masquerades as exactly that condition, so
+// the trigger deliberately cannot see it — three measured-and-rejected
+// detector variants are recorded in the rescue's config comment and
+// git history) and keeps the baseline trajectory: coarse recovery on
+// the mask schedule, deep steady slow. The dual-path/shadow comparator
+// that could close the louder direction is filed in HANDOFF.
 //
 // Every threshold measured first (Stage 3b scratch); measured values sit
 // next to the assertions. Both required rates unless a row says why not.
@@ -144,11 +148,15 @@ namespace {
         }
     }
 
-    // Test 2A-b (re-convergence, cabin/6 dB -> studio/16 dB abrupt swap):
-    // the >= 20 dB loss element recovers within [1,2] s (measured 23.5 /
-    // 22.8 dB); the Figure-9 steady element is the documented deviation —
-    // regression gates at the measured trajectory (48 kHz: -64.9 in
-    // [5,8] s, -91.0 in [8,10.5]; 16 kHz: -52.0 in [8,10.5]).
+    // Test 2A-b (re-convergence, cabin/6 dB -> studio/16 dB abrupt swap).
+    // The chain's re-convergence rescue (postfilter.h: the over-explained
+    // one-shot uncertainty lift) fires on this swap and re-convergence
+    // runs at cold-start speed: measured loss in [1,2] s 46.1 / 49.2 dB
+    // (was 23.5 / 22.8 before the rescue), deep steady in [8,10.5] s
+    // -95.9 / -123.3 dBm0 (was -91.0 / -52.0 — the 16 kHz ">10 s"
+    // deviation closes). Gates a few dB shy of measured. A swap to a
+    // LOUDER path does not over-explain and keeps the baseline
+    // trajectory — see the rescue's config comment and HANDOFF.
     TEST(G168Adapted, ReConvergenceAfterPathChange) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
@@ -163,9 +171,9 @@ namespace {
             sim.set_echo_path(stu16.data(), stu16.size());
             auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 30, rs));
             auto tr = g168_meter(rr.out, rs.fs);
-            EXPECT_GE(l - max_in(tr, rs.fs, 0.0, 1.0), 6.0) << "fs " << rs.fs;  // measured 12.7 / 13.5
-            EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 2.0), 20.0) << "fs " << rs.fs; // measured 23.5 / 22.8
-            EXPECT_LE(max_in(tr, rs.fs, 8.0, 10.5), expected({-85.0, -48.0}, rs)) << "fs " << rs.fs;
+            EXPECT_GE(l - max_in(tr, rs.fs, 0.0, 1.0), 6.0) << "fs " << rs.fs; // measured 12.7 / 14.0
+            EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 2.0), expected({42.0, 45.0}, rs)) << "fs " << rs.fs;
+            EXPECT_LE(max_in(tr, rs.fs, 8.0, 10.5), expected({-90.0, -115.0}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -300,9 +308,10 @@ namespace {
     }
 
     // Test 5A: echo path opened mid-call (ERL -> infinity): no phantom
-    // echo may be regenerated; the combined-loss mask keeps holding.
-    // Measured phantom max in [1, 4] s: gate at the measured values
-    // (the decay rides the re-convergence limitation documented above).
+    // echo may be regenerated; the combined-loss mask keeps holding. An
+    // opened path is total over-explanation — the rescue fires and the
+    // phantom decays at cold-start speed (measured loss 46.1 / 46.8 dB
+    // in [1, 4] s; was 31.7 / 27.8 before the rescue).
     TEST(G168Adapted, InfiniteErlNoPhantomEcho) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
@@ -317,14 +326,15 @@ namespace {
             sim.set_echo_path(open_path.data(), open_path.size());
             auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 12, rs));
             auto tr = g168_meter(rr.out, rs.fs);
-            EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 4.0), 20.0) << "fs " << rs.fs;
+            EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 4.0), 40.0) << "fs " << rs.fs;
         }
     }
 
     // Test 5B: coupling-loss swings 6 dB <-> 46 dB re-converge each time.
-    // The >= 20 dB element holds through both cycles; the deep steady
-    // state after the return swing is a regression gate (measured -34.1 /
-    // -35.0 in [1, 3] s — the re-convergence limitation).
+    // The quiet swing (-> 46 dB) over-explains and fires the rescue; the
+    // return swing (-> 6 dB, louder) does not — the worst-of-cycles read
+    // is the louder direction's trajectory (measured -36.9 / -43.8 in
+    // [1, 3] s; was -34.1 / -35.0 before the rescue).
     TEST(G168Adapted, PathSwings) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
@@ -344,7 +354,7 @@ namespace {
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 9, rs));
                 worst   = std::max(worst, max_in(g168_meter(rr.out, rs.fs), rs.fs, 1.0, 3.1));
             }
-            EXPECT_LE(worst, -32.0) << "fs " << rs.fs; // >= 14 dB over the raw echo; measured -34.1 / -35.0
+            EXPECT_LE(worst, expected({-34.0, -40.0}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -434,10 +444,12 @@ namespace {
 
     // Test 12: the standard's own acoustic scenario — three-phase
     // path/ERL switch A -> B (different model, ERL - 10 dB) -> A with no
-    // reset. The 2A loss elements hold per phase; the deep steady state
-    // in the switched phases is a regression gate (the re-convergence
-    // limitation; measured B/A2 steadies -41.7 / -38.4 at 48 kHz and
-    // -40.0 / -33.7 at 16 kHz).
+    // reset. The 2A loss elements hold per phase. The A -> B switch
+    // (quieter) over-explains and fires the rescue (measured B steady
+    // -67.5 / -83.1; was -41.7 / -40.0); the B -> A return is the louder
+    // direction the rescue's trigger cannot see (see postfilter.h) —
+    // measured -38.6 / -45.9 (was -38.4 / -33.7; the 16 kHz gain is the
+    // preceding phase handing over a better-converged filter).
     TEST(G168Adapted, AcousticThreePhaseScenario) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
@@ -449,7 +461,7 @@ namespace {
             echo_sim<double>                              sim(sc);
             auto                                          stu16   = erl_path(room::studio, rs, 16.0);
             const std::vector<const std::vector<double>*> phases  = {&cab, &stu16, &cab};
-            const rate_pair                               gates[] = {{-72.0, -73.0}, {-36.0, -35.0}, {-33.0, -28.0}};
+            const rate_pair                               gates[] = {{-72.0, -73.0}, {-62.0, -78.0}, {-35.0, -42.0}};
             for (size_t ph = 0; ph < phases.size(); ++ph) {
                 sim.set_echo_path(phases[ph]->data(), phases[ph]->size());
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 12, rs));
