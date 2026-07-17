@@ -666,28 +666,36 @@ namespace mutap {
             Sample guard_converge_ratio = Sample(0.9);
             size_t guard_hold_blocks    = 20;
             /// RE-CONVERGENCE RESCUE: once convergence has certified,
-            /// the chain watches the suppressor's echo-explained
-            /// fraction; when it leaves the healthy band
-            /// [drop_ratio, 1/drop_ratio] for rescue_hold_blocks
-            /// consecutive receive-active blocks, the canceller's
-            /// state uncertainty is lifted back to P(0) ONCE (weights
-            /// kept), so re-convergence after an abrupt path change
-            /// runs at cold-start speed instead of the measured ~7 s
-            /// self-lock (P starved AND the residual misbooked into
-            /// the noise PSD — see fd_kalman.h, which also records
-            /// the rejected in-core detector this replaces). Both
-            /// mismatch directions matter: a swap to a LOUDER path
-            /// under-explains (ratio < 1), a swap to a QUIETER path
-            /// over-explains (ratio > 1). A false trigger — sustained
-            /// loud double talk holds the ratio low too — is bounded
-            /// by construction: the lift hands the filter a cold
-            /// start, and cold starts under double talk / noise are
-            /// exactly the regime the Kalman noise tracker keeps
-            /// conservative; the cooldown bounds the repeat rate.
-            /// rescue_drop_ratio 0 disables. Hold ~1 s / cooldown
-            /// ~2 s at the reference geometry; the preset rescales.
+            /// the chain watches the suppressor's echo-explained fraction
+            /// (estimated-echo power over mic power); when it exceeds
+            /// 1/rescue_drop_ratio for rescue_hold_blocks consecutive
+            /// receive-active blocks, the canceller's state uncertainty
+            /// is lifted back to P(0) ONCE (weights kept), so
+            /// re-convergence runs at cold-start speed instead of the
+            /// measured ~7 s self-lock (P starved AND the residual
+            /// misbooked into the noise PSD — see fd_kalman.h, which
+            /// records the rejected in-core detector).
+            ///
+            /// The trigger deliberately uses ONLY over-explanation, the
+            /// one signal no near end can fake: double talk ADDS mic
+            /// power and can only depress the ratio, while an estimate
+            /// exceeding the mic means the path it learned is gone (a
+            /// swap to a quieter/different room). Three DT-confounded
+            /// trigger variants are recorded in git history with their
+            /// measured failures: the under-side of the same ratio and a
+            /// certified-leakage escalation both fire on the P.501 AM-FM
+            /// double-talk plans (interleaved comb lines share analysis
+            /// bins, so even coherence-certified bins carry near-end
+            /// power at exactly the deep-mismatch scale — echo loss
+            /// collapsed to 2 dB), and the in-core momentum detector
+            /// diverged outright. The cost of the safe side: a change to
+            /// a LOUDER path does not over-explain and keeps the
+            /// baseline (coarse-fast, deep-slow) trajectory — closing
+            /// that direction needs a dual-path/shadow comparator, filed
+            /// in HANDOFF. rescue_drop_ratio 0 disables. Hold ~0.25 s /
+            /// cooldown ~2 s at the reference geometry (preset-rescaled).
             Sample rescue_drop_ratio      = Sample(0.5);
-            size_t rescue_hold_blocks     = 188;
+            size_t rescue_hold_blocks     = 47;
             size_t rescue_cooldown_blocks = 375;
         };
 
@@ -797,9 +805,11 @@ namespace mutap {
                 if (!receive_active) {
                     return;
                 }
-                const Sample ee = m_post.echo_explained();
-                if (ee >= m_cfg.rescue_drop_ratio && ee <= Sample(1) / m_cfg.rescue_drop_ratio) {
-                    m_drop_count = 0;
+                if (m_post.echo_explained() <= Sample(1) / m_cfg.rescue_drop_ratio) {
+                    // Decay, not reset: the smoothed ratio grazes the band
+                    // edge inside CSS bursts (measured), and a hard reset
+                    // never accumulates across the grazes.
+                    m_drop_count /= 2;
                     return;
                 }
                 if (++m_drop_count >= m_cfg.rescue_hold_blocks) {
@@ -865,7 +875,7 @@ namespace mutap {
         cfg.canceller.noise_smoothing     = Sample(std::pow(0.9, ratio));
         // Re-convergence rescue windows in blocks follow real time (the
         // hold is ~1 s, the cooldown ~2 s; see the chain config).
-        cfg.rescue_hold_blocks     = std::max<size_t>(8, static_cast<size_t>(188.0 / ratio));
+        cfg.rescue_hold_blocks     = std::max<size_t>(4, static_cast<size_t>(47.0 / ratio));
         cfg.rescue_cooldown_blocks = std::max<size_t>(16, static_cast<size_t>(375.0 / ratio));
         auto& pf                   = cfg.postfilter;
         pf.leakage_smoothing       = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
