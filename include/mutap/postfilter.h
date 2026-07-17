@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <numbers>
 #include <optional>
@@ -294,22 +295,20 @@ namespace mutap {
             const size_t bins = m_n / 2 + 1;
             const Sample eps  = Sample(1e-20);
 
-            // Slide both analysis windows by one block.
-            for (size_t i = 0; i + b < m_n; ++i) {
-                m_input[i] = m_input[i + b];
-                m_ywin[i]  = m_ywin[i + b];
-            }
-            for (size_t i = 0; i < b; ++i) {
-                m_input[m_n - b + i] = e[i];
-                m_ywin[m_n - b + i]  = yhat_block[i];
-            }
+            // Slide both analysis windows by one block (memmove: the
+            // same element moves as the loop it replaces — bit-identical,
+            // measurably cheaper on every target).
+            std::memmove(m_input.data(), m_input.data() + b, (m_n - b) * sizeof(Sample));
+            std::memmove(m_ywin.data(), m_ywin.data() + b, (m_n - b) * sizeof(Sample));
+            std::memcpy(m_input.data() + (m_n - b), e, b * sizeof(Sample));
+            std::memcpy(m_ywin.data() + (m_n - b), yhat_block, b * sizeof(Sample));
             // Signal-path FFT stays RECTANGULAR (exact overlap-save
             // filtering); the ESTIMATION FFTs are Hann-windowed —
             // rectangular sidelobes (-13 dB) bleed echo energy into
             // near-end bins and were a measured double-talk
             // transparency failure.
+            std::memcpy(m_spec.data(), m_input.data(), m_n * sizeof(Sample));
             for (size_t i = 0; i < m_n; ++i) {
-                m_spec[i] = m_input[i];
                 // d = e + yhat reconstructs the MICROPHONE frame — the
                 // discriminator's left-hand signal (see class comment).
                 m_dspec[i] = m_window[i] * (m_input[i] + m_ywin[i]);
@@ -435,9 +434,7 @@ namespace mutap {
             // block-tap filter measurably smeared suppression onto the
             // near-end lines). Its linear phase is the postfilter's
             // latency: one block.
-            for (size_t tau = 0; tau < m_n; ++tau) {
-                m_gspec[tau] = Sample(0);
-            }
+            std::fill(m_gspec.begin() + static_cast<long>(2 * b), m_gspec.end(), Sample(0));
             for (size_t tau = 0; tau < 2 * b; ++tau) {
                 // Rectangular cut, deliberately: a Hann taper here was
                 // measured WORSE for double-talk transparency (2.25 dB

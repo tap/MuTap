@@ -452,6 +452,24 @@ width, which is what the parity gates were landed for. Workflow and
 the full table: bench/README.md. The deterministic instruction-count
 ratchet (SampleRateTap bench/icount pattern, QEMU) arrives with the
 M55 milestone.*
+*SUPPRESSOR PROFILE PASS — corrected the baseline table (the first
+one was measured under concurrent suite load, ~35 % pessimistic;
+idle-machine chain is 138/119 us per block at 48/16 kHz f64 = 2.6 /
+0.75 % of budget — bench/README.md now says to record the load
+average with every run). Per-stage suppressor breakdown: six
+2048-point FFTs per block are ~62 % of its cost (3 analysis forwards
+26 %, gain-constraint pair 23 %, output inverse 12 %), the per-bin
+estimator pass 25 % — the vectorization phase hits the FFT and the
+O(bins) passes first. TWO MEASURED NON-WINS recorded in
+bench/README.md: gain-constraint decimation (behaviorally clean but
+the skip never engages on active signal — estimator-variance gain
+wiggle exceeds any useful tolerance every block; idle-channel-only)
+and FTZ/DAZ (no host effect at either operating point). Landed: the
+bit-identical mechanical pass (memmove/memcpy sliding windows in
+fdkf + suppressor, std::fill zero-cut) — dump-verified bit-identical,
+worth ~2-4 % on the 16 kHz chain. Scalar host is done; the next
+performance lever is the M55 cross build + icount ratchet, where the
+vector work happens against these baselines.*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,

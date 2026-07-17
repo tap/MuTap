@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -275,11 +276,10 @@ namespace mutap {
             const size_t half = b; // bin count is half + 1
 
             // Overlap-save input window and newest block spectrum, exactly
-            // as in partitioned_fdaf.
-            for (size_t i = 0; i < b; ++i) {
-                m_input[i]     = m_input[i + b];
-                m_input[i + b] = input[i];
-            }
+            // as in partitioned_fdaf (memmove/memcpy: bit-identical to the
+            // element loop they replace).
+            std::memmove(m_input.data(), m_input.data() + b, b * sizeof(Sample));
+            std::memcpy(m_input.data() + b, input, b * sizeof(Sample));
             m_head        = (m_head + 1) % p_n;
             Sample* u_new = &m_u[m_head * m_n];
             for (size_t i = 0; i < m_n; ++i) {

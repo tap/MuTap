@@ -41,26 +41,62 @@ rescue trigger or guard ever fires inside the timed loop. Items
 processed are samples: Google Benchmark's `items_per_second / fs` is
 the x-realtime figure.
 
-## Scalar baselines (reference container, 2.8 GHz x86, GCC -O2, medians of 5)
+## Scalar baselines (reference container, 2.8 GHz x86, GCC -O2, medians of 5, idle machine)
 
 | layer | 48 kHz f64 | 48 kHz f32 | 16 kHz f64 | 16 kHz f32 |
 |---|---|---|---|---|
-| fdkf       | 62.7 µs | 54.1 µs | 35.5 µs | 31.1 µs |
-| suppressor | 115.7 µs | 104.7 µs | 116.5 µs | 100.5 µs |
-| shadow     | 22.6 µs | 19.9 µs | 22.4 µs | 19.7 µs |
-| **chain**  | **208.4 µs** | **192.2 µs** | **182.3 µs** | **173.6 µs** |
+| fdkf       | 39.3 µs | 36.9 µs | 22.7 µs | 21.0 µs |
+| suppressor | 78.9 µs | 77.1 µs | 82.0 µs | 78.2 µs |
+| shadow     | 14.2 µs | 13.3 µs | 14.7 µs | 14.2 µs |
+| **chain**  | **138.4 µs** | **131.3 µs** | **119.5 µs** | **114.4 µs** |
 
 Per-block real-time budget: 5.33 ms at 48 kHz, 16 ms at 16 kHz — the
-full chain costs **3.9 % / 1.1 %** of budget (f64) on this host.
+full chain costs **2.6 % / 0.75 %** of budget (f64) on this host.
+
+**Record the load average with every run.** The first committed table
+was measured while a test suite ran concurrently and read ~35 %
+pessimistic across the board; the numbers above are from an idle
+machine (load < 0.4). Only same-machine, same-load comparisons mean
+anything.
 
 Two findings the table pins down for the optimization work ahead:
 
-1. **The suppressor dominates, not the Kalman core** — ~55 % of the
+1. **The suppressor dominates, not the Kalman core** — ~57 % of the
    chain at 48 kHz, and its cost is block-size-bound, not rate-bound
    (identical at both rates: the analysis machinery scales with the
    2048-sample analysis window, which is the same at block 256
    everywhere). It is optimization target #1.
-2. **Scalar float32 buys only ~10–15 % on x86** — same-width scalar
+2. **Scalar float32 buys only ~5–10 % on x86** — same-width scalar
    ALUs. The float32 payoff is the vector width on M55 Helium and
    Hexagon HVX, which is exactly why the parity gates
    (`tests/test_float32.cpp`) were landed before this harness.
+
+## Per-stage suppressor profile (48 kHz f64, hand-inlined instrumentation)
+
+| stage | µs | share |
+|---|---|---|
+| window slides + buffer builds | 5.7 | 7 % |
+| 3 forward analysis FFTs (2048-pt) | 20.3 | 26 % |
+| per-bin estimator/gain pass | 19.6 | 25 % |
+| gain-constraint FFT pair + causal cut | 17.9 | 23 % |
+| gain application + min-stats | 4.3 | 6 % |
+| output inverse FFT | 9.6 | 12 % |
+
+Six 2048-point transforms per 256-sample block are ~62 % of the
+suppressor: the vectorization phase should hit the FFT and the two
+O(bins) passes first.
+
+## Measured non-wins (recorded so they are not re-litigated)
+
+- **Gain-constraint decimation** (skip the constraint FFT pair while
+  the smoothed gains stay within a relative tolerance of the last
+  constrained set): behaviorally clean at every tolerance tried
+  (0.01–0.1), but the skip **never engages on active signal** — with
+  fresh data each block the estimator-variance wiggle exceeds 1 % per
+  block at some bin essentially always (measured 8000/8000 rebuilds).
+  It would only pay on an idle channel, which no battery row or bench
+  measures. Rejected.
+- **FTZ/DAZ (denormal flushing)**: no measurable effect on host at
+  either the converged (deep-residual) or active operating point, in
+  either precision. The smoothed estimator floors sit above the
+  denormal range in practice.
