@@ -234,8 +234,12 @@ algorithmically complete. What exists today:
   echo ratio, the one signal double talk cannot fake): the swap rows
   measure 46/49 dB combined loss in [1,2] s and −96/−123 dBm0 deep
   steadies, at cold-start speed, with every other battery row
-  bit-identical. Louder-direction changes keep the baseline trajectory
-  (the dual-path comparator that could close them is filed in HANDOFF).
+  bit-identical — and for changes toward **louder** paths by the
+  **shadow comparator** (the classical dual-path answer as a second
+  trigger: a small fast canceller runs alongside, and the rescue fires
+  when it out-cancels the main — a performance comparison no double
+  talk can fake, measured at zero false fires across the DT/noise
+  batteries).
 - **The compliance proof notebook** (Stage 4) —
   [`notebooks/itu_compliance.ipynb`](notebooks/itu_compliance.ipynb):
   requirement/measured/margin tables for every row above, convergence

@@ -331,10 +331,12 @@ namespace {
     }
 
     // Test 5B: coupling-loss swings 6 dB <-> 46 dB re-converge each time.
-    // The quiet swing (-> 46 dB) over-explains and fires the rescue; the
-    // return swing (-> 6 dB, louder) does not — the worst-of-cycles read
-    // is the louder direction's trajectory (measured -36.9 / -43.8 in
-    // [1, 3] s; was -34.1 / -35.0 before the rescue).
+    // The quiet swing (-> 46 dB) fires the over-explanation rescue; the
+    // louder return swing fires the SHADOW comparator (postfilter.h) —
+    // the worst-of-cycles read is the louder leg, where recovery lands
+    // inside the [1, 3] s window at 16 kHz (measured -57.5; -43.8 with
+    // the rescue alone, -35.0 baseline) and just past it at 48 kHz
+    // (fire at ~0.8 s, deep by ~3 s; the window max stays -36.9).
     TEST(G168Adapted, PathSwings) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
@@ -354,7 +356,7 @@ namespace {
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 9, rs));
                 worst   = std::max(worst, max_in(g168_meter(rr.out, rs.fs), rs.fs, 1.0, 3.1));
             }
-            EXPECT_LE(worst, expected({-34.0, -40.0}, rs)) << "fs " << rs.fs;
+            EXPECT_LE(worst, expected({-34.0, -52.0}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -445,11 +447,12 @@ namespace {
     // Test 12: the standard's own acoustic scenario — three-phase
     // path/ERL switch A -> B (different model, ERL - 10 dB) -> A with no
     // reset. The 2A loss elements hold per phase. The A -> B switch
-    // (quieter) over-explains and fires the rescue (measured B steady
-    // -67.5 / -83.1; was -41.7 / -40.0); the B -> A return is the louder
-    // direction the rescue's trigger cannot see (see postfilter.h) —
-    // measured -38.6 / -45.9 (was -38.4 / -33.7; the 16 kHz gain is the
-    // preceding phase handing over a better-converged filter).
+    // (quieter) fires the over-explanation rescue (measured B steady
+    // -67.5 / -83.1; was -41.7 / -40.0); the B -> A return (louder)
+    // fires the shadow comparator — recovery lands inside the
+    // [1.4, 4.1] s read at 48 kHz (measured -65.4; -38.6 with the
+    // rescue alone) and just past it at 16 kHz (-45.9, the fire at
+    // ~2 s plus cold re-convergence).
     TEST(G168Adapted, AcousticThreePhaseScenario) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
@@ -461,7 +464,7 @@ namespace {
             echo_sim<double>                              sim(sc);
             auto                                          stu16   = erl_path(room::studio, rs, 16.0);
             const std::vector<const std::vector<double>*> phases  = {&cab, &stu16, &cab};
-            const rate_pair                               gates[] = {{-72.0, -73.0}, {-62.0, -78.0}, {-35.0, -42.0}};
+            const rate_pair                               gates[] = {{-72.0, -73.0}, {-62.0, -78.0}, {-60.0, -42.0}};
             for (size_t ph = 0; ph < phases.size(); ++ph) {
                 sim.set_echo_path(phases[ph]->data(), phases[ph]->size());
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 12, rs));
