@@ -59,6 +59,7 @@
 #include "mutap/fd_kalman.h"
 #include "mutap/postfilter.h"
 #include "support/echo_scenario.h"
+#include "support/itu_chain.h"
 #include "support/itu_levels.h"
 #include "support/itu_signals.h"
 
@@ -558,6 +559,97 @@ namespace {
             auto c         = good;
             c.floor_window = 0;
             EXPECT_THROW(pf{c}, std::invalid_argument);
+        }
+    }
+
+    // The Stage 3 block-128 / 16 kHz convergence anomaly, closed. The
+    // mechanism (measured, s8 scratch series): the P.501 CSS voiced
+    // segment is a 329 Hz comb; at ~8 ms hop the analysis window
+    // resolves it, the diagonal Kalman splits the rank-deficient
+    // minimum-norm solution uniformly across partitions, and the
+    // innovation-independent P decrement burns uncertainty on repeated
+    // regressors until the noise tracker absorbs the unmodeled echo —
+    // a cold-start self-lock (ERL 8.9 dB by 600 ms vs 22.5 at block
+    // 256; the notch follows the hop to 32 kHz / block 256 and is
+    // absent with white input or the double-talk CSS's other pitch).
+    // The preset enables the core's counter-measures (novelty discount
+    // + decaying uncertainty prior) inside the prone 6..12 ms hop band
+    // only. Measured with them: 15.5 dB by 600 ms, 46.3 by 3 s.
+    TEST(ItuChain, Block128NotchClosed) {
+        const double    fs = 16000.0;
+        itu::rate_setup rs{fs, 128, 1024};
+        const auto      path = itu::compliance_path(itu::room::cabin, rs);
+        itu::css_config cc;
+        cc.periods = 12;
+        cc.shaped  = true;
+        auto x     = itu::make_css_at(cc, fs);
+        itu::set_level_dbm0(x, -16.0);
+
+        struct raw_kalman {
+            mutap::partitioned_fdkf<double> core;
+            explicit raw_kalman(const mutap::partitioned_fdkf<double>::config& c)
+                : core(c) {}
+            void process_block(const double* xx, const double* yy, double* e) noexcept {
+                core.process_block(xx, yy, e);
+            }
+        };
+
+        // With the preset's prone-band knobs: the notch is closed.
+        {
+            raw_kalman      b(mutap::aec_chain_preset<double>(128, 8, fs).canceller);
+            auto            rr = itu::run_chain(b, path, 128, x);
+            itu::erl_reader erl(rr.echo, rr.out, fs);
+            EXPECT_GE(erl.by(0.6), 12.0); // measured 15.5
+            EXPECT_GE(erl.by(3.0), 40.0); // measured 46.3
+        }
+        // Knobs off: the structural collapse is still there (this gate
+        // documents the mechanism; if a future core change closes it
+        // with the knobs off, celebrate and retire the gate).
+        {
+            auto c                      = mutap::aec_chain_preset<double>(128, 8, fs).canceller;
+            c.novelty_smoothing         = 0.0;
+            c.novelty_floor             = 0.0;
+            c.initial_uncertainty_decay = 1.0;
+            raw_kalman      b(c);
+            auto            rr = itu::run_chain(b, path, 128, x);
+            itu::erl_reader erl(rr.echo, rr.out, fs);
+            EXPECT_LE(erl.by(0.6), 15.0); // measured 8.9
+        }
+    }
+
+    // Preset knob policy: the counter-measures live strictly inside the
+    // prone hop band — both certified geometries stay bit-identical.
+    TEST(ItuChain, PresetNoveltyPolicy) {
+        const auto cert48 = mutap::aec_chain_preset<double>(256, 8, 48000.0).canceller;
+        EXPECT_EQ(cert48.novelty_smoothing, 0.0);
+        EXPECT_EQ(cert48.initial_uncertainty_decay, 1.0);
+        const auto cert16 = mutap::aec_chain_preset<double>(256, 4, 16000.0).canceller;
+        EXPECT_EQ(cert16.novelty_smoothing, 0.0);
+        EXPECT_EQ(cert16.initial_uncertainty_decay, 1.0);
+
+        const auto prone16 = mutap::aec_chain_preset<double>(128, 8, 16000.0).canceller;
+        EXPECT_GT(prone16.novelty_smoothing, 0.0);
+        EXPECT_LT(prone16.initial_uncertainty_decay, 1.0);
+        const auto prone32 = mutap::aec_chain_preset<double>(256, 8, 32000.0).canceller;
+        EXPECT_GT(prone32.novelty_smoothing, 0.0);
+
+        // knob validation
+        using fdkf = mutap::partitioned_fdkf<double>;
+        fdkf::config good;
+        {
+            auto c              = good;
+            c.novelty_smoothing = 1.0; // not in [0, 1)
+            EXPECT_THROW(fdkf{c}, std::invalid_argument);
+        }
+        {
+            auto c          = good;
+            c.novelty_floor = -0.1;
+            EXPECT_THROW(fdkf{c}, std::invalid_argument);
+        }
+        {
+            auto c                      = good;
+            c.initial_uncertainty_decay = 0.0; // not in (0, 1]
+            EXPECT_THROW(fdkf{c}, std::invalid_argument);
         }
     }
 

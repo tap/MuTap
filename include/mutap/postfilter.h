@@ -969,6 +969,25 @@ namespace mutap {
         cfg.canceller.initial_uncertainty = Sample(10);
         const double ratio                = (static_cast<double>(block_size) / sample_rate) / (256.0 / 48000.0);
         cfg.canceller.noise_smoothing     = Sample(std::pow(0.9, ratio));
+        // Block-128-class notch (measured, Stage 3 anomaly closed): a hop
+        // of ~8 ms resolves the P.501 CSS voiced comb in the analysis
+        // window AND holds it for many blocks per segment — the diagonal
+        // Kalman then splits the rank-deficient solution uniformly across
+        // partitions and burns P on repeated regressors (ERL 8.9 dB by
+        // 600 ms at 16 kHz / block 128 vs 22.5 at block 256; the notch
+        // follows the hop to 32 kHz / block 256). Inside the prone band
+        // the preset enables the core's two counter-measures (novelty
+        // discount + decaying uncertainty prior; measured together:
+        // 8.9 -> 15.5 by 600 ms, 27.9 -> 46.3 by 3 s at 16 kHz / block
+        // 128, AM-FM double talk and the 30 s tone unmoved). Outside it —
+        // including both certified geometries (block 256 at 48 / 16 kHz,
+        // hops 5.33 / 16 ms) — both stay off: bit-identical behavior.
+        const double hop_ms = 1000.0 * static_cast<double>(block_size) / sample_rate;
+        if (hop_ms >= 6.0 && hop_ms <= 12.0) {
+            cfg.canceller.novelty_smoothing         = Sample(0.8);
+            cfg.canceller.novelty_floor             = Sample(0.1);
+            cfg.canceller.initial_uncertainty_decay = Sample(0.5);
+        }
         // Re-convergence rescue windows in blocks follow real time (the
         // hold is ~1 s, the cooldown ~2 s; see the chain config).
         cfg.rescue_hold_blocks     = std::max<size_t>(4, static_cast<size_t>(24.0 / ratio));

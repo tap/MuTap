@@ -331,8 +331,9 @@ and one REJECTED design recorded in postfilter.h (a noise-floor gain
 bound that self-references the residual's pause minima in near-
 silence). Geometry discovery worth keeping: the partitioned Kalman's
 convergence collapses at block 128 / 16 kHz (8.9 vs 22.5 dB ERL by
-600 ms at block 256) — open investigation item, worked around by
-pinning block 256 at both rates. STILL OPEN (Stage 3b): the Tier B
+600 ms at block 256) — open investigation item at the time, worked
+around by pinning block 256 at both rates; since diagnosed and closed
+(see the BLOCK-128 NOTCH note below). STILL OPEN (Stage 3b): the Tier B
 G.168-adapted battery and the G.167 historical row.*
 *STAGE 3b DONE — `tests/test_g168.cpp`: all twelve adapted rows at both
 required rates + the G.167 historical row; measured table and the one
@@ -375,6 +376,35 @@ partial recovery. TVP and 16 kHz hangover margins unchanged (slow
 drift and post-DT drag do not make the shadow win — those margins
 remain future work, likely needing the noise-tracker semantics
 revisit).*
+*BLOCK-128 NOTCH CLOSED — the Stage 3 anomaly diagnosed (s8 scratch
+series) and fixed. It was never "16 kHz" or "block 128": the notch
+follows an ~8 ms hop (it reproduces at 32 kHz / block 256, vanishes at
+32 kHz / block 128, and needs the single-talk CSS — white noise, PN
+alone, voiced alone and the double-talk CSS's other pitch are all
+clean). Mechanism, in two coupled parts: (1) at a 16 ms analysis
+window the CSS voiced segment's 329 Hz comb is resolved, the
+excitation is rank-deficient, and the diagonal Kalman splits the
+minimum-norm solution uniformly across partitions — misalignment lands
+ABOVE 0 dB, worse than an empty filter for the broadband PN that
+follows; (2) the P decrement 1 - c g|U|^2 is innovation-independent,
+so the repeating regressor burns uncertainty it never earned, and
+within ~10 blocks the noise tracker absorbs the unmodeled echo: the
+same self-lock the re-convergence rescue treats, but at cold start
+(the chain's shadow trigger does fire at ~0.6 s and helps the tail,
++10 dB by 3 s, but each voiced segment re-poisons under the 2 s
+cooldown). Fix, two core knobs, both default OFF (certified
+geometries bit-identical, verified on the full dump): an
+excitation-novelty covariance discount (P decrement scaled by
+1 - coherence of successive input spectra, floor 0.1) and a decaying
+per-partition P(0) prior (r = 0.5; encodes "echo paths decay", the
+prior the min-norm split follows on rank-deficient input; measured
+trade — 32 ms of dead bulk delay converges slower, 21.1 -> 16.8 dB by
+600 ms, so keep it off with uncompensated delay). aec_chain_preset
+enables both only inside the prone 6..12 ms hop band. Measured at
+16 kHz / block 128: 8.9 -> 15.5 dB ERL by 600 ms, 27.9 -> 46.3 by
+3 s (chain with shadow on top: 17.4 / 51.3); AM-FM DT, convergence in
+noise and the 30 s tone all same-or-better; regression-gated in
+test_postfilter.cpp (Block128NotchClosed, PresetNoveltyPolicy).*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,

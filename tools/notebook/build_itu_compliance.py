@@ -135,10 +135,12 @@ One configuration is pinned for the whole battery — compliance for a
 family of tunings is no compliance at all:
 
 - **Canceller:** `mutap::partitioned_fdkf<double>`, block 256 at *both*
-  rates (a scaled-down block 128 collapses the partitioned Kalman's
-  convergence at 16 kHz — measured, and documented as an open
-  investigation), 2048 taps at 48 kHz / 1024 at 16 kHz ≈ 43/64 ms of
-  echo path, transition 0.9998, initial uncertainty 10.
+  rates (a scaled-down block 128 used to collapse the partitioned
+  Kalman's convergence at 16 kHz — since diagnosed as a CSS-comb ×
+  8 ms-hop rank-deficiency notch and closed by preset-enabled core
+  counter-measures outside the certified geometries; `HANDOFF.md`
+  carries the story), 2048 taps at 48 kHz / 1024 at 16 kHz ≈ 43/64 ms
+  of echo path, transition 0.9998, initial uncertainty 10.
 - **Suppressor:** `mutap::residual_suppressor` at library defaults, with
   every per-block time constant rescaled so the *physical* time
   constants match across rates, the low-band suppression cap from

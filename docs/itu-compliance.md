@@ -399,8 +399,12 @@ full per-row numbers live in the test file headers. **Tier B
 transition 0.9998, initial uncertainty 10, canceller noise smoothing
 and all suppressor time constants rescaled to physical time per block
 duration; 48 kHz = block 256 / 2048 taps, 16 kHz = block 256 / 1024
-taps (block 128 collapses the partitioned Kalman's convergence —
-measured 8.9 vs 22.5 dB ERL by 600 ms); low-band suppression cap
+taps (a block-128-class geometry — any ~8 ms hop — used to collapse
+the partitioned Kalman's convergence on the CSS voiced comb, measured
+8.9 vs 22.5 dB ERL by 600 ms; since diagnosed and closed by the
+core's novelty discount + uncertainty prior, which the preset enables
+only inside the prone 6..12 ms hop band — the certified block-256
+geometries are untouched, see HANDOFF.md); low-band suppression cap
 < 300 Hz with 0.3 s sustained certification; initial receive guard.
 
 ### Measured, 48 kHz / 16 kHz (cabin path; studio where the row sweeps rooms)
