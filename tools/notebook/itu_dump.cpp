@@ -1134,6 +1134,58 @@ namespace {
         o.add("tclwdt", comb_band_level_db(xh, rp, 0.0, rs.fs) - comb_band_level_db(oh, rp, 0.0, rs.fs));
         o.add("asdt", comb_band_level_db(vh, sp, 0.0, rs.fs) - comb_band_level_db(oh, sp, 0.0, rs.fs));
         o.add("delay_ms", 2.0 * 1000.0 * static_cast<double>(rs.block) / rs.fs);
+
+        // TCLwdt OVER TIME, at three echo-path scalings. The scalar above
+        // reads low against the bracketed [30] and the matrix documents
+        // why: what the far-comb bands pick up during double talk is
+        // near-end GAIN-MODULATION SPILL through the suppressor, not
+        // returned echo. The time-resolved version makes that argument
+        // visual — a real echo component would move dB-for-dB with the
+        // path gain, so three coinciding traces (path -10 dB / nominal /
+        // +10 dB, each converged fresh on its own path) show the reading
+        // is echo-path-invariant at every instant, not just on average.
+        {
+            const double win_s = 0.5;
+            const double hop_s = 0.25;
+            auto         trace = [&](const std::vector<double>& far, const std::vector<double>& out) {
+                std::vector<double> ts, vals;
+                const auto          w = static_cast<size_t>(win_s * rs.fs);
+                const auto          h = static_cast<size_t>(hop_s * rs.fs);
+                for (size_t s0 = 0; s0 + w <= out.size(); s0 += h) {
+                    std::vector<double> xw(far.begin() + static_cast<long>(s0),
+                                           far.begin() + static_cast<long>(s0 + w));
+                    std::vector<double> ow(out.begin() + static_cast<long>(s0),
+                                           out.begin() + static_cast<long>(s0 + w));
+                    ts.push_back(static_cast<double>(s0) / rs.fs + win_s / 2.0);
+                    vals.push_back(comb_band_level_db(xw, rp, 0.0, rs.fs) - comb_band_level_db(ow, rp, 0.0, rs.fs));
+                }
+                return std::pair{ts, vals};
+            };
+
+            jobj tr;
+            // nominal: reuse the run above (full DT span, not just the half)
+            auto [t0v, base] = trace(xf, rd.out);
+            tr.add("t", jarr(t0v));
+            tr.add("base", jarr(base));
+            for (const double scale_db : {-10.0, 10.0}) {
+                const double g      = std::pow(10.0, scale_db / 20.0);
+                auto         scaled = cab;
+                for (auto& s : scaled) {
+                    s *= g;
+                }
+                compliance_chain                  cs(chain_config(rs));
+                typename echo_sim<double>::config sc2;
+                sc2.echo_path  = scaled;
+                sc2.block_size = rs.block;
+                echo_sim<double> sim2(sc2);
+                (void)run_chain_on(sim2, cs, rs.block, x); // converge on CSS at this coupling
+                auto rds        = run_chain_on(sim2, cs, rs.block, xf, &v);
+                auto [ts, vals] = trace(xf, rds.out);
+                (void)ts; // same time base as the nominal trace
+                tr.add(scale_db < 0 ? "down10" : "up10", jarr(vals));
+            }
+            o.add("tclwdt_trace", tr.str());
+        }
         return o.str();
     }
 
