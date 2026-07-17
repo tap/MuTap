@@ -292,6 +292,15 @@ asserted by the test suite on every CI run, and
 [`notebooks/itu_compliance.ipynb`](notebooks/itu_compliance.ipynb)
 re-measures the whole battery live and renders the trajectories.
 
+The battery is double precision (the golden model); **float32 parity**
+for the embedded targets is gated separately
+([`tests/test_float32.cpp`](tests/test_float32.cpp)): `aec_chain<float>`
+at the same certified preset matches within 0.1–0.7 dB on the headline
+rows, with one float32-specific design element — the float preset
+enables the core's narrowband guard (classical tone-disabler
+discipline) to hold the G.168 §7 tone row, measured −64.8 dBm0(A) at
+16 kHz against the −49.3 requirement.
+
 ## Quick start
 
 ```cmake

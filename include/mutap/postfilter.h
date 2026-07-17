@@ -15,6 +15,7 @@
 #include <numbers>
 #include <optional>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 
 #include "mutap/fd_kalman.h"
@@ -987,6 +988,19 @@ namespace mutap {
             cfg.canceller.novelty_smoothing         = Sample(0.8);
             cfg.canceller.novelty_floor             = Sample(0.1);
             cfg.canceller.initial_uncertainty_decay = Sample(0.5);
+        }
+        // Float32 deployments additionally get the narrowband guard (the
+        // fd_kalman.h config comment carries the measured story): a
+        // sustained on-bin tone drives a constraint-churn weight walk
+        // whose equilibrium scales with rounding — double passes the
+        // G.168 tone row at -101 dBm0(A) with 50 dB of margin and stays
+        // guard-off (the certified double battery is bit-identical);
+        // float32 reads -20 against the -49.3 gate without the guard and
+        // -72 worst-case with it. The 1 s hold is scaled like every
+        // other real-time window and must outwait a CSS voiced segment.
+        if constexpr (std::is_same_v<Sample, float>) {
+            cfg.canceller.narrowband_guard       = 0.8F;
+            cfg.canceller.narrowband_hold_blocks = std::max<size_t>(8, static_cast<size_t>(187.0 / ratio));
         }
         // Re-convergence rescue windows in blocks follow real time (the
         // hold is ~1 s, the cooldown ~2 s; see the chain config).

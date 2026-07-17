@@ -126,7 +126,37 @@ namespace mutap {
             /// ERL by 600 ms 21.1 -> 16.8 dB at r = 0.5), so keep this
             /// off where bulk delay is expected and uncompensated.
             Sample initial_uncertainty_decay = Sample(1);
-            bool   constrained               = true; ///< gradient constraint, as in partitioned_fdaf
+            /// Narrowband guard (0 = off, the default): when the newest
+            /// input block spectrum holds more than this fraction of its
+            /// power in its 4 largest bins, sustained
+            /// narrowband_hold_blocks, adaptation freezes until the
+            /// excitation broadens again (the counter halves per
+            /// broadband block, releasing in ~7 blocks). This is the
+            /// classical tone-disabler discipline, and it is what closes
+            /// the float32 tone row: on a sustained on-bin tone every
+            /// partition sees the SAME input spectrum, so the
+            /// partition-redistribution null space is invisible to the
+            /// error, and the gradient constraint's per-block projection
+            /// churns it into a noise-driven weight walk whose
+            /// equilibrium scales with rounding (measured, 16 kHz /
+            /// block 256, 30 s 1 kHz on-bin tone: double -101 dBm0(A),
+            /// float -20 against a -49.3 gate; unconstrained reaches
+            /// -233 / -162 but collapses broadband convergence, so the
+            /// constraint must stay). Freezing once converged removes
+            /// the churn: float lands at -72 (on-bin worst case; off-bin
+            /// -151, DTMF -148). A tone conveys no new broadband
+            /// information, so nothing is lost by freezing — and G.168
+            /// SS6/7 want exactly this (tones must not corrupt the
+            /// filter). Threshold 0.8 separates cleanly (measured, 1 s
+            /// hold): fires on single tones and DTMF pairs, never on
+            /// CSS, the P.501 AM-FM combs, or noise (0 blocks frozen,
+            /// convergence bit-identical).
+            Sample narrowband_guard = Sample(0);
+            /// Blocks of sustained concentration before the freeze
+            /// engages (~1 s of real time at the caller's geometry —
+            /// the guard must outwait a CSS voiced segment, 48.6 ms).
+            size_t narrowband_hold_blocks = 187;
+            bool   constrained            = true; ///< gradient constraint, as in partitioned_fdaf
         };
 
         explicit partitioned_fdkf(const config& cfg)
@@ -159,6 +189,11 @@ namespace mutap {
 
         bool adapting() const noexcept { return m_adapt; }
         void set_adaptation(bool enabled) noexcept { m_adapt = enabled; }
+
+        /// True while the narrowband guard is holding adaptation frozen.
+        bool narrowband_frozen() const noexcept {
+            return m_cfg.narrowband_guard > Sample(0) && m_nb_count >= m_cfg.narrowband_hold_blocks;
+        }
 
         /// Lift every bin's state uncertainty back to the initial value,
         /// WITHOUT touching the filter weights: the converged estimate is
@@ -225,7 +260,8 @@ namespace mutap {
             for (auto& x : m_nov) {
                 x = Sample(1);
             }
-            m_head = m_cfg.partitions - 1;
+            m_head     = m_cfg.partitions - 1;
+            m_nb_count = 0;
         }
 
         /// Process exactly block_size() samples: filter the reference input,
@@ -299,6 +335,43 @@ namespace mutap {
 
             if (!m_adapt) {
                 return;
+            }
+
+            // Narrowband guard: freeze adaptation on sustained
+            // spectrally-concentrated excitation (see the config
+            // comment). The detector keeps running while frozen so the
+            // freeze releases when the excitation broadens.
+            if (m_cfg.narrowband_guard > Sample(0)) {
+                Sample     top[4] = {Sample(0), Sample(0), Sample(0), Sample(0)};
+                Sample     total  = Sample(0);
+                const auto feed   = [&](Sample p2) noexcept {
+                    total += p2;
+                    if (p2 > top[3]) {
+                        top[3] = p2;
+                        for (int j = 3; j > 0 && top[j] > top[j - 1]; --j) {
+                            const Sample t = top[j - 1];
+                            top[j - 1]     = top[j];
+                            top[j]         = t;
+                        }
+                    }
+                };
+                feed(u_new[0] * u_new[0]);
+                feed(u_new[1] * u_new[1]);
+                for (size_t k = 1; k < half; ++k) {
+                    feed(u_new[2 * k] * u_new[2 * k] + u_new[2 * k + 1] * u_new[2 * k + 1]);
+                }
+                const Sample conc = (top[0] + top[1] + top[2] + top[3]) / (total + m_cfg.regularization);
+                if (total > m_cfg.regularization && conc > m_cfg.narrowband_guard) {
+                    if (m_nb_count < m_cfg.narrowband_hold_blocks) {
+                        ++m_nb_count;
+                    }
+                }
+                else {
+                    m_nb_count /= 2;
+                }
+                if (m_nb_count >= m_cfg.narrowband_hold_blocks) {
+                    return;
+                }
             }
 
             // Error spectrum of the zero-padded block [0 | e].
@@ -440,6 +513,13 @@ namespace mutap {
             if (!(cfg.initial_uncertainty_decay > Sample(0)) || !(cfg.initial_uncertainty_decay <= Sample(1))) {
                 throw std::invalid_argument("partitioned_fdkf: initial_uncertainty_decay must be in (0, 1]");
             }
+            if (!(cfg.narrowband_guard >= Sample(0)) || !(cfg.narrowband_guard <= Sample(1))) {
+                throw std::invalid_argument("partitioned_fdkf: narrowband_guard must be in [0, 1]");
+            }
+            if (cfg.narrowband_guard > Sample(0) && cfg.narrowband_hold_blocks == 0) {
+                throw std::invalid_argument(
+                    "partitioned_fdkf: narrowband_hold_blocks must be >= 1 when the guard is on");
+            }
             return cfg;
         }
 
@@ -464,8 +544,9 @@ namespace mutap {
         std::vector<Sample>    m_coh_num; ///< novelty: packed complex <U_t conj(U_t-1)> accumulator
         std::vector<Sample>    m_coh_den; ///< novelty: |U_t||U_t-1| accumulator
         std::vector<Sample>    m_nov;     ///< novelty: per-bin P-decrement scale, this block
-        size_t                 m_head  = 0;
-        bool                   m_adapt = true;
+        size_t                 m_head     = 0;
+        size_t                 m_nb_count = 0;
+        bool                   m_adapt    = true;
     };
 
 } // namespace mutap
