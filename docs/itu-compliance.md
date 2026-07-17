@@ -561,11 +561,23 @@ structural reason:
 
 Asserted at the brackets: TCLwst >= [45] (measured 60+), Asdt <= 6
 (~1), Tic >= [20 dB] within [1 s] (43+), delay <= [16 ms] (10.7).
-TCLwdt is REPORTED, not met at [25]/[30]: at equal-level double talk
-the reading (23.6 dB) is dominated by the near end's gain-modulation
-spill — it does not move when the echo path is scaled +-10 dB, i.e., it
-is not measuring echo. At the in-force P.1110 competing-talker
-convention the same chain measures >= 37 dB per band (ITU_DtEchoLoss).
+TCLwdt is REPORTED, not met at [25]/[30], and it is not measuring
+returned echo. The time-resolved measurement (the notebook's G.167
+figure; `tclwdt_trace` in the dump) shows the reading's echo-path
+dependence is the OPPOSITE of echo's: +10 dB of path gain leaves the
+trace unchanged (settled mean 21.2 vs 21.6 dB) while -10 dB moves the
+reading DOWN to ~5 dB — returned echo would separate the three traces
+by 10 dB each in the other order, and at the quiet path the output's
+far-band content exceeds the entire physical echo level. Decomposition
+(measured): at the quiet path the far-band energy is already in the
+LINEAR canceller residual (1.0 dB there vs 1.9 at the output; comfort
+noise on/off changes nothing) — it is canceller weight motion under
+loud double talk re-modulating the far end, (H - What) x X, an
+absolute quantity that does not scale with H. At nominal coupling the
+linear residual reads 25.2 and the suppressor's comfort fill accounts
+for the rest of the gap (23.6 with fill, 27.7 without). At the
+in-force P.1110 competing-talker convention the same chain measures
+>= 37 dB per band (ITU_DtEchoLoss).
 
 ### Harness calibration added in 3b
 

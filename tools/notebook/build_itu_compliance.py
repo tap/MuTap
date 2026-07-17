@@ -660,14 +660,36 @@ claimed as compliance. 48 kHz, unit-energy cabin (the worst-case
 coupling in the battery).
 
 One finding matters here: **TCLwdt** (echo loss during double talk)
-reads low against the bracketed [30]/[25] not because echo returns —
-the reading is *invariant to ±10 dB of echo-path scaling*, which real
-echo cannot be. What the comb measurement picks up in the far-end bands
-during double talk is near-end **gain-modulation spill** through the
-suppressor, not echo. Under P.1110's reading of the same quantity
+reads low against the bracketed [30]/[25] not because echo returns.
+The time-resolved measurement below shows why: returned echo would
+move the reading **dB-for-dB with the echo-path gain**, and it does
+not — a +10 dB louder path leaves the trace unchanged, and a −10 dB
+quieter path moves the reading *down*, the **opposite** direction of
+echo (at that path the output's far-band content exceeds the entire
+physical echo level, which no returned-echo reading can do). The
+decomposition locates the energy: it is already in the **linear
+canceller's residual** (comfort noise on/off changes nothing at the
+quiet path) — weight motion under loud double talk re-modulates the
+far-end reference, an (H−Ŵ)·X term whose absolute size does not
+scale with the path. Under P.1110's reading of the same quantity
 (≥ 37 dB) the chain passes comfortably; the suite gates the G.167 row
 at the measured value as a regression check.
 """)
+
+code(r'''tr = D["g167"]["tclwdt_trace"]
+fig, ax = plt.subplots(figsize=(8, 3.6))
+ax.plot(tr["t"], tr["up10"], color=C16, lw=1.2, ls="--", label="echo path +10 dB")
+ax.plot(tr["t"], tr["base"], color=C48, lw=1.6, label="nominal path")
+ax.plot(tr["t"], tr["down10"], color=C_TGT, lw=1.2, ls="-.", label="echo path −10 dB")
+ax.axhline(30, color=C_REQ, lw=2.0)
+ax.annotate("G.167 bracketed [30] (provisional, withdrawn)", (0.3, 30.8), fontsize=8, color=C_REQ)
+ax.set_xlabel("time into double talk (s)"); ax.set_ylabel("TCLwdt (dB)")
+ax.set_title("TCLwdt over time, three echo-path couplings — the reading is not echo")
+ax.legend(fontsize=9, frameon=False, loc="lower right")
+plt.tight_layout(); plt.show()
+print(f"settled means: nominal {np.mean(tr['base'][8:]):.1f} dB, "
+      f"+10 dB path {np.mean(tr['up10'][8:]):.1f}, −10 dB path {np.mean(tr['down10'][8:]):.1f} "
+      f"(returned echo would separate these by 10 dB each, in the other order)")''')
 
 code(r'''g = D["g167"]
 rows = [

@@ -338,6 +338,21 @@ G.168-adapted battery and the G.167 historical row.*
 *STAGE 3b DONE — `tests/test_g168.cpp`: all twelve adapted rows at both
 required rates + the G.167 historical row; measured table and the one
 documented deviation in the matrix's "Stage 3b delivered" section.
+TCLwdt STORY SHARPENED (s11 scratch, tclwdt_trace in the dump + the
+notebook's G.167 figure): the old "invariant to +-10 dB path scaling"
+claim was one-sided — +10 dB is indeed invariant, but -10 dB moves the
+reading DOWN to ~5 dB, the opposite direction of echo (at that path
+the output's far-band content exceeds the entire physical echo).
+Decomposition: the energy is already in the LINEAR canceller residual
+(comfort fill irrelevant at the quiet path; at nominal the fill costs
+~4 dB of the reading, 23.6 vs 27.7 without) — canceller weight motion
+under loud double talk re-modulating the far-end reference, an
+(H - What) x X term whose absolute size does not scale with H. FILED
+OBSERVATION: that weight motion at weak-echo-loud-near-end operating
+points is worth its own investigation (it bounds send cleanliness
+during heavily mismatched double talk; no compliance row reads it —
+P.1110's DtEchoLoss convention measures >= 37 dB per band at its own
+levels and passes with margin).*
 CORE FOLLOW-UP FILED: fd_kalman uncertainty re-inflation on sustained
 innovation excess — after an abrupt path change the converged filter's
 small state uncertainty makes deep re-convergence take ~7 s (48 kHz) /
