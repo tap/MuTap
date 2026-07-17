@@ -83,6 +83,35 @@ namespace mutap {
             /// and leaves burst hardening opt-in for fixed-gain
             /// deployments.
             Sample transient_floor_ratio = Sample(0);
+            /// UNCERTAINTY RE-INFLATION on sustained innovation excess
+            /// (0 = off, the default). The converged filter's failure
+            /// mode after an ABRUPT path change (measured, Stage 6): the
+            /// state uncertainty P is orders of magnitude below P(0), and
+            /// within ~100 ms the noise tracker absorbs the unmodeled-echo
+            /// residual into Psi_s — the filter books its own error as
+            /// near-end noise and locks itself at a gain ~20x too small
+            /// (deep re-convergence measured ~7 s where a cold start takes
+            /// 1.4 s). The fix tracks, per bin and partition, a smoothed
+            /// MOMENTUM of the normalized raw update direction,
+            /// mu = a mu + (1-a) conj(U_p) E / S_uu: zero-mean under
+            /// genuine near-end innovation, but converging to the actual
+            /// weight error dW under an unmodeled path change. When |mu|^2
+            /// exceeds `reinflation_excess` times its own statistical
+            /// noise floor ((1-a)/(1+a) Psi_s/S_uu), P is lifted to
+            /// |mu|^2 — the implied missing uncertainty itself. Double
+            /// talk stays safe because the floor scales with Psi_s
+            /// (measured: 0 dB double-talk divergence keeps > 20 dB of
+            /// bound margin, convergence-in-noise and cold-start rows
+            /// bit-identical; the swap's deep descent moves from ~7 s to
+            /// ~3 s at excess 2). Gating the Psi_s update on the same
+            /// trigger was REJECTED: it diverges outright in sustained
+            /// background noise (the starved estimate lets the filter
+            /// chase the noise; measured +60 dBm0 blowup).
+            Sample reinflation_excess = Sample(0);
+            /// Momentum smoothing a in [0, 1) (~100 ms at block 256 /
+            /// 48 kHz; the compliance preset rescales it with block
+            /// duration like every other smoothing).
+            Sample reinflation_smoothing = Sample(0.95);
             bool   constrained           = true; ///< gradient constraint, as in partitioned_fdaf
         };
 
@@ -98,7 +127,12 @@ namespace mutap {
             , m_time(m_n)
             , m_p(cfg.partitions * (cfg.block_size + 1))
             , m_psi_s(cfg.block_size + 1)
-            , m_denom(cfg.block_size + 1) {
+            , m_denom(cfg.block_size + 1)
+            // Re-inflation state only when the feature is on: the momentum
+            // array doubles the filter-sized state, and embedded deployments
+            // run with the feature off.
+            , m_mu(cfg.reinflation_excess > Sample(0) ? cfg.partitions * m_n : 0)
+            , m_suu(cfg.reinflation_excess > Sample(0) ? cfg.block_size + 1 : 0) {
             reset();
         }
 
@@ -120,6 +154,8 @@ namespace mutap {
             fill_zero(m_u);
             fill_zero(m_h);
             fill_zero(m_psi_s);
+            fill_zero(m_mu);
+            fill_zero(m_suu);
             for (auto& x : m_p) {
                 x = m_cfg.initial_uncertainty;
             }
@@ -242,6 +278,59 @@ namespace mutap {
                 }
             }
 
+            // Uncertainty re-inflation (see the config comment): track the
+            // momentum of the normalized raw update direction per bin and
+            // partition; where it exceeds its noise floor, lift P to the
+            // implied missing uncertainty. Runs after the correct step so
+            // the lift takes effect in the NEXT block's gain.
+            if (m_cfg.reinflation_excess > Sample(0)) {
+                const Sample  al  = m_cfg.reinflation_smoothing;
+                const Sample  oma = Sample(1) - al;
+                const Sample  nf  = m_cfg.reinflation_excess * oma / (Sample(1) + al);
+                const Sample  bu  = m_cfg.noise_smoothing;
+                const Sample* u0  = &m_u[m_head * m_n];
+                m_suu[0]          = bu * m_suu[0] + (Sample(1) - bu) * u0[0] * u0[0];
+                m_suu[half]       = bu * m_suu[half] + (Sample(1) - bu) * u0[1] * u0[1];
+                for (size_t k = 1; k < half; ++k) {
+                    m_suu[k] =
+                        bu * m_suu[k] + (Sample(1) - bu) * (u0[2 * k] * u0[2 * k] + u0[2 * k + 1] * u0[2 * k + 1]);
+                }
+                for (size_t p = 0; p < p_n; ++p) {
+                    const Sample* u  = &m_u[((m_head + p_n - p) % p_n) * m_n];
+                    Sample*       mu = &m_mu[p * m_n];
+                    Sample*       pp = &m_p[p * (half + 1)];
+                    {
+                        const Sample su = m_suu[0] + m_cfg.regularization;
+                        mu[0]           = al * mu[0] + oma * u[0] * m_espec[0] / su;
+                        const Sample m2 = mu[0] * mu[0];
+                        if (m2 > nf * m_psi_s[0] / su && m2 > pp[0]) {
+                            pp[0] = m2;
+                        }
+                    }
+                    {
+                        const Sample su = m_suu[half] + m_cfg.regularization;
+                        mu[1]           = al * mu[1] + oma * u[1] * m_espec[1] / su;
+                        const Sample m2 = mu[1] * mu[1];
+                        if (m2 > nf * m_psi_s[half] / su && m2 > pp[half]) {
+                            pp[half] = m2;
+                        }
+                    }
+                    for (size_t k = 1; k < half; ++k) {
+                        const Sample su = m_suu[k] + m_cfg.regularization;
+                        const Sample ur = u[2 * k];
+                        const Sample ui = u[2 * k + 1];
+                        const Sample er = m_espec[2 * k];
+                        const Sample ei = m_espec[2 * k + 1];
+                        mu[2 * k]       = al * mu[2 * k] + oma * (ur * er + ui * ei) / su;
+                        mu[2 * k + 1]   = al * mu[2 * k + 1] + oma * (ur * ei - ui * er) / su;
+                        const Sample m2 = mu[2 * k] * mu[2 * k] + mu[2 * k + 1] * mu[2 * k + 1];
+                        if (m2 > nf * m_psi_s[k] / su && m2 > pp[k]) {
+                            pp[k] = m2;
+                        }
+                    }
+                }
+            }
+
             // Track the near-end PSD from the residual (post-update: the
             // denominator above used the estimate from before this block).
             const Sample beta     = m_cfg.noise_smoothing;
@@ -297,6 +386,12 @@ namespace mutap {
             if (!(cfg.transient_floor_ratio >= Sample(0))) {
                 throw std::invalid_argument("partitioned_fdkf: transient_floor_ratio must be >= 0");
             }
+            if (!(cfg.reinflation_excess >= Sample(0))) {
+                throw std::invalid_argument("partitioned_fdkf: reinflation_excess must be >= 0");
+            }
+            if (!(cfg.reinflation_smoothing >= Sample(0)) || !(cfg.reinflation_smoothing < Sample(1))) {
+                throw std::invalid_argument("partitioned_fdkf: reinflation_smoothing must be in [0, 1)");
+            }
             return cfg;
         }
 
@@ -318,6 +413,8 @@ namespace mutap {
         std::vector<Sample>    m_p;     ///< per-partition, per-bin state variance
         std::vector<Sample>    m_psi_s; ///< per-bin near-end PSD estimate
         std::vector<Sample>    m_denom; ///< per-bin innovation power, this block
+        std::vector<Sample>    m_mu;    ///< re-inflation momentum (packed; empty when off)
+        std::vector<Sample>    m_suu;   ///< smoothed input PSD per bin (empty when off)
         size_t                 m_head  = 0;
         bool                   m_adapt = true;
     };

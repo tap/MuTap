@@ -797,11 +797,18 @@ namespace mutap {
         cfg.canceller.initial_uncertainty = Sample(10);
         const double ratio                = (static_cast<double>(block_size) / sample_rate) / (256.0 / 48000.0);
         cfg.canceller.noise_smoothing     = Sample(std::pow(0.9, ratio));
-        auto& pf                          = cfg.postfilter;
-        pf.leakage_smoothing              = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
-        pf.gain_attack                    = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
-        pf.gain_release                   = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
-        pf.floor_smoothing                = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
+        // Uncertainty re-inflation on sustained innovation excess (see
+        // fd_kalman.h): the measured fix for slow deep re-convergence
+        // after abrupt path changes (excess 2 sits on the measured
+        // plateau; the momentum smoothing rescales like every other
+        // per-block constant).
+        cfg.canceller.reinflation_excess    = Sample(2);
+        cfg.canceller.reinflation_smoothing = Sample(std::pow(0.95, ratio));
+        auto& pf                            = cfg.postfilter;
+        pf.leakage_smoothing                = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
+        pf.gain_attack                      = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
+        pf.gain_release                     = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
+        pf.floor_smoothing                  = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
         pf.floor_window = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
         // Low-band suppression cap from 300 Hz (protect voice fundamentals
         // no analysis resolution can separate from echo; the canceller
