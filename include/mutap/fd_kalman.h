@@ -112,23 +112,25 @@ namespace mutap {
             /// 48 kHz; the compliance preset rescales it with block
             /// duration like every other smoothing).
             Sample reinflation_smoothing = Sample(0.95);
-            /// BREADTH GATE on the re-inflation trigger: lifts apply only
-            /// on blocks where at least this fraction of bins trigger (in
-            /// any partition). A genuine path change is spectrally
-            /// broadband — the swap scenarios trigger essentially every
-            /// bin at once — while the detector's false positives are
-            /// structurally narrowband: two FM comb lines sharing an
-            /// analysis bin (P.501's AM-FM double-talk plans) beat at
-            /// their difference frequency, and when the modulation sweeps
-            /// that difference through zero the product masquerades as
-            /// sustained drift. Without the gate those few-bin misfires
-            /// measurably DIVERGED the AM-FM double-talk and
-            /// noise-pumping rows (send attenuation blew past -400 dB);
-            /// with it they are contained while the swap trajectories
-            /// keep the full re-inflation win. A genuinely narrowband
-            /// path change falls back to baseline behavior — accepted.
-            Sample reinflation_breadth = Sample(0.25);
-            bool   constrained         = true; ///< gradient constraint, as in partitioned_fdaf
+            /// ECHO-DOMINANCE GATE on the re-inflation trigger: lifts
+            /// apply only on blocks where the implied weight error
+            /// explains at least this fraction of the total residual
+            /// power, R = sum_k S_uu sum_p |mu|^2 / sum_k S_ee. A real
+            /// path change drives R toward 1 (the residual IS the
+            /// unmodeled echo); the detector's false positives cannot:
+            /// two FM comb lines sharing an analysis bin (P.501's AM-FM
+            /// double-talk plans) beat at their difference frequency and
+            /// masquerade as sustained drift per bin, but the loud near
+            /// end that carries them dominates the residual, so R stays
+            /// low. Without this gate the AM-FM double-talk and
+            /// noise-pumping rows measurably DIVERGED (send attenuation
+            /// past -400 dB) — a per-bin breadth gate was tried first
+            /// and failed, because at 48 kHz bin resolution the comb
+            /// misfires are themselves broadband. Note the statistic's
+            /// own noise floor is ~partitions x (1-a)/(1+a) (~0.2 at 8
+            /// partitions, a = 0.95); the threshold must sit above it.
+            Sample reinflation_dominance = Sample(0.5);
+            bool   constrained           = true; ///< gradient constraint, as in partitioned_fdaf
         };
 
         explicit partitioned_fdkf(const config& cfg)
@@ -149,7 +151,7 @@ namespace mutap {
             // run with the feature off.
             , m_mu(cfg.reinflation_excess > Sample(0) ? cfg.partitions * m_n : 0)
             , m_suu(cfg.reinflation_excess > Sample(0) ? cfg.block_size + 1 : 0)
-            , m_trig(cfg.reinflation_excess > Sample(0) ? cfg.block_size + 1 : 0) {
+            , m_see(cfg.reinflation_excess > Sample(0) ? cfg.block_size + 1 : 0) {
             reset();
         }
 
@@ -173,9 +175,7 @@ namespace mutap {
             fill_zero(m_psi_s);
             fill_zero(m_mu);
             fill_zero(m_suu);
-            for (auto& t : m_trig) {
-                t = 0;
-            }
+            fill_zero(m_see);
             for (auto& x : m_p) {
                 x = m_cfg.initial_uncertainty;
             }
@@ -300,10 +300,11 @@ namespace mutap {
 
             // Uncertainty re-inflation (see the config comment): track the
             // momentum of the normalized raw update direction per bin and
-            // partition; where it exceeds its noise floor AND the trigger
-            // is spectrally broadband (the breadth gate), lift P to the
-            // implied missing uncertainty. Runs after the correct step so
-            // the lift takes effect in the NEXT block's gain.
+            // partition; lift P to the implied missing uncertainty where
+            // the momentum clears its noise floor — but only on blocks
+            // where the implied weight error dominates the residual (the
+            // echo-dominance gate). Runs after the correct step so the
+            // lift takes effect in the NEXT block's gain.
             if (m_cfg.reinflation_excess > Sample(0)) {
                 const Sample  al  = m_cfg.reinflation_smoothing;
                 const Sample  oma = Sample(1) - al;
@@ -312,33 +313,30 @@ namespace mutap {
                 const Sample* u0  = &m_u[m_head * m_n];
                 m_suu[0]          = bu * m_suu[0] + (Sample(1) - bu) * u0[0] * u0[0];
                 m_suu[half]       = bu * m_suu[half] + (Sample(1) - bu) * u0[1] * u0[1];
+                m_see[0]          = bu * m_see[0] + (Sample(1) - bu) * m_espec[0] * m_espec[0];
+                m_see[half]       = bu * m_see[half] + (Sample(1) - bu) * m_espec[1] * m_espec[1];
                 for (size_t k = 1; k < half; ++k) {
                     m_suu[k] =
                         bu * m_suu[k] + (Sample(1) - bu) * (u0[2 * k] * u0[2 * k] + u0[2 * k + 1] * u0[2 * k + 1]);
+                    m_see[k] = bu * m_see[k]
+                               + (Sample(1) - bu)
+                                     * (m_espec[2 * k] * m_espec[2 * k] + m_espec[2 * k + 1] * m_espec[2 * k + 1]);
                 }
-                // Pass 1: update the momenta, mark per-bin triggers.
-                for (size_t k = 0; k <= half; ++k) {
-                    m_trig[k] = 0;
-                }
-                size_t n_trig = 0;
+                // Pass 1: update the momenta; accumulate the explained-power
+                // numerator sum_k S_uu sum_p |mu|^2 and residual denominator.
+                Sample explained = Sample(0);
                 for (size_t p = 0; p < p_n; ++p) {
                     const Sample* u  = &m_u[((m_head + p_n - p) % p_n) * m_n];
                     Sample*       mu = &m_mu[p * m_n];
                     {
                         const Sample su = m_suu[0] + m_cfg.regularization;
                         mu[0]           = al * mu[0] + oma * u[0] * m_espec[0] / su;
-                        if (mu[0] * mu[0] > nf * m_psi_s[0] / su && m_trig[0] == 0) {
-                            m_trig[0] = 1;
-                            ++n_trig;
-                        }
+                        explained += m_suu[0] * mu[0] * mu[0];
                     }
                     {
                         const Sample su = m_suu[half] + m_cfg.regularization;
                         mu[1]           = al * mu[1] + oma * u[1] * m_espec[1] / su;
-                        if (mu[1] * mu[1] > nf * m_psi_s[half] / su && m_trig[half] == 0) {
-                            m_trig[half] = 1;
-                            ++n_trig;
-                        }
+                        explained += m_suu[half] * mu[1] * mu[1];
                     }
                     for (size_t k = 1; k < half; ++k) {
                         const Sample su = m_suu[k] + m_cfg.regularization;
@@ -348,37 +346,37 @@ namespace mutap {
                         const Sample ei = m_espec[2 * k + 1];
                         mu[2 * k]       = al * mu[2 * k] + oma * (ur * er + ui * ei) / su;
                         mu[2 * k + 1]   = al * mu[2 * k + 1] + oma * (ur * ei - ui * er) / su;
-                        const Sample m2 = mu[2 * k] * mu[2 * k] + mu[2 * k + 1] * mu[2 * k + 1];
-                        if (m2 > nf * m_psi_s[k] / su && m_trig[k] == 0) {
-                            m_trig[k] = 1;
-                            ++n_trig;
-                        }
+                        explained += m_suu[k] * (mu[2 * k] * mu[2 * k] + mu[2 * k + 1] * mu[2 * k + 1]);
                     }
                 }
-                // Pass 2: broadband triggers only — lift P on the bins
-                // whose momentum clears the floor.
-                if (static_cast<Sample>(n_trig) >= m_cfg.reinflation_breadth * static_cast<Sample>(half + 1)) {
+                Sample resid = Sample(0);
+                for (size_t k = 0; k <= half; ++k) {
+                    resid += m_see[k];
+                }
+                // Pass 2: dominance-gated lifts on bins whose momentum
+                // clears the per-bin noise floor.
+                if (explained >= m_cfg.reinflation_dominance * resid + m_cfg.regularization) {
                     for (size_t p = 0; p < p_n; ++p) {
                         const Sample* mu = &m_mu[p * m_n];
                         Sample*       pp = &m_p[p * (half + 1)];
-                        if (m_trig[0] != 0) {
+                        {
                             const Sample m2 = mu[0] * mu[0];
-                            if (m2 > pp[0]) {
+                            const Sample su = m_suu[0] + m_cfg.regularization;
+                            if (m2 > nf * m_psi_s[0] / su && m2 > pp[0]) {
                                 pp[0] = m2;
                             }
                         }
-                        if (m_trig[half] != 0) {
+                        {
                             const Sample m2 = mu[1] * mu[1];
-                            if (m2 > pp[half]) {
+                            const Sample su = m_suu[half] + m_cfg.regularization;
+                            if (m2 > nf * m_psi_s[half] / su && m2 > pp[half]) {
                                 pp[half] = m2;
                             }
                         }
                         for (size_t k = 1; k < half; ++k) {
-                            if (m_trig[k] == 0) {
-                                continue;
-                            }
                             const Sample m2 = mu[2 * k] * mu[2 * k] + mu[2 * k + 1] * mu[2 * k + 1];
-                            if (m2 > pp[k]) {
+                            const Sample su = m_suu[k] + m_cfg.regularization;
+                            if (m2 > nf * m_psi_s[k] / su && m2 > pp[k]) {
                                 pp[k] = m2;
                             }
                         }
@@ -447,8 +445,8 @@ namespace mutap {
             if (!(cfg.reinflation_smoothing >= Sample(0)) || !(cfg.reinflation_smoothing < Sample(1))) {
                 throw std::invalid_argument("partitioned_fdkf: reinflation_smoothing must be in [0, 1)");
             }
-            if (!(cfg.reinflation_breadth >= Sample(0)) || !(cfg.reinflation_breadth <= Sample(1))) {
-                throw std::invalid_argument("partitioned_fdkf: reinflation_breadth must be in [0, 1]");
+            if (!(cfg.reinflation_dominance >= Sample(0))) {
+                throw std::invalid_argument("partitioned_fdkf: reinflation_dominance must be >= 0");
             }
             return cfg;
         }
@@ -473,7 +471,7 @@ namespace mutap {
         std::vector<Sample>    m_denom; ///< per-bin innovation power, this block
         std::vector<Sample>    m_mu;    ///< re-inflation momentum (packed; empty when off)
         std::vector<Sample>    m_suu;   ///< smoothed input PSD per bin (empty when off)
-        std::vector<char>      m_trig;  ///< per-bin trigger marks, this block (empty when off)
+        std::vector<Sample>    m_see;   ///< smoothed residual PSD per bin (empty when off)
         size_t                 m_head  = 0;
         bool                   m_adapt = true;
     };
