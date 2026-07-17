@@ -695,7 +695,7 @@ namespace mutap {
             /// in HANDOFF. rescue_drop_ratio 0 disables. Hold ~0.25 s /
             /// cooldown ~2 s at the reference geometry (preset-rescaled).
             Sample rescue_drop_ratio      = Sample(0.5);
-            size_t rescue_hold_blocks     = 47;
+            size_t rescue_hold_blocks     = 24;
             size_t rescue_cooldown_blocks = 375;
         };
 
@@ -875,7 +875,7 @@ namespace mutap {
         cfg.canceller.noise_smoothing     = Sample(std::pow(0.9, ratio));
         // Re-convergence rescue windows in blocks follow real time (the
         // hold is ~1 s, the cooldown ~2 s; see the chain config).
-        cfg.rescue_hold_blocks     = std::max<size_t>(4, static_cast<size_t>(47.0 / ratio));
+        cfg.rescue_hold_blocks     = std::max<size_t>(4, static_cast<size_t>(24.0 / ratio));
         cfg.rescue_cooldown_blocks = std::max<size_t>(16, static_cast<size_t>(375.0 / ratio));
         auto& pf                   = cfg.postfilter;
         pf.leakage_smoothing       = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
