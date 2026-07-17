@@ -361,6 +361,20 @@ parallel and compare actual cancellation) is the only known-robust way
 to close the remaining LOUDER-direction deep phase, which
 over-explanation cannot see; it would also lift the TimeVariantPath
 and 16 kHz hangover margins the original filing named.*
+*SHADOW COMPARATOR DELIVERED — as the rescue's second trigger in
+aec_chain: a 2-partition fast shadow (transition 0.999, ~25 % extra
+cost, preset-enabled, shadow_partitions 0 disables) fires the same
+one-shot lift when it out-cancels the main by 3 dB sustained 0.3 s of
+receive-active blocks. Zero false fires measured across the DT/noise
+batteries (performance comparison is DT-immune by construction — the
+statistic the correlation family could never get). Louder-direction
+swaps now recover at cold-start speed at both rates (fires 0.8/1.8 s;
+deep steady -47 -> -79/-84 dBm0); swings 16 kHz and three-phase 48 kHz
+read windows lock the wins (-57.5 / -65.4), the mirror windows catch
+partial recovery. TVP and 16 kHz hangover margins unchanged (slow
+drift and post-DT drag do not make the shadow win — those margins
+remain future work, likely needing the noise-tracker semantics
+revisit).*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,

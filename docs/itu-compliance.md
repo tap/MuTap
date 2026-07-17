@@ -503,7 +503,7 @@ adaptations: leak-rate silence 45 s (rec 2 min), tone stability 30 s
 | G168_ComfortNoise (9A/9B) | steps +-2 dB, ramp +-6 | **-1.24 / -1.72 step; -0.19 / -0.02 ramp** |
 | G168_AcousticResidual (12) | 2A masks per phase | loss elements met; switched-phase steadies gated (below) |
 
-### The re-convergence deviation, and the rescue that closes (half of) it
+### The re-convergence deviation, and the two triggers that close it
 
 ORIGINAL FINDING (Stage 3b): after an ABRUPT path change the chain
 re-reached the >= 20 dB combined-loss element within 1 s at both
@@ -526,19 +526,32 @@ Measured on the swap rows: combined loss in [1,2] s 46.1 / 49.2 dB
 leg -67.5 / -83.1 (was -41.7 / -40.0); path-opened loss +14 / +19 dB.
 Every other battery row measured bit-identical.
 
-The trigger deliberately uses ONLY over-explanation (estimate power
-exceeding mic power) — the one signal double talk cannot fake, since a
-near end only ADDS mic power. The measured price: a change toward a
-LOUDER path does not over-explain and keeps the baseline trajectory
-(coarse recovery on the mask schedule, deep steady slow — path swings
-5B and the three-phase return leg gate that direction at its measured
-values). Three DT-confounded detector variants were measured and
-rejected en route (in-core momentum re-inflation with breadth and
-dominance gates — diverged on the P.501 AM-FM combs; the ratio's
-under-side and a certified-leakage escalation — collapsed quiet-DT
-echo loss to 2 dB); the failures are recorded in the rescue's config
-comment and git history. **The dual-path/shadow comparator that could
-close the louder direction is filed in HANDOFF.**
+Two triggers feed the one-shot lift, each safe for a different
+structural reason:
+
+- **Over-explanation** (estimate power exceeding mic power): the one
+  signal double talk cannot fake, since a near end only ADDS mic
+  power. Covers changes toward quieter/different paths. Three
+  DT-confounded detector variants were measured and rejected en route
+  (in-core momentum re-inflation with breadth and dominance gates —
+  diverged on the P.501 AM-FM combs; the ratio's under-side and a
+  certified-leakage escalation — collapsed quiet-DT echo loss to
+  2 dB); the failures are recorded in the code and git history.
+- **The SHADOW COMPARATOR** (the classical dual-path answer, delivered
+  as the rescue's second trigger): a small fast canceller (2 of the
+  main's 8 partitions, ~25 % extra cost) runs on the same signals, and
+  the rescue fires when it out-cancels the main by 3 dB sustained
+  0.3 s — a converged main can only lose to a coarse shadow if its
+  estimate is wrong. Performance comparison is DT-immune by
+  construction (a near end lands in both residuals equally), measured
+  as zero false fires across the loud/quiet AM-FM and noise-pumping
+  batteries at both rates. Covers the LOUDER direction: the swap
+  toward 10 dB more coupling fires at 0.8 s / 1.8 s (48 / 16 kHz) and
+  the deep steady moves from -47 to -79 / -84 dBm0. In the battery's
+  fixed read windows the recovery lands fully inside at one rate per
+  row (path swings 16 kHz -57.5, was -43.8; three-phase return 48 kHz
+  -65.4, was -38.6) and just past the window at the other — gates hold
+  everywhere with the wins locked in where the windows catch them.
 
 ### G.167 historical row (informative, withdrawn rec)
 

@@ -334,7 +334,7 @@ table(["rate", "NLP on: loss 0-50 ms (≥ 6)", "loss 50 ms-1 s (≥ 20)", "stead
        "NLP off: loss 0-50 ms (≥ 6)", "loss 1-10 s (≥ 20)", "steady vs Fig 11 (≤ 0)"], rows,
       "G.168-adapted convergence, worst level of the sweep — combined-loss elements and the figures' bounds.")''')
 
-md("""### Re-convergence after an abrupt path change — the rescue
+md("""### Re-convergence after an abrupt path change — the rescue's two triggers
 
 Swap the room mid-call (cabin at 6 dB coupling → studio at 16 dB, no
 reset). A converged Kalman's structural failure mode here is a
@@ -345,18 +345,29 @@ noise and re-converges at a gain ~20× too small (the deep steady state
 used to take ~7 s at 48 kHz and > 10 s at 16 kHz, where a cold start
 takes 1.4 s).
 
-The chain's **re-convergence rescue** closes this: when the
-suppressor's echo-explained ratio shows sustained *over*-explanation —
-the estimate exceeding the mic, the one mismatch signal a near end
-cannot fake, since double talk only *adds* mic power — the canceller's
-uncertainty is lifted back to its cold-start value once (weights kept,
-2 s cooldown), and the descent below runs at cold-start speed. The
-deliberate limit: a change toward a *louder* path does not
-over-explain and keeps the old trajectory (coarse recovery on the mask
-schedule, deep steady slow) — the dual-path comparator that could
-close that direction is filed in [`HANDOFF.md`](../HANDOFF.md), along
-with the measured failures of three detector variants that tried to
-see it and lost to the AM-FM combs.
+The chain's **re-convergence rescue** closes this, from two
+independent triggers that share one action — lift the canceller's
+uncertainty back to its cold-start value once (weights kept, 2 s
+cooldown) — and cover the two directions a path can change:
+
+- **Over-explanation** (quieter path): the suppressor's
+  echo-explained ratio shows the estimate *exceeding* the mic,
+  sustained — the one mismatch signal a near end cannot fake, since
+  double talk only *adds* mic power.
+- **Shadow comparator** (louder path): a tiny 2-partition shadow
+  canceller with a fast state leak runs on the same signals; it never
+  converges deep, but after a swap it re-acquires the coarse path in
+  ~100 ms while the locked main filter cannot. When the main
+  residual sits 3 dB above the shadow's, sustained ~0.3 s of
+  receive activity, the main filter is provably beaten by a worse
+  filter — double-talk-immune by construction, because near-end
+  speech lands in both residuals. Detector variants that instead
+  tried to read the mismatch from the main filter's own innovations
+  all lost to the P.501 AM-FM combs; their measured failures are
+  recorded in [`HANDOFF.md`](../HANDOFF.md) and `fd_kalman.h`.
+
+With both triggers the descent after a swap in either direction runs
+at cold-start speed.
 """)
 
 code(r'''fig, ax = plt.subplots(figsize=(8, 3.6))
@@ -610,8 +621,9 @@ rows = [
      m1(min(R48["g168"]["three_phase_loss"])), m1(min(R16["g168"]["three_phase_loss"]))],
 ]
 table(["G.168-adapted row (criterion)", "48 kHz", "16 kHz"], rows,
-      "The remaining battery rows — all criteria met; the swing/three-phase deep steadies ride the "
-      "documented re-convergence limitation and are regression-gated in the test suite.")''')
+      "The remaining battery rows — all criteria met; on the swing/three-phase rows the rescue's "
+      "shadow trigger fires after the louder-direction return legs, and the deep steadies that "
+      "land inside the fixed read windows are regression-gated at the rescued values.")''')
 
 md("""Leak rate deserves a sentence: after 45 s of silence the residual
 *improves* — the Kalman's state decay (transition 0.9998 per block) is a
@@ -682,10 +694,14 @@ md("""## What this proves, and where the teeth are
   measured-first thresholds, and CI runs them on every change. This
   notebook exists so a human can *see* the trajectories the assertions
   compress into pass/fail.
-- The one open deviation — slow deep re-convergence after abrupt path
-  changes — is structural in the frequency-domain Kalman core and filed
-  as the next core work item (uncertainty re-inflation), with regression
-  gates holding the measured trajectory until it lands.
+- The former deviation — slow deep re-convergence after abrupt path
+  changes, structural in a converged Kalman — is closed by the
+  two-trigger rescue above in both directions, with regression gates
+  holding the rescued trajectories. What remains open is margin work,
+  not compliance: the 16 kHz hangover and time-variant-path rows pass
+  with thin margins that the rescue does not move (slow drift and
+  post-double-talk drag never look like an abrupt swap), filed in
+  [`HANDOFF.md`](../HANDOFF.md).
 
 **Recommendations:** ITU-T P.1110/P.1120 (in-force automotive wideband/
 super-wideband), P.340 (02/2000) Table 5 Category 1, P.501 (test
