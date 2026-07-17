@@ -65,3 +65,10 @@ option(MUTAP_BUILD_ITU_DUMP "Build the ITU compliance measurement dump" OFF)
 if(MUTAP_BUILD_ITU_DUMP)
     add_subdirectory(tools/notebook)
 endif()
+
+# Host-only performance baselines (Google Benchmark needs threads);
+# see bench/README.md for the workflow. Never a CI performance gate.
+option(MUTAP_BUILD_BENCHMARKS "Build MuTap benchmarks" OFF)
+if(MUTAP_BUILD_BENCHMARKS)
+    add_subdirectory(bench)
+endif()
