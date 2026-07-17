@@ -627,3 +627,18 @@ against the uncached run.)
 
 Remaining: ITU real-speech test-vector procurement (tracked above) and
 the fd_kalman uncertainty re-inflation core follow-up (HANDOFF).
+
+## Float32 parity (deployment precision)
+
+The battery above is double precision — the golden model. The embedded
+targets run the same core in float32, and `tests/test_float32.cpp`
+gates what `aec_chain<float>` at the same certified preset measures on
+the headline rows: parity within 0.1–0.7 dB on single talk,
+convergence, AM-FM double talk and leak at both required rates. The
+one float32-specific design element is the **narrowband guard** in the
+float preset (classical tone-disabler discipline): without it the
+G.168 §7 tone row reads −20 dBm0(A) at 16 kHz against the −49.3 gate —
+a rounding-scaled weight walk driven by the gradient constraint on
+on-bin tones, mechanism and rejected alternatives in `fd_kalman.h` and
+HANDOFF — and with it −64.8 (48 kHz: −146.6). The double preset keeps
+the guard off; the certified battery is bit-identical.

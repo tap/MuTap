@@ -405,6 +405,35 @@ enables both only inside the prone 6..12 ms hop band. Measured at
 3 s (chain with shadow on top: 17.4 / 51.3); AM-FM DT, convergence in
 noise and the 30 s tone all same-or-better; regression-gated in
 test_postfilter.cpp (Block128NotchClosed, PresetNoveltyPolicy).*
+*FLOAT32 PARITY PASS DONE — the deployment-precision oracle for the
+M55/Hexagon performance work (`tests/test_float32.cpp`). chain<float>
+at the certified preset matches the double golden model within
+0.1..0.7 dB on single talk, convergence, AM-FM double talk, the rescue
+swap and the leak row, at both required rates. ONE row needed a design
+response: the G.168 SS7 tone (float32 -20 dBm0(A) against the -49.3
+gate at 16 kHz). Mechanism (s9 scratch series): on an on-bin tone all
+partitions see the same input spectrum, the partition-redistribution
+null space is invisible to the error, and the gradient constraint's
+per-block projection churns it into a noise-driven weight walk whose
+equilibrium scales with rounding — even double pays 130 dB for the
+constraint on this row (-101 vs -233 unconstrained) and passes on
+margin alone. REJECTED remedies (all measured): unconstrained (tone
+-162 but broadband collapses to -55 single-talk / 29 dB convergence —
+the constraint is what buys broadband depth); increment-projection
+(-33; churn is structural, not roundtrip rounding); every-Kth-block
+constraint (diverges by K=64); update-size constraint skip (never
+engages — at equilibrium the walk IS the update); notch knobs (-49.3
+at best, zero margin). LANDED: the classical tone-disabler discipline
+as a core narrowband guard (top-4-bin concentration > 0.8 sustained
+1 s freezes adaptation, decay-not-reset release; fires on tones and
+DTMF, never on CSS / AM-FM combs / noise — measured 0 frozen blocks
+and bit-identical convergence). Enabled by the float32 preset only;
+the double preset keeps it off and the certified battery is
+BIT-IDENTICAL (dump-verified). Float32 tone with the guard: -64.8
+chain-level at 16 kHz (15 dB margin), -146.6 at 48 kHz. Six gates in
+test_float32.cpp pin all of it. NEXT: bench/ baseline harness
+(SampleRateTap pattern), then the M55/Hexagon optimization itself —
+both now have a correctness oracle at deployment precision.*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,
