@@ -434,6 +434,24 @@ chain-level at 16 kHz (15 dB margin), -146.6 at 48 kHz. Six gates in
 test_float32.cpp pin all of it. NEXT: bench/ baseline harness
 (SampleRateTap pattern), then the M55/Hexagon optimization itself —
 both now have a correctness oracle at deployment precision.*
+*BENCH BASELINE DELIVERED — `bench/bench_aec.cpp` (Google Benchmark,
+commit-pinned, `MUTAP_BUILD_BENCHMARKS=ON`, bench-smoke CI job, never
+a performance gate): fdkf / suppressor / shadow / full chain at both
+certified geometries, double + float32, warmed to the steady adapting
+path over a stationary corpus (no trigger fires inside the timed
+loop). Scalar reference (2.8 GHz x86, medians): chain 208/192 us per
+block at 48 kHz f64/f32 (3.9 % of the 5.33 ms budget), 182/174 us at
+16 kHz (1.1 %). Two findings that order the optimization work: (1)
+the SUPPRESSOR dominates — ~55 % of the chain (116 us), and its cost
+is block-size-bound, not rate-bound (the 2048-sample analysis window
+is the same at both rates) — it is target #1, ahead of the Kalman
+core (63/36 us) and the shadow (~22 us, ~11 % — cheaper than the
+~25 % partition-count estimate); (2) scalar float32 buys only
+~10-15 % on x86 — the float32 payoff is M55 Helium / HVX vector
+width, which is what the parity gates were landed for. Workflow and
+the full table: bench/README.md. The deterministic instruction-count
+ratchet (SampleRateTap bench/icount pattern, QEMU) arrives with the
+M55 milestone.*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,

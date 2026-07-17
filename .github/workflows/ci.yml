@@ -167,6 +167,28 @@ jobs:
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure
 
+  # Keeps the benchmarks compiling and runnable; never a performance gate
+  # (shared runners are noise — see bench/README.md).
+  bench-smoke:
+    name: Benchmark smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DMUTAP_BUILD_BENCHMARKS=ON
+          -DMUTAP_BUILD_TESTS=OFF
+
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Run (smoke)
+        run: ./build/bench/mutap_bench --benchmark_min_time=0.01s
+
   clang-format:
     name: clang-format
     runs-on: ubuntu-latest
@@ -178,4 +200,4 @@ jobs:
           sudo apt-get update -q && sudo apt-get install -y -q clang-format-18
           clang-format-18 --dry-run --Werror \
             include/mutap/*.h tests/*.cpp tests/support/*.h \
-            tools/capi/*.cpp tools/capi/*.h platform/*.c
+            tools/capi/*.cpp tools/capi/*.h platform/*.c bench/*.cpp
