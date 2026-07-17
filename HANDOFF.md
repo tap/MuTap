@@ -343,6 +343,24 @@ small state uncertainty makes deep re-convergence take ~7 s (48 kHz) /
 >10 s (16 kHz) where initial convergence (P(0) = 10) reaches Figure 9
 in 1.4 s; would also lift the TimeVariantPath and 16 kHz hangover
 margins.*
+*FOLLOW-UP DELIVERED (Stage 6) — as the RE-CONVERGENCE RESCUE:
+aec_chain watches the suppressor's echo-explained ratio and, on
+sustained OVER-explanation (the one mismatch signal double talk cannot
+fake — a near end only ADDS mic power), calls the core's new
+reinflate_uncertainty(): one bounded lift of P back to P(0), weights
+kept, ~2 s cooldown. Swap rows now measure 46/49 dB combined loss in
+[1,2] s and -96/-123 dBm0 deep steadies (the 16 kHz ">10 s" case
+closes); every other battery row bit-identical. The in-core detector
+family (momentum of the normalized update direction, three gate
+variants) was measured and REJECTED — sinusoid-pair near ends (P.501
+AM-FM combs sharing analysis bins) defeat per-bin correlation
+statistics; failures recorded in fd_kalman.h and the rescue's config
+comment. NEW CORE FOLLOW-UP FILED: a dual-path/shadow comparator
+(classical G.168-device architecture — run a cheap fast filter in
+parallel and compare actual cancellation) is the only known-robust way
+to close the remaining LOUDER-direction deep phase, which
+over-explanation cannot see; it would also lift the TimeVariantPath
+and 16 kHz hangover margins the original filing named.*
 
 **Stage 4 — Proof notebook.** `tools/notebook/build_itu_compliance.py`
 -> `notebooks/itu_compliance.ipynb`: one section per requirement group,

@@ -227,9 +227,15 @@ algorithmically complete. What exists today:
   bounded 24 dB inside the limit, leak rate that *improves* over 45 s
   of silence, tone stability cancelled to the numerical floor, comfort
   noise tracking steps within +-1.8 dB — plus the withdrawn G.167's
-  figures as an informative row. One documented deviation: deep
-  re-convergence after *abrupt* path changes (the Kalman
-  uncertainty-re-inflation follow-up in HANDOFF).
+  figures as an informative row. The one deviation Stage 3b documented —
+  slow deep re-convergence after *abrupt* path changes — is now closed
+  for changes toward quieter/different paths by the **re-convergence
+  rescue** (a one-shot uncertainty lift triggered by the over-explained
+  echo ratio, the one signal double talk cannot fake): the swap rows
+  measure 46/49 dB combined loss in [1,2] s and −96/−123 dBm0 deep
+  steadies, at cold-start speed, with every other battery row
+  bit-identical. Louder-direction changes keep the baseline trajectory
+  (the dual-path comparator that could close them is filed in HANDOFF).
 - **The compliance proof notebook** (Stage 4) —
   [`notebooks/itu_compliance.ipynb`](notebooks/itu_compliance.ipynb):
   requirement/measured/margin tables for every row above, convergence

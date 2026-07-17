@@ -503,21 +503,42 @@ adaptations: leak-rate silence 45 s (rec 2 min), tone stability 30 s
 | G168_ComfortNoise (9A/9B) | steps +-2 dB, ramp +-6 | **-1.24 / -1.72 step; -0.19 / -0.02 ramp** |
 | G168_AcousticResidual (12) | 2A masks per phase | loss elements met; switched-phase steadies gated (below) |
 
-### The documented deviation: re-convergence depth after abrupt path changes
+### The re-convergence deviation, and the rescue that closes (half of) it
 
-After an ABRUPT path change (re-convergence 2A-b, path swings 5B, the
-three-phase test 12), the chain re-reaches the **>= 20 dB combined-loss
-element within 1 s at both rates**, but the deep Figure-9 steady state
-only after ~7 s at 48 kHz and beyond 10 s at 16 kHz (measured
-trajectory: -39.5 / -44.2 / -51.4 / -64.9 / -91.0 dBm0 across
-[1,2]/[2,3]/[3,5]/[5,8]/[8,10.5] s at 48 kHz). Cause: a converged
-Kalman's state uncertainty is small and nothing re-inflates it on a
-path change — initial convergence gets P(0) = 10 and meets Figure 9
-within 1.4 s; re-convergence does not get that boost. The affected
-assertions are regression gates at the measured trajectory, and
-**"uncertainty re-inflation on sustained innovation excess" is filed in
-HANDOFF as the fd_kalman core follow-up** (it would also lift the
-TimeVariantPath and hangover 16 kHz margins).
+ORIGINAL FINDING (Stage 3b): after an ABRUPT path change the chain
+re-reached the >= 20 dB combined-loss element within 1 s at both
+rates, but the deep Figure-9 steady state only after ~7 s at 48 kHz
+and beyond 10 s at 16 kHz. Instrumented cause (Stage 6): a converged
+Kalman's state uncertainty P sits orders of magnitude below P(0), and
+within ~100 ms the noise tracker absorbs the unmodeled-echo residual
+into Psi_s — the filter books its own error as near-end noise and
+locks itself at a gain ~20x too small (innovation attribution measured
+30000:1 P-vs-Psi_s on a cold start, 1:20 after a swap).
+
+DELIVERED — the RE-CONVERGENCE RESCUE (aec_chain +
+partitioned_fdkf::reinflate_uncertainty()): when the suppressor's
+echo-explained ratio exceeds its healthy band for ~0.125 s of
+receive-active blocks, the chain lifts P back to P(0) once (weights
+kept, ~2 s cooldown) and re-convergence runs at cold-start speed.
+Measured on the swap rows: combined loss in [1,2] s 46.1 / 49.2 dB
+(was 23.5 / 22.8), deep steady -95.9 / -123.3 dBm0 in [8,10.5] s (was
+-91.0 / -52.0 — the 16 kHz ">10 s" case closes); three-phase quiet
+leg -67.5 / -83.1 (was -41.7 / -40.0); path-opened loss +14 / +19 dB.
+Every other battery row measured bit-identical.
+
+The trigger deliberately uses ONLY over-explanation (estimate power
+exceeding mic power) — the one signal double talk cannot fake, since a
+near end only ADDS mic power. The measured price: a change toward a
+LOUDER path does not over-explain and keeps the baseline trajectory
+(coarse recovery on the mask schedule, deep steady slow — path swings
+5B and the three-phase return leg gate that direction at its measured
+values). Three DT-confounded detector variants were measured and
+rejected en route (in-core momentum re-inflation with breadth and
+dominance gates — diverged on the P.501 AM-FM combs; the ratio's
+under-side and a certified-leakage escalation — collapsed quiet-DT
+echo loss to 2 dB); the failures are recorded in the rescue's config
+comment and git history. **The dual-path/shadow comparator that could
+close the louder direction is filed in HANDOFF.**
 
 ### G.167 historical row (informative, withdrawn rec)
 
