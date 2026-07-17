@@ -665,6 +665,30 @@ namespace mutap {
             /// convergence-in-noise mask was missed by 12 dB).
             Sample guard_converge_ratio = Sample(0.9);
             size_t guard_hold_blocks    = 20;
+            /// RE-CONVERGENCE RESCUE: once convergence has certified,
+            /// the chain watches the suppressor's echo-explained
+            /// fraction; when it leaves the healthy band
+            /// [drop_ratio, 1/drop_ratio] for rescue_hold_blocks
+            /// consecutive receive-active blocks, the canceller's
+            /// state uncertainty is lifted back to P(0) ONCE (weights
+            /// kept), so re-convergence after an abrupt path change
+            /// runs at cold-start speed instead of the measured ~7 s
+            /// self-lock (P starved AND the residual misbooked into
+            /// the noise PSD — see fd_kalman.h, which also records
+            /// the rejected in-core detector this replaces). Both
+            /// mismatch directions matter: a swap to a LOUDER path
+            /// under-explains (ratio < 1), a swap to a QUIETER path
+            /// over-explains (ratio > 1). A false trigger — sustained
+            /// loud double talk holds the ratio low too — is bounded
+            /// by construction: the lift hands the filter a cold
+            /// start, and cold starts under double talk / noise are
+            /// exactly the regime the Kalman noise tracker keeps
+            /// conservative; the cooldown bounds the repeat rate.
+            /// rescue_drop_ratio 0 disables. Hold ~1 s / cooldown
+            /// ~2 s at the reference geometry; the preset rescales.
+            Sample rescue_drop_ratio      = Sample(0.5);
+            size_t rescue_hold_blocks     = 188;
+            size_t rescue_cooldown_blocks = 375;
         };
 
         explicit aec_chain(const config& cfg)
@@ -685,10 +709,12 @@ namespace mutap {
         void reset() noexcept {
             m_afc.reset();
             m_post.reset();
-            m_x_floor    = Sample(0);
-            m_conv_count = 0;
-            m_converged  = false;
-            m_guard      = Sample(1);
+            m_x_floor         = Sample(0);
+            m_conv_count      = 0;
+            m_converged       = false;
+            m_guard           = Sample(1);
+            m_drop_count      = 0;
+            m_rescue_cooldown = 0;
         }
 
         /// True once the initial receive guard has certified convergence
@@ -706,7 +732,9 @@ namespace mutap {
                 m_afc.process_block(x, y, m_mid.data());
                 m_post.process_block(m_mid.data(), m_afc.echo_estimate_block(), e);
             }
-            apply_guard(x, e);
+            const bool receive_active = track_receive_activity(x);
+            apply_guard(receive_active, e);
+            apply_rescue(receive_active);
         }
 
       private:
@@ -716,20 +744,25 @@ namespace mutap {
             return pf;
         }
 
-        void apply_guard(const Sample* x, Sample* e) noexcept {
-            if (m_cfg.guard_attenuation_db <= Sample(0) || m_converged) {
-                return;
-            }
+        /// Shared receive-activity detector (asymmetric x-power floor:
+        /// fast fall, slow rise, so it rides under talk) — feeds both
+        /// the initial receive guard and the re-convergence rescue.
+        bool track_receive_activity(const Sample* x) noexcept {
             const size_t b     = block_size();
             Sample       x_pow = Sample(0);
             for (size_t i = 0; i < b; ++i) {
                 x_pow += x[i] * x[i];
             }
-            // Asymmetric floor: fast fall, slow rise (rides under talk).
             const Sample a_f = x_pow < m_x_floor ? Sample(0.7) : Sample(0.999);
             m_x_floor += (Sample(1) - a_f) * (x_pow - m_x_floor);
-            const bool receive_active = x_pow > m_cfg.guard_activity_ratio * m_x_floor + Sample(1e-20);
+            return x_pow > m_cfg.guard_activity_ratio * m_x_floor + Sample(1e-20);
+        }
 
+        void apply_guard(bool receive_active, Sample* e) noexcept {
+            if (m_cfg.guard_attenuation_db <= Sample(0) || m_converged) {
+                return;
+            }
+            const size_t b = block_size();
             if (m_post.echo_explained() > m_cfg.guard_converge_ratio) {
                 if (++m_conv_count >= m_cfg.guard_hold_blocks) {
                     m_converged = true; // latch: the guard never re-engages
@@ -749,16 +782,49 @@ namespace mutap {
             }
         }
 
+        /// The re-convergence rescue (see the config comment). Inert for
+        /// cancellers without reinflate_uncertainty().
+        void apply_rescue(bool receive_active) noexcept {
+            if constexpr (requires(Canceller& c) { c.reinflate_uncertainty(); }) {
+                if (m_cfg.rescue_drop_ratio <= Sample(0) || !converged()) {
+                    return;
+                }
+                if (m_rescue_cooldown > 0) {
+                    --m_rescue_cooldown;
+                    m_drop_count = 0;
+                    return;
+                }
+                if (!receive_active) {
+                    return;
+                }
+                const Sample ee = m_post.echo_explained();
+                if (ee >= m_cfg.rescue_drop_ratio && ee <= Sample(1) / m_cfg.rescue_drop_ratio) {
+                    m_drop_count = 0;
+                    return;
+                }
+                if (++m_drop_count >= m_cfg.rescue_hold_blocks) {
+                    m_afc.reinflate_uncertainty();
+                    m_drop_count      = 0;
+                    m_rescue_cooldown = m_cfg.rescue_cooldown_blocks;
+                }
+            }
+            else {
+                (void)receive_active;
+            }
+        }
+
         config                      m_cfg;
         Canceller                   m_afc;
         residual_suppressor<Sample> m_post;
         std::vector<Sample>         m_mid;
         std::vector<Sample>         m_yhat;
         Sample                      m_guard_gain;
-        Sample                      m_x_floor    = Sample(0);
-        size_t                      m_conv_count = 0;
-        bool                        m_converged  = false;
-        Sample                      m_guard      = Sample(1);
+        Sample                      m_x_floor         = Sample(0);
+        size_t                      m_conv_count      = 0;
+        bool                        m_converged       = false;
+        Sample                      m_guard           = Sample(1);
+        size_t                      m_drop_count      = 0;
+        size_t                      m_rescue_cooldown = 0;
     };
 
     /// THE COMPLIANCE PRESET: the aec_chain configuration MuTap's ITU-T
@@ -797,18 +863,15 @@ namespace mutap {
         cfg.canceller.initial_uncertainty = Sample(10);
         const double ratio                = (static_cast<double>(block_size) / sample_rate) / (256.0 / 48000.0);
         cfg.canceller.noise_smoothing     = Sample(std::pow(0.9, ratio));
-        // Uncertainty re-inflation on sustained innovation excess (see
-        // fd_kalman.h): the measured fix for slow deep re-convergence
-        // after abrupt path changes (excess 2 sits on the measured
-        // plateau; the momentum smoothing rescales like every other
-        // per-block constant).
-        cfg.canceller.reinflation_excess    = Sample(2);
-        cfg.canceller.reinflation_smoothing = Sample(std::pow(0.95, ratio));
-        auto& pf                            = cfg.postfilter;
-        pf.leakage_smoothing                = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
-        pf.gain_attack                      = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
-        pf.gain_release                     = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
-        pf.floor_smoothing                  = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
+        // Re-convergence rescue windows in blocks follow real time (the
+        // hold is ~1 s, the cooldown ~2 s; see the chain config).
+        cfg.rescue_hold_blocks     = std::max<size_t>(8, static_cast<size_t>(188.0 / ratio));
+        cfg.rescue_cooldown_blocks = std::max<size_t>(16, static_cast<size_t>(375.0 / ratio));
+        auto& pf                   = cfg.postfilter;
+        pf.leakage_smoothing       = Sample(std::pow(static_cast<double>(pf.leakage_smoothing), ratio));
+        pf.gain_attack             = Sample(std::pow(static_cast<double>(pf.gain_attack), ratio));
+        pf.gain_release            = Sample(std::pow(static_cast<double>(pf.gain_release), ratio));
+        pf.floor_smoothing         = Sample(std::pow(static_cast<double>(pf.floor_smoothing), ratio));
         pf.floor_window = std::max<size_t>(8, static_cast<size_t>(static_cast<double>(pf.floor_window) / ratio));
         // Low-band suppression cap from 300 Hz (protect voice fundamentals
         // no analysis resolution can separate from echo; the canceller
