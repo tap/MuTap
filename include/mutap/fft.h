@@ -94,8 +94,7 @@ namespace mutap {
             void init(int) noexcept {}
         };
         template <typename Sample>
-        using cmsis_engine_t =
-            std::conditional_t<std::is_same_v<Sample, float>, cmsis_real_fft_f32, cmsis_noop>;
+        using cmsis_engine_t = std::conditional_t<std::is_same_v<Sample, float>, cmsis_real_fft_f32, cmsis_noop>;
 #endif
     } // namespace detail
 

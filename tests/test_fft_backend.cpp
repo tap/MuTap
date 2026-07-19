@@ -66,9 +66,9 @@ namespace {
     TEST_P(fft_backend_parity, ForwardMatchesOoura) {
         const int n = GetParam();
 
-        const auto             x = broadband(n, 0x9E3779B9u);
-        std::vector<float>     ref = x;
-        ooura_ref              oref(n);
+        const auto         x   = broadband(n, 0x9E3779B9u);
+        std::vector<float> ref = x;
+        ooura_ref          oref(n);
         oref.forward(ref.data());
 
         mutap::basic_real_fft<float> fft(static_cast<size_t>(n));
@@ -106,7 +106,6 @@ namespace {
         }
     }
 
-    INSTANTIATE_TEST_SUITE_P(CertifiedGeometries, fft_backend_parity,
-                             ::testing::Values(512, 2048));
+    INSTANTIATE_TEST_SUITE_P(CertifiedGeometries, fft_backend_parity, ::testing::Values(512, 2048));
 
 } // namespace
