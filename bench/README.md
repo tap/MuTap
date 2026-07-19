@@ -4,8 +4,8 @@ Host-side performance baselines for the AEC hot path (the SampleRateTap
 `bench/` pattern). These exist so that **every optimization has a
 measured before/after on the same machine** — absolute numbers below are
 reference points from one container, not gates. Wall-clock benches are
-never asserted in CI; the deterministic instruction-count ratchet for
-the embedded targets arrives with the M55 milestone.
+never asserted in CI; the **deterministic instruction-count ratchet**
+(`icount/`, below) is the per-target gate.
 
 ## Build and run
 
@@ -100,3 +100,51 @@ O(bins) passes first.
   either the converged (deep-residual) or active operating point, in
   either precision. The smoothed estimator floors sit above the
   denormal range in practice.
+
+## Instruction-count ratchet (`icount/`) — the per-target gate
+
+Wall-clock is noise on shared runners and meaningless under emulation, so
+the actual regression gate for the embedded targets counts **executed
+guest instructions** under QEMU's TCG plugin — a deterministic, noise-free
+number. The `icount-ratchet` CI job gates every push two-sided at ±3 %:
+a regression fails, and an *improvement* beyond tolerance also fails (so a
+stale, too-high baseline can never let a future regression hide in the
+slack — the winning commit must re-record).
+
+Scenarios mirror the wall-clock layers — `fdkf`, `suppressor`, `shadow`,
+`chain` — at both certified geometries (`_48k`, `_16k`), all **float32**
+(the deployment precision; double is soft-float on the M55 and not the
+optimization target — the float32 parity gates in
+[`tests/test_float32.cpp`](../tests/test_float32.cpp) are the correctness
+oracle). One bare-metal binary per scenario (no argv on the target;
+`MUTAP_SC_LAYER`/`MUTAP_SC_RATE` select at compile time), each running a
+warmed, allocation-free timed loop over a self-contained deterministic
+corpus so the count is stable across toolchains and re-runs.
+
+Targets: **m55** (`qemu-system-arm -M mps3-an547`, semihosting — Helium
+MVE is the float32 vector story) and **hexagon** (`qemu-hexagon`,
+user-mode — HVX). Baselines live in [`baselines.json`](baselines.json),
+one dict per target.
+
+Run one target locally (needs the cross toolchain + QEMU + the plugin):
+
+```sh
+# build the plugin once, against a qemu-plugin.h matching your QEMU 8.2.x
+gcc -shared -fPIC $(pkg-config --cflags glib-2.0) -I<hdr-dir> \
+    -o /tmp/libinsncount.so tools/qemu_insn_plugin/insn_count.c
+
+cmake -B build-m55 -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
+    -DMUTAP_BUILD_TESTS=OFF -DMUTAP_BUILD_ICOUNT_BENCH=ON
+cmake --build build-m55 -j
+
+python3 scripts/icount.py --target m55 \
+    --build-dir build-m55 --plugin /tmp/libinsncount.so
+```
+
+**Seeding / re-recording:** a new target starts with an empty dict, so the
+job reports each scenario's count and fails with `NO BASELINE`. Capture
+those counts by running the same command with `--update` in the target's
+environment (or the CI job's) and commit `bench/baselines.json`. After an
+intentional optimization, re-record the same way — the two-sided gate
+requires it.

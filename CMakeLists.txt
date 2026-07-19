@@ -72,3 +72,11 @@ option(MUTAP_BUILD_BENCHMARKS "Build MuTap benchmarks" OFF)
 if(MUTAP_BUILD_BENCHMARKS)
     add_subdirectory(bench)
 endif()
+
+# Deterministic instruction-count ratchet workloads (bench/icount): one
+# bare-metal binary per scenario, run under QEMU with the counting plugin
+# by scripts/icount.py. Builds on any target incl. the cross toolchains.
+option(MUTAP_BUILD_ICOUNT_BENCH "Build instruction-count ratchet workloads" OFF)
+if(MUTAP_BUILD_ICOUNT_BENCH)
+    add_subdirectory(bench/icount)
+endif()
