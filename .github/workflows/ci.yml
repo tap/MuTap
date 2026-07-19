@@ -107,6 +107,23 @@ jobs:
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure
 
+      # Second leg: the opt-in CMSIS-DSP Helium FFT backend (default OFF).
+      # Same emulated battery on the vendored third_party/cmsis-dsp subset, so
+      # the backend, the Ooura-contract reconciliation, and the vendored header
+      # closure cannot bitrot. See docs/optimization.md.
+      - name: Configure (CMSIS Helium FFT backend)
+        run: >
+          cmake -B build-cmsis
+          -DCMAKE_BUILD_TYPE=MinSizeRel
+          -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake
+          -DMUTAP_FFT_CMSIS=ON
+
+      - name: Build (CMSIS Helium FFT backend)
+        run: cmake --build build-cmsis -j 4
+
+      - name: Test under emulation (CMSIS Helium FFT backend)
+        run: ctest --test-dir build-cmsis --output-on-failure
+
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
   # user-mode emulation: the third target of the one-core/three-targets

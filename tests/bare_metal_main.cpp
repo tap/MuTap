@@ -20,6 +20,7 @@ int main() {
     // Typed-suite naming: /0 = float, /1 = double (sample_types order).
     ::testing::GTEST_FLAG(filter) =
         "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:"
+        "CertifiedGeometries/fft_backend_parity.*:"
         "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:"
         "fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:"
         "Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:"
