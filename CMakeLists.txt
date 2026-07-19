@@ -26,15 +26,25 @@ target_compile_features(mutap INTERFACE cxx_std_20)
 target_link_libraries(mutap INTERFACE mutap_fft)
 
 # ------------------------------------------------------------------------------
-# Optional Helium (Cortex-M55 MVE) FFT backend. When ON, the float32 real FFT
-# in include/mutap/fft.h routes through the vendored CMSIS-DSP subset
+# Helium (Cortex-M55 MVE) FFT backend. When ON, the float32 real FFT in
+# include/mutap/fft.h routes through the vendored CMSIS-DSP subset
 # (third_party/cmsis-dsp, Apache-2.0) instead of Ooura — measured ~3x fewer
-# instructions per transform on the M55 (bench/README.md, FFT-backend section).
-# ARM cross builds only; double and every non-ARM build keep the Ooura FFT and
-# stay bit-identical. Default OFF: turning it on breaks the certified
-# bit-identity guardrail, so it is opt-in until re-validated (docs/optimization.md).
+# instructions per transform, ~43% off the whole chain on the M55
+# (docs/optimization.md). Double is untouched (always Ooura), so the
+# double-precision ITU certification is unaffected; on the float32 embedded
+# path CMSIS agrees with Ooura to single-precision rounding (not bit-identical).
+#
+# Default ON for the bare-metal M55 embedded profile (the deployment target),
+# OFF everywhere else — desktop, the Max/C-ABI host builds (incl. Apple
+# Silicon arm64, which is not this Generic+arm profile), and Hexagon all keep
+# Ooura. Force the Ooura path on the M55 with -DMUTAP_FFT_CMSIS=OFF.
 # ------------------------------------------------------------------------------
-option(MUTAP_FFT_CMSIS "Route the float32 FFT through the vendored CMSIS-DSP Helium backend (ARM only)" OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Generic" AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm|ARM")
+    set(_mutap_fft_cmsis_default ON) # bare-metal M55 (cmake/arm-cortex-m55-mps3.cmake)
+else()
+    set(_mutap_fft_cmsis_default OFF)
+endif()
+option(MUTAP_FFT_CMSIS "Route the float32 FFT through the vendored CMSIS-DSP Helium backend (Arm/Helium only)" ${_mutap_fft_cmsis_default})
 if(MUTAP_FFT_CMSIS)
     if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|ARM")
         message(FATAL_ERROR
@@ -56,7 +66,7 @@ if(MUTAP_FFT_CMSIS)
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/PrivateInclude>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/cmsis-core/Include>)
     target_compile_definitions(mutap INTERFACE MUTAP_FFT_CMSIS)
-    message(STATUS "MuTap: float32 FFT backend = CMSIS-DSP Helium (opt-in)")
+    message(STATUS "MuTap: float32 FFT backend = CMSIS-DSP Helium")
 endif()
 
 # ------------------------------------------------------------------------------

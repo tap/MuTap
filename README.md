@@ -39,7 +39,10 @@ algorithmically complete. What exists today:
 - `mutap::basic_real_fft<Sample>` — Ooura split-radix real FFT wrapped for
   float and double (`mutap::real_fft`, `mutap::real_fft32`), with the packed
   spectrum layout and sign convention documented in
-  [`include/mutap/fft.h`](include/mutap/fft.h) and locked down by tests.
+  [`include/mutap/fft.h`](include/mutap/fft.h) and locked down by tests. On the
+  bare-metal Cortex-M55 profile the float32 transform defaults to a vendored
+  CMSIS-DSP Helium backend (~42% fewer chain instructions; double stays Ooura);
+  see [`docs/optimization.md`](docs/optimization.md).
 - `mutap::partitioned_fdaf<Sample>` — partitioned-block frequency-domain
   adaptive filter (overlap-save, per-bin NLMS update, optional gradient
   constraint): the identification core that PEM prewhitening will wrap.
