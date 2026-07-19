@@ -104,25 +104,27 @@ jobs:
       - name: Build
         run: cmake --build build -j 4
 
-      - name: Test under emulation
+      # The default leg above builds the CMSIS-DSP Helium FFT backend, which is
+      # ON by default on the bare-metal M55 profile (docs/optimization.md) — so
+      # ctest exercises the vendored third_party/cmsis-dsp subset and its
+      # Ooura-contract reconciliation on the full emulated battery.
+      - name: Test under emulation (CMSIS Helium FFT — default)
         run: ctest --test-dir build --output-on-failure
 
-      # Second leg: the opt-in CMSIS-DSP Helium FFT backend (default OFF).
-      # Same emulated battery on the vendored third_party/cmsis-dsp subset, so
-      # the backend, the Ooura-contract reconciliation, and the vendored header
-      # closure cannot bitrot. See docs/optimization.md.
-      - name: Configure (CMSIS Helium FFT backend)
+      # Second leg keeps the Ooura float32 fallback alive: same emulated battery
+      # with the backend forced OFF, so -DMUTAP_FFT_CMSIS=OFF cannot bitrot.
+      - name: Configure (Ooura FFT fallback)
         run: >
-          cmake -B build-cmsis
+          cmake -B build-ooura
           -DCMAKE_BUILD_TYPE=MinSizeRel
           -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake
-          -DMUTAP_FFT_CMSIS=ON
+          -DMUTAP_FFT_CMSIS=OFF
 
-      - name: Build (CMSIS Helium FFT backend)
-        run: cmake --build build-cmsis -j 4
+      - name: Build (Ooura FFT fallback)
+        run: cmake --build build-ooura -j 4
 
-      - name: Test under emulation (CMSIS Helium FFT backend)
-        run: ctest --test-dir build-cmsis --output-on-failure
+      - name: Test under emulation (Ooura FFT fallback)
+        run: ctest --test-dir build-ooura --output-on-failure
 
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
@@ -247,7 +249,9 @@ jobs:
           gcc -shared -fPIC $(pkg-config --cflags glib-2.0) -I/tmp \
             -o /tmp/libinsncount.so tools/qemu_insn_plugin/insn_count.c
 
-      # Release (-O2) M55 workloads, matching how baselines are recorded.
+      # Release (-O2) M55 workloads, matching how baselines are recorded. No
+      # -DMUTAP_FFT_CMSIS here: the M55 profile defaults it ON, so the ratchet
+      # gates the deployed CMSIS-DSP Helium FFT (bench/baselines.json m55).
       - name: Build M55 workloads
         run: >
           cmake -B build-m55

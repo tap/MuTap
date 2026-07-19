@@ -22,32 +22,47 @@ instructions under QEMU:
 | 512  (canceller)         | 17,729              | 6,261                     | 2.83x (−65%) |
 
 Carried through the whole certified chain, that FFT win lands as a **uniform
-~43% reduction in total M55 instructions** (icount workloads, CMSIS vs the
-Ooura baselines in `bench/baselines.json`):
+~42% reduction in total M55 instructions** (icount workloads, CMSIS vs the
+prior Ooura baselines; the CMSIS column is what `bench/baselines.json` now
+records for m55):
 
-| scenario        | Ooura        | CMSIS        | delta   |
-|-----------------|-------------:|-------------:|---------|
-| chain_48k       | 729,807,065  | 417,303,122  | −42.8%  |
-| chain_16k       | 629,556,308  | 360,481,402  | −42.7%  |
-| suppressor_48k  | 399,774,768  | 224,696,582  | −43.8%  |
-| suppressor_16k  | 403,403,614  | 228,296,904  | −43.4%  |
-| fdkf_48k        | 243,300,702  | 139,974,811  | −42.5%  |
-| fdkf_16k        | 140,681,366  |  80,854,232  | −42.5%  |
-| shadow_48k      |  89,371,476  |  51,279,103  | −42.6%  |
+| scenario        | Ooura (prior) | CMSIS        | delta   |
+|-----------------|--------------:|-------------:|---------|
+| chain_48k       | 729,807,065   | 424,704,686  | −41.8%  |
+| chain_16k       | 629,556,308   | 367,921,588  | −41.6%  |
+| suppressor_48k  | 399,774,768   | 231,421,941  | −42.1%  |
+| suppressor_16k  | 403,403,614   | 235,023,308  | −41.7%  |
+| fdkf_48k        | 243,300,702   | 139,974,811  | −42.5%  |
+| fdkf_16k        | 140,681,366   |  80,854,232  | −42.5%  |
+| shadow_48k      |  89,371,476   |  51,279,103  | −42.6%  |
 
 ### What it costs: bit-identity
 
 CMSIS uses different butterflies and twiddle factors than Ooura, so its output
 is **not** bit-identical — it agrees only to single-precision rounding
 (measured max relative error 1.3e-7 at N=512, 2.0e-7 at N=2048, i.e. float32
-epsilon). That breaks the certified bit-identity guarantee, which is why the
-backend is **opt-in and default OFF**. Enabling it is a separate, explicitly
-reviewed step; the default build stays on Ooura and bit-identical.
+epsilon). Two things make that acceptable as the M55 default:
+
+- **The ITU certification is unaffected.** It is measured on the
+  double-precision path, which is *always* Ooura (`basic_real_fft<double>`
+  never routes through CMSIS). The double golden model and every bit-identity
+  claim in `docs/itu-compliance.md` stand unchanged.
+- **The float32 embedded path stays within its asserted gates.** The full
+  float32 ITU battery (`tests/test_float32.cpp` and the emulated suites) passes
+  on CMSIS — it was always a tolerance oracle, never a bit-exact one, precisely
+  because float32 is a rounding-level approximation of the double reference.
+
+So the backend is **default ON for the bare-metal M55 embedded profile** — the
+deployment target — and OFF everywhere else. The Ooura float32 path remains one
+flag away (`-DMUTAP_FFT_CMSIS=OFF`) and is kept alive by a dedicated CI leg.
 
 ### How it is wired
 
 `include/mutap/fft.h` routes `basic_real_fft<float>` through CMSIS when
-`MUTAP_FFT_CMSIS` is defined; `double` and every non-Arm build keep Ooura.
+`MUTAP_FFT_CMSIS` is defined; the CMake option defaults ON for the bare-metal
+M55 profile (`CMAKE_SYSTEM_NAME=Generic` + arm) and OFF everywhere else, so
+desktop, the Max/C-ABI host builds (including Apple Silicon arm64), and Hexagon
+are untouched. `double` always keeps Ooura regardless.
 The wrapper re-presents CMSIS in **Ooura's exact numeric contract** so nothing
 downstream changes and every intermediate spectrum matches the Ooura build to
 float epsilon:
@@ -61,14 +76,19 @@ float epsilon:
   by N/2, so the existing `inverse()` 2/N normalization still closes the round
   trip. Both fold into passes the `_inplace` methods already do (~1% overhead).
 
-Enable it with the M55 toolchain:
+It is on automatically with the M55 toolchain; force the Ooura path with
+`-DMUTAP_FFT_CMSIS=OFF`:
 
 ```sh
+# CMSIS backend (default on M55)
 cmake -B build-m55 -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
-    -DCMAKE_BUILD_TYPE=Release -DMUTAP_FFT_CMSIS=ON
+    -DCMAKE_BUILD_TYPE=Release
+# Ooura fallback
+cmake -B build-m55-ooura -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
+    -DCMAKE_BUILD_TYPE=Release -DMUTAP_FFT_CMSIS=OFF
 ```
 
-The option errors on non-Arm processors (the backend is Helium/NEON only).
+Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
 
 ### What is validated
 
@@ -79,9 +99,10 @@ The option errors on non-Arm processors (the backend is Helium/NEON only).
 - **The whole `test_fft.cpp` contract suite** (packing, +i sign convention,
   Parseval, float-tracks-double) exercises `basic_real_fft<float>`, so it
   re-validates the CMSIS backend automatically when the option is on.
-- **The full emulated float32 ITU battery** was re-run on the M55 with
-  `MUTAP_FFT_CMSIS=ON`: 58/58 tests pass — the AEC still meets every asserted
-  float32 gate on CMSIS FFTs.
+- **The full emulated float32 ITU battery** runs on the M55 with the CMSIS
+  backend (now the default): 58/58 tests pass — the AEC still meets every
+  asserted float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same
+  battery with `-DMUTAP_FFT_CMSIS=OFF` to keep the Ooura fallback honest.
 
 ### Hexagon: deferred
 
