@@ -112,6 +112,9 @@ def emit_header(name: str, rir: np.ndarray, provenance: str) -> None:
     for ln in provenance.splitlines():
         lines.append(f"// {ln}".rstrip())
     lines += [
+        # Generated data tables: leave the array layout as emitted here rather
+        # than hand it to clang-format (which would re-flow it on every commit).
+        "// clang-format off",
         "#pragma once",
         "",
         "namespace mutap_test::fixtures {",

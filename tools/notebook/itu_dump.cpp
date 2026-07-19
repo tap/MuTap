@@ -21,8 +21,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <cstddef>
+#include <cstdio>
 #include <map>
 #include <numbers>
 #include <string>
@@ -123,8 +123,8 @@ namespace {
     std::vector<double> make_css_cached(const css_config& cc, double fs) {
         using key = std::tuple<int, size_t, bool, unsigned, double>;
         static std::map<key, std::vector<double>> cache;
-        const key k{static_cast<int>(cc.kind), cc.periods, cc.shaped, cc.seed, fs};
-        auto      it = cache.find(k);
+        const key                                 k{static_cast<int>(cc.kind), cc.periods, cc.shaped, cc.seed, fs};
+        auto                                      it = cache.find(k);
         if (it == cache.end()) {
             it = cache.emplace(k, make_css_at(cc, fs)).first;
         }
@@ -444,8 +444,8 @@ namespace {
             const size_t        from = rr.out.size() - static_cast<size_t>(4 * 0.35 * rs.fs);
             std::vector<double> ref(rr.echo.begin() + static_cast<long>(from), rr.echo.end());
             std::vector<double> out(rr.out.begin() + static_cast<long>(from), rr.out.end());
-            const auto sp = attenuation_spectrum(ref, out, rs.fs, 8192, 100.0, std::min(8000.0, rs.fs / 2 * 0.94));
-            const freq_mask     mask{{100, 1300, 3450, 5200, 7500, 8000}, {41, 41, 46, 46, 37, 37}};
+            const auto      sp = attenuation_spectrum(ref, out, rs.fs, 8192, 100.0, std::min(8000.0, rs.fs / 2 * 0.94));
+            const freq_mask mask{{100, 1300, 3450, 5200, 7500, 8000}, {41, 41, 46, 46, 37, 37}};
             std::vector<double> mv;
             for (double fc : sp.f_center) {
                 mv.push_back(mask.at(fc));
@@ -596,7 +596,7 @@ namespace {
             for (size_t i = n_dt; i < v.size(); ++i) {
                 v[i] = 0.0;
             }
-            auto         rr    = run_chain_on(sim, c, rs.block, x, &v);
+            auto         rr = run_chain_on(sim, c, rs.block, x, &v);
             erl_reader   erl(rr.echo, rr.out, rs.fs);
             const double t_end = static_cast<double>(n_dt) / rs.fs;
             jobj         h;
@@ -624,11 +624,11 @@ namespace {
             std::vector<double> x(vv.size(), 0.0);
             auto                rr = run_chain(c, path, rs.block, x, &vv);
 
-            a_weighting     aw(rs.fs);
-            auto            seg = aw.apply(rr.out);
-            exp_level_meter m(rs.fs, 0.005);
-            const auto      tr = m.trace_dbm0(seg);
-            const long      s0 = static_cast<long>(pre) + static_cast<long>(rs.fs);
+            a_weighting         aw(rs.fs);
+            auto                seg = aw.apply(rr.out);
+            exp_level_meter     m(rs.fs, 0.005);
+            const auto          tr = m.trace_dbm0(seg);
+            const long          s0 = static_cast<long>(pre) + static_cast<long>(rs.fs);
             std::vector<double> settled(tr.begin() + s0, tr.begin() + s0 + static_cast<long>(rs.fs));
             std::nth_element(settled.begin(), settled.begin() + static_cast<long>(settled.size() / 2), settled.end());
             const double target = settled[settled.size() / 2];
@@ -681,9 +681,9 @@ namespace {
             auto        qa = aw.apply(quiet);
             o.add("cn_delta", level_dbov(ta.data(), ta.size()) - level_dbov(qa.data(), qa.size()));
 
-            const auto          bt   = welch_psd_db(talk, 8192);
-            const auto          bq   = welch_psd_db(quiet, 8192);
-            const double        fmax = std::min(8000.0, rs.fs / 2 * 0.94);
+            const auto          bt      = welch_psd_db(talk, 8192);
+            const auto          bq      = welch_psd_db(quiet, 8192);
+            const double        fmax    = std::min(8000.0, rs.fs / 2 * 0.94);
             const double        edges[] = {200, 400, 800, 1600, 3150, 6300, 8000};
             std::vector<double> be;
             std::vector<double> bd;
@@ -1153,9 +1153,9 @@ namespace {
                 const auto          h = static_cast<size_t>(hop_s * rs.fs);
                 for (size_t s0 = 0; s0 + w <= out.size(); s0 += h) {
                     std::vector<double> xw(far.begin() + static_cast<long>(s0),
-                                           far.begin() + static_cast<long>(s0 + w));
+                                                   far.begin() + static_cast<long>(s0 + w));
                     std::vector<double> ow(out.begin() + static_cast<long>(s0),
-                                           out.begin() + static_cast<long>(s0 + w));
+                                                   out.begin() + static_cast<long>(s0 + w));
                     ts.push_back(static_cast<double>(s0) / rs.fs + win_s / 2.0);
                     vals.push_back(comb_band_level_db(xw, rp, 0.0, rs.fs) - comb_band_level_db(ow, rp, 0.0, rs.fs));
                 }

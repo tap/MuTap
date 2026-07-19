@@ -369,10 +369,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      # Pinned major version: formatting output can differ across releases.
-      - name: Check formatting
+      # Run the TapHouse pre-commit hook — the exact same pinned clang-format
+      # developers get from `pre-commit install` (.pre-commit-config.yaml). CI
+      # and local therefore share one clang-format version by construction, and
+      # cover the same files (all C/C++ minus third_party and generated tables),
+      # so a green local commit can't fail here. pipx is preinstalled on the
+      # runner; the pinned hook is fetched and cached on first use.
+      - name: Check formatting (pre-commit)
         run: |
-          sudo apt-get update -q && sudo apt-get install -y -q clang-format-18
-          clang-format-18 --dry-run --Werror \
-            include/mutap/*.h tests/*.cpp tests/support/*.h \
-            tools/capi/*.cpp tools/capi/*.h platform/*.c bench/*.cpp bench/icount/*.cpp tools/qemu_insn_plugin/*.c
+          pipx install pre-commit
+          pre-commit run --all-files --show-diff-on-failure
