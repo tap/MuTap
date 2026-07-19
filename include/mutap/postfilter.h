@@ -34,11 +34,11 @@
 // only where MVE is present; override (e.g. -DMUTAP_SUPPRESSOR_BRANCHLESS=1 on
 // desktop) to compile the other path for the bit-identity check.
 #if !defined(MUTAP_SUPPRESSOR_BRANCHLESS)
-#  if defined(__ARM_FEATURE_MVE)
-#    define MUTAP_SUPPRESSOR_BRANCHLESS 1
-#  else
-#    define MUTAP_SUPPRESSOR_BRANCHLESS 0
-#  endif
+#if defined(__ARM_FEATURE_MVE)
+#define MUTAP_SUPPRESSOR_BRANCHLESS 1
+#else
+#define MUTAP_SUPPRESSOR_BRANCHLESS 0
+#endif
 #endif
 
 namespace mutap {

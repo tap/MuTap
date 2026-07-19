@@ -19,12 +19,12 @@
 #include "mutap/postfilter.h"
 
 int main() {
-    auto             chain = mutap::aec_chain<float>(mutap::aec_chain_preset<float>(256, 8, 48000.0));
-    constexpr int    B     = 256;
+    auto               chain = mutap::aec_chain<float>(mutap::aec_chain_preset<float>(256, 8, 48000.0));
+    constexpr int      B     = 256;
     std::vector<float> x(B), y(B), o(B);
 
-    std::uint32_t s    = 0x12345u;
-    auto          nx   = [&s]() noexcept {
+    std::uint32_t s  = 0x12345u;
+    auto          nx = [&s]() noexcept {
         s ^= s << 13;
         s ^= s >> 17;
         s ^= s << 5;
@@ -59,7 +59,7 @@ int main() {
         }
     }
 
-    std::printf("MUTAP_SUPPRESSOR_PARITY_FP %016llx branchless=%d\n",
-                static_cast<unsigned long long>(fp), MUTAP_SUPPRESSOR_BRANCHLESS);
+    std::printf("MUTAP_SUPPRESSOR_PARITY_FP %016llx branchless=%d\n", static_cast<unsigned long long>(fp),
+                MUTAP_SUPPRESSOR_BRANCHLESS);
     return 0;
 }
