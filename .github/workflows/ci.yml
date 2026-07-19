@@ -208,6 +208,34 @@ jobs:
       - name: Run (smoke)
         run: ./build/bench/mutap_bench --benchmark_min_time=0.01s
 
+  # The suppressor's pass-1 estimator has two bit-identical forms selected by
+  # MUTAP_SUPPRESSOR_BRANCHLESS (branch-free on Arm Helium, branchy elsewhere;
+  # see include/mutap/postfilter.h). No single build compiles both, so this job
+  # compiles tests/branchless_parity_check.cpp once per macro value and diffs
+  # its output fingerprint — the guard that the two forms cannot drift apart.
+  branchless-parity:
+    name: Suppressor branch-free/branchy parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Compile both forms and diff the fingerprint
+        run: |
+          set -e
+          # Ooura is C: compile with gcc so g++ does not name-mangle rdft/rdft_f.
+          gcc -O2 -c third_party/ooura/fftsg.c -o /tmp/fftsg.o
+          gcc -O2 -c third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
+          for bl in 0 1; do
+            g++ -std=c++20 -O2 -DMUTAP_SUPPRESSOR_BRANCHLESS=$bl -Iinclude \
+              tests/branchless_parity_check.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/parity_$bl
+            /tmp/parity_$bl | tee /tmp/out_$bl
+          done
+          a=$(awk '{print $2}' /tmp/out_0); b=$(awk '{print $2}' /tmp/out_1)
+          if [ "$a" != "$b" ]; then
+            echo "::error::branchy ($a) and branch-free ($b) suppressor forms diverged"; exit 1
+          fi
+          echo "both forms fingerprint $a — bit-identical"
+
   # Deterministic instruction-count ratchet (bench/README.md). Unlike the
   # wall-clock bench these counts are noise-free under QEMU's TCG plugin, so
   # a hard two-sided gate (+-3%) is safe on shared runners. Baselines live

@@ -10,13 +10,13 @@
     "suppressor_48k": 251521827
   },
   "m55": {
-    "chain_16k": 367921588,
-    "chain_48k": 424704686,
+    "chain_16k": 360481402,
+    "chain_48k": 417303122,
     "fdkf_16k": 80854232,
     "fdkf_48k": 139974811,
     "shadow_16k": 51274139,
     "shadow_48k": 51279103,
-    "suppressor_16k": 235023308,
-    "suppressor_48k": 231421941
+    "suppressor_16k": 228296904,
+    "suppressor_48k": 224696582
   }
 }
