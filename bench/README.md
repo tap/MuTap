@@ -148,3 +148,15 @@ those counts by running the same command with `--update` in the target's
 environment (or the CI job's) and commit `bench/baselines.json`. After an
 intentional optimization, re-record the same way — the two-sided gate
 requires it.
+
+## FFT backend (Arm Helium, opt-in)
+
+The default `baselines.json` records the **Ooura** FFT (the certified,
+bit-identical default). The optional CMSIS-DSP Helium backend
+(`-DMUTAP_FFT_CMSIS=ON`, M55 only) cuts ~43% of total instructions on every
+layer — measured with the same workloads above. It is default OFF because it
+breaks bit-identity; see [`docs/optimization.md`](../docs/optimization.md) for
+the full measured comparison, the numeric reconciliation, and how to re-measure
+it (add `-DMUTAP_FFT_CMSIS=ON` to the m55 configure line and diff against the
+committed baseline). The CI ratchet stays on the Ooura default, so these
+baselines do not move until the backend is flipped on in a reviewed change.

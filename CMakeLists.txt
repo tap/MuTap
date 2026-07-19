@@ -26,6 +26,40 @@ target_compile_features(mutap INTERFACE cxx_std_20)
 target_link_libraries(mutap INTERFACE mutap_fft)
 
 # ------------------------------------------------------------------------------
+# Optional Helium (Cortex-M55 MVE) FFT backend. When ON, the float32 real FFT
+# in include/mutap/fft.h routes through the vendored CMSIS-DSP subset
+# (third_party/cmsis-dsp, Apache-2.0) instead of Ooura — measured ~3x fewer
+# instructions per transform on the M55 (bench/README.md, FFT-backend section).
+# ARM cross builds only; double and every non-ARM build keep the Ooura FFT and
+# stay bit-identical. Default OFF: turning it on breaks the certified
+# bit-identity guardrail, so it is opt-in until re-validated (docs/optimization.md).
+# ------------------------------------------------------------------------------
+option(MUTAP_FFT_CMSIS "Route the float32 FFT through the vendored CMSIS-DSP Helium backend (ARM only)" OFF)
+if(MUTAP_FFT_CMSIS)
+    if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "arm|ARM")
+        message(FATAL_ERROR
+            "MUTAP_FFT_CMSIS is an Arm/Helium backend; configure with the "
+            "cortex-m55 toolchain (cmake/arm-cortex-m55-mps3.cmake).")
+    endif()
+    file(GLOB _mutap_cmsis_src CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/Source/*/*.c)
+    target_sources(mutap_fft PRIVATE ${_mutap_cmsis_src})
+    # PRIVATE for the vendored .c compiles; the same dirs are exposed on the
+    # INTERFACE below so consumers' fft.h can resolve "arm_math.h".
+    set(_mutap_cmsis_inc
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/Include
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/PrivateInclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/cmsis-core/Include)
+    target_include_directories(mutap_fft PRIVATE ${_mutap_cmsis_inc})
+    target_include_directories(mutap INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/Include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/PrivateInclude>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/cmsis-dsp/cmsis-core/Include>)
+    target_compile_definitions(mutap INTERFACE MUTAP_FFT_CMSIS)
+    message(STATUS "MuTap: float32 FFT backend = CMSIS-DSP Helium (opt-in)")
+endif()
+
+# ------------------------------------------------------------------------------
 # Options
 # ------------------------------------------------------------------------------
 
