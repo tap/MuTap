@@ -10,6 +10,7 @@
 // this data exactly. Conditioning (delay trim to a 32-sample
 // guard, truncation to 4096 taps, unit-energy normalization)
 // is documented in the generator script.
+// clang-format off
 #pragma once
 
 namespace mutap_test::fixtures {

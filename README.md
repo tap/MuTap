@@ -365,7 +365,9 @@ Planned as the milestones land: `examples/`, `bench/`, `docs/`.
 
 This repo follows the shared Tap house rules — see [STYLE.md](STYLE.md).
 `.clang-format` and `.clang-tidy` are the canonical TapHouse configs, enforced
-in CI.
+in CI. Run `pre-commit install` once per clone (`pipx install pre-commit`) so
+the `.pre-commit-config.yaml` hook formats staged C/C++ with the same pinned
+clang-format the CI gate uses — no more format-only CI failures.
 
 ## License
 
