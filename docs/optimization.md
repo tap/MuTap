@@ -119,3 +119,30 @@ pinned by commit in `third_party/cmsis-dsp/VENDOR.md`. To bump it: re-run the
 `gcc -M` closure over the eight sources for `-mcpu=cortex-m55`, copy exactly the
 files it opens, update `VENDOR.md`, then re-run `tests/test_fft_backend.cpp` and
 the full float32 battery on the M55 leg. Do not hand-edit vendored sources.
+
+## Suppressor pass-1: branch-free on Helium
+
+The suppressor's pass-1 per-bin estimator (`residual_suppressor::process_block`)
+has two **bit-identical** shapes, selected by `MUTAP_SUPPRESSOR_BRANCHLESS`
+(`include/mutap/postfilter.h`):
+
+- **Branch-free** (default when `__ARM_FEATURE_MVE`) — the two data-dependent
+  branches (the no-echo coherence zero and the coherence-gated leakage re-learn)
+  are lowered to selects whose kept values equal the branchy form's. GCC's MVE
+  autovectorizer bails on the branchy form's control flow but lowers this one.
+- **Branchy** (default elsewhere) — the original scalar form the compliance
+  battery certified. On scalar targets the selects would do unconditional work
+  the vectorizer can't hoist, so branchy is faster there.
+
+Measured (icount, vs the branchy form on each target):
+
+| target | suppressor | chain |
+|---|--:|--:|
+| M55 (Helium, branch-free) | **−2.9%** | −1.7 to −2.0% |
+| Hexagon (HVX, branchy) | ±0.0% (unchanged) | ±0.0% |
+
+So each target runs its faster form; neither regresses. Because it is
+per-target, no single build compiles both shapes — the `branchless-parity` CI
+job compiles `tests/branchless_parity_check.cpp` once per macro value and diffs
+an output fingerprint over a 600-block double-talk corpus, guaranteeing the two
+forms stay sample-exact. The m55 baselines record the branch-free form.
