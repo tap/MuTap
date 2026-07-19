@@ -320,94 +320,120 @@ namespace mutap {
 
             // Pass 1 per analysis bin: gated power-domain leakage ->
             // Wiener gain -> time smoothing.
-            Sample sum_syy = Sample(0);
-            Sample sum_sdd = Sample(0);
-            for (size_t k = 0; k < bins; ++k) {
-                Sample d_re;
-                Sample d_im;
-                Sample y_re;
-                Sample y_im;
+            // THE DISCRIMINATOR: magnitude-squared coherence between the
+            // MIC (d = e + yhat) and the echo estimate, from smoothed
+            // COMPLEX cross-spectra. In single talk D/Yhat ~ H/Hhat ~ 1
+            // per bin — stable against the canceller's weight jitter — so
+            // coh -> 1 and the gain collapses. Near-end energy is
+            // incoherent with Yhat and DILUTES coh: g = 1 - coh is the
+            // Wiener near-end-preserving gain, so double-talk transparency
+            // is intrinsic, not a detector decision. (Three rejected
+            // designs are in git history: power-leakage ratios hug their
+            // noise floor or re-learn near-end energy during sustained
+            // double talk; rules keyed to INSTANTANEOUS |E|^2 excursions
+            // read loud residual as near-end and pass exactly the blocks
+            // that matter; and coh(E, Yhat) saturates at 0.34 while
+            // adapting — the update keeps E orthogonal to its reference,
+            // so the canceller output is the one signal the echo estimate
+            // cannot explain.)
+            //
+            // The per-bin body is written BRANCH FREE so the target
+            // compilers vectorize it: the profile showed both the GCC/MVE
+            // (M55) and LLVM/HVX (Hexagon) autovectorizers bail on
+            // "control flow in loop" here. The two data-dependent branches
+            // — the no-echo coherence zero and the coherence-gated leakage
+            // re-learn — become selects whose kept values are identical to
+            // the original if/else, so the battery stays bit-identical.
+            Sample       sum_syy = Sample(0);
+            Sample       sum_sdd = Sample(0);
+            const Sample a_r     = m_cfg.leakage_smoothing;
+            const Sample one_ar  = Sample(1) - a_r;
+            const Sample gate    = m_cfg.leakage_gate;
+            const Sample beta    = m_cfg.over_subtraction;
+            const bool   snap_on = m_cfg.release_snap > Sample(0);
+
+            struct bin_result {
+                Sample g;
+                Sample coh;
+            };
+            // Estimator update + Wiener gain for one bin. Returns the
+            // target gain and the coherence (the low-band cap needs it).
+            const auto wiener_gain = [&](size_t k) noexcept -> bin_result {
+                Sample d_re, d_im, y_re, y_im;
                 packed_bin(m_dspec.data(), k, m_n, d_re, d_im);
                 packed_bin(m_yspec.data(), k, m_n, y_re, y_im);
-
-                const Sample pd = d_re * d_re + d_im * d_im + eps;
-                const Sample py = y_re * y_re + y_im * y_im + eps;
-                // E = D - Yhat by linearity of the windowed transform.
-                const Sample e_re = d_re - y_re;
+                const Sample pd   = d_re * d_re + d_im * d_im + eps;
+                const Sample py   = y_re * y_re + y_im * y_im + eps;
+                const Sample e_re = d_re - y_re; // E = D - Yhat, windowed transform is linear
                 const Sample e_im = d_im - y_im;
                 const Sample pe   = e_re * e_re + e_im * e_im + eps;
-
-                // THE DISCRIMINATOR: magnitude-squared coherence between
-                // the MIC (d = e + yhat) and the echo estimate, from
-                // smoothed COMPLEX cross-spectra. In single talk
-                // D/Yhat ~ H/Hhat ~ 1 per bin — stable against the
-                // canceller's weight jitter — so coh -> 1 and the gain
-                // collapses. Near-end energy is incoherent with Yhat
-                // and DILUTES coh: g = 1 - coh is the Wiener near-end-
-                // preserving gain, so double-talk transparency is
-                // intrinsic, not a detector decision. (Three rejected
-                // designs are in git history: power-leakage ratios hug
-                // their noise floor or re-learn near-end energy during
-                // sustained double talk; rules keyed to INSTANTANEOUS
-                // |E|^2 excursions read loud residual as near-end and
-                // pass exactly the blocks that matter; and coh(E, Yhat)
-                // saturates at 0.34 while adapting — the update keeps E
-                // orthogonal to its reference, so the canceller output
-                // is the one signal the echo estimate cannot explain.)
                 sum_syy += py;
                 sum_sdd += pd;
-                const Sample a_r = m_cfg.leakage_smoothing;
-                m_sdy_re[k] += (Sample(1) - a_r) * ((d_re * y_re + d_im * y_im) - m_sdy_re[k]);
-                m_sdy_im[k] += (Sample(1) - a_r) * ((d_im * y_re - d_re * y_im) - m_sdy_im[k]);
-                m_sdd[k] += (Sample(1) - a_r) * (pd - m_sdd[k]);
-                m_syy[k] += (Sample(1) - a_r) * (py - m_syy[k]);
-                m_see[k] += (Sample(1) - a_r) * (pe - m_see[k]);
+                m_sdy_re[k] += one_ar * ((d_re * y_re + d_im * y_im) - m_sdy_re[k]);
+                m_sdy_im[k] += one_ar * ((d_im * y_re - d_re * y_im) - m_sdy_im[k]);
+                m_sdd[k] += one_ar * (pd - m_sdd[k]);
+                m_syy[k] += one_ar * (py - m_syy[k]);
+                m_see[k] += one_ar * (pe - m_see[k]);
 
                 Sample coh = (m_sdy_re[k] * m_sdy_re[k] + m_sdy_im[k] * m_sdy_im[k]) / (m_sdd[k] * m_syy[k] + eps);
                 coh        = coh > Sample(1) ? Sample(1) : coh;
-                if (m_syy[k] <= eps * Sample(100)) {
-                    coh = Sample(0); // no estimated echo: nothing to suppress
-                }
+                coh        = m_syy[k] <= eps * Sample(100) ? Sample(0) : coh; // no estimated echo
 
-                // Re-learn the leakage only while the coherence certifies
-                // the bin echo-dominant; hold it through double talk.
-                if (coh > m_cfg.leakage_gate) {
-                    const Sample lam = m_see[k] / (m_syy[k] + eps);
-                    m_leak[k] += (Sample(1) - a_r) * (lam - m_leak[k]);
-                }
+                // Leakage re-learn only while coh certifies the bin (a
+                // masked update: the select keeps the old value otherwise;
+                // lam is finite for all k, so computing it always is safe).
+                const Sample lam       = m_see[k] / (m_syy[k] + eps);
+                const Sample relearned = m_leak[k] + one_ar * (lam - m_leak[k]);
+                m_leak[k]              = coh > gate ? relearned : m_leak[k];
 
-                // Wiener gain ON E, with the estimated residual PSD
-                // lam S_yy in the numerator. The denominator takes the
-                // INSTANTANEOUS |E|^2 when it exceeds the smoothed power
-                // — a near-end onset inside the smoother's lag must ride
-                // through, not get clipped by yesterday's S_ee.
+                // Wiener gain ON E: the denominator takes the INSTANTANEOUS
+                // |E|^2 when it exceeds the smoothed power, so a near-end
+                // onset inside the smoother's lag rides through.
                 const Sample se = m_see[k] > pe ? m_see[k] : pe;
                 Sample       r  = m_leak[k] * m_syy[k] / (se + eps);
                 r               = r > Sample(1) ? Sample(1) : r;
-                Sample g        = Sample(1) - m_cfg.over_subtraction * r;
+                Sample g        = Sample(1) - beta * r;
                 g               = g < m_g_min ? m_g_min : (g > Sample(1) ? Sample(1) : g);
-                if (k < m_cfg.low_band_bins) {
-                    if (m_syy[k] > eps * Sample(100)) { // real echo estimate present
-                        if (coh > m_cfg.leakage_gate) {
-                            if (m_low_cnt[k] < m_cfg.low_band_certify_blocks) {
-                                ++m_low_cnt[k];
-                            }
-                        }
-                        else {
-                            m_low_cnt[k] = 0; // active contamination: back to capped
+                return {g, coh};
+            };
+
+            // Commit the smoothed/snapped gain, branch free (the release
+            // snap and the attack/release select yield the same value the
+            // original if/else did — a_g/smoothed computed then discarded
+            // on the snap path change nothing kept).
+            const auto commit_gain = [&](size_t k, Sample g) noexcept {
+                const Sample a_g      = g < m_gain[k] ? m_cfg.gain_attack : m_cfg.gain_release;
+                const Sample smoothed = m_gain[k] + (Sample(1) - a_g) * (g - m_gain[k]);
+                const bool   snap     = snap_on && g > m_cfg.release_snap * m_gain[k];
+                m_gain[k]             = snap ? g : smoothed;
+            };
+
+            // Low-band cap prefix: the coherence-gated suppression cap and
+            // its sustained-certification counter only touch bins below
+            // low_band_bins (~300 Hz). Short prefix, and the integer
+            // counter is genuinely conditional, so it keeps the exact
+            // scalar logic and stays out of the vectorized main loop.
+            const size_t lb = m_cfg.low_band_bins < bins ? m_cfg.low_band_bins : bins;
+            for (size_t k = 0; k < lb; ++k) {
+                auto [g, coh] = wiener_gain(k);
+                if (m_syy[k] > eps * Sample(100)) { // real echo estimate present
+                    if (coh > gate) {
+                        if (m_low_cnt[k] < m_cfg.low_band_certify_blocks) {
+                            ++m_low_cnt[k];
                         }
                     }
-                    if (m_low_cnt[k] < m_cfg.low_band_certify_blocks && g < m_g_low) {
-                        g = m_g_low; // uncertified low bin: protect the near end
+                    else {
+                        m_low_cnt[k] = 0; // active contamination: back to capped
                     }
                 }
-                if (m_cfg.release_snap > Sample(0) && g > m_cfg.release_snap * m_gain[k]) {
-                    m_gain[k] = g; // release snap: overwhelming evidence, open now
+                if (m_low_cnt[k] < m_cfg.low_band_certify_blocks && g < m_g_low) {
+                    g = m_g_low; // uncertified low bin: protect the near end
                 }
-                else {
-                    const Sample a_g = g < m_gain[k] ? m_cfg.gain_attack : m_cfg.gain_release;
-                    m_gain[k] += (Sample(1) - a_g) * (g - m_gain[k]);
-                }
+                commit_gain(k, g);
+            }
+            // Main band (k >= low_band_bins): no cap, fully branch free.
+            for (size_t k = lb; k < bins; ++k) {
+                commit_gain(k, wiener_gain(k).g);
             }
 
             m_echo_explained = sum_syy / (sum_sdd + eps);
