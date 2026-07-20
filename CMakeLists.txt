@@ -146,6 +146,14 @@ if(MUTAP_BUILD_BENCHMARKS)
     add_subdirectory(bench)
 endif()
 
+# Cross-algorithm AEC comparison harness (host-only; pulls in third-party
+# echo cancellers behind its own sub-options). Never a CI gate; see
+# bench/compare/CMakeLists.txt and docs/aec-comparison.md.
+option(MUTAP_BUILD_COMPARE "Build the cross-algorithm AEC comparison harness" OFF)
+if(MUTAP_BUILD_COMPARE)
+    add_subdirectory(bench/compare)
+endif()
+
 # Deterministic instruction-count ratchet workloads (bench/icount): one
 # bare-metal binary per scenario, run under QEMU with the counting plugin
 # by scripts/icount.py. Builds on any target incl. the cross toolchains.

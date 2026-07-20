@@ -1,0 +1,78 @@
+# Cross-algorithm AEC comparison harness (docs/aec-comparison.md).
+#
+# Off by default and never a CI gate — like SampleRateTap's
+# SRT_BUILD_COMPARE_BENCH, this pulls in third-party echo cancellers and
+# is a host-only measurement tool. Configure with -DMUTAP_BUILD_COMPARE=ON.
+#
+# Each third-party subject is a separate feature that degrades gracefully:
+#   -DMUTAP_COMPARE_SPEEX=ON   builds the Speex MDF subject (sources are
+#                              cloned/pointed to via MUTAP_SPEEXDSP_DIR).
+#   -DMUTAP_COMPARE_WEBRTC=ON  builds the WebRTC AEC3 subject against a
+#                              prebuilt webrtc-audio-processing (meson);
+#                              point MUTAP_WEBRTC_DIR at its source and
+#                              MUTAP_WEBRTC_BUILD at its meson builddir.
+# With neither, the tool still compares the three MuTap variants — useful
+# for tracking our own linear-vs-chain and f32-vs-f64 gaps over time.
+
+add_executable(mutap_aec_compare
+    compare_main.cpp
+    aec_backend.cpp
+    backends/mutap_backend.cpp)
+
+target_link_libraries(mutap_aec_compare PRIVATE MuTap::MuTap mutap_warnings)
+target_include_directories(mutap_aec_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(mutap_aec_compare PRIVATE cxx_std_20)
+
+# ----------------------------------------------------------------------
+# Speex MDF subject
+# ----------------------------------------------------------------------
+option(MUTAP_COMPARE_SPEEX "Build the Speex MDF subject into the comparison tool" OFF)
+if(MUTAP_COMPARE_SPEEX)
+    if(NOT DEFINED MUTAP_SPEEXDSP_DIR OR NOT EXISTS "${MUTAP_SPEEXDSP_DIR}/libspeexdsp/mdf.c")
+        message(FATAL_ERROR
+            "MUTAP_COMPARE_SPEEX=ON needs MUTAP_SPEEXDSP_DIR pointing at a "
+            "speexdsp checkout (git clone https://github.com/xiph/speexdsp).")
+    endif()
+    # Compile only the MDF echo canceller and its FFT/DSP deps directly —
+    # no autotools. FLOATING_POINT + the kiss_fft backend (USE_KISS_FFT)
+    # is the portable, dependency-free configuration.
+    add_library(mutap_speexdsp STATIC
+        ${MUTAP_SPEEXDSP_DIR}/libspeexdsp/mdf.c
+        ${MUTAP_SPEEXDSP_DIR}/libspeexdsp/fftwrap.c
+        ${MUTAP_SPEEXDSP_DIR}/libspeexdsp/kiss_fft.c
+        ${MUTAP_SPEEXDSP_DIR}/libspeexdsp/kiss_fftr.c
+        ${MUTAP_SPEEXDSP_DIR}/libspeexdsp/smallft.c)
+    target_include_directories(mutap_speexdsp PUBLIC
+        ${MUTAP_SPEEXDSP_DIR}/include
+        ${MUTAP_SPEEXDSP_DIR}/libspeexdsp
+        ${CMAKE_CURRENT_SOURCE_DIR}/speex_config)
+    target_compile_definitions(mutap_speexdsp PRIVATE
+        FLOATING_POINT USE_KISS_FFT EXPORT= HAVE_CONFIG_H)
+    # Third-party C: no MuTap warning flags.
+    target_link_libraries(mutap_aec_compare PRIVATE mutap_speexdsp)
+    target_sources(mutap_aec_compare PRIVATE backends/speex_backend.cpp)
+    target_compile_definitions(mutap_aec_compare PRIVATE MUTAP_COMPARE_HAVE_SPEEX=1)
+endif()
+
+# ----------------------------------------------------------------------
+# WebRTC AEC3 subject
+# ----------------------------------------------------------------------
+option(MUTAP_COMPARE_WEBRTC "Build the WebRTC AEC3 subject into the comparison tool" OFF)
+if(MUTAP_COMPARE_WEBRTC)
+    if(NOT DEFINED MUTAP_WEBRTC_DIR OR NOT DEFINED MUTAP_WEBRTC_BUILD)
+        message(FATAL_ERROR
+            "MUTAP_COMPARE_WEBRTC=ON needs MUTAP_WEBRTC_DIR (webrtc-audio-"
+            "processing source) and MUTAP_WEBRTC_BUILD (its meson builddir).")
+    endif()
+    find_library(WEBRTC_APM_LIB
+        NAMES webrtc-audio-processing-2 webrtc-audio-processing webrtc_audio_processing
+        PATHS ${MUTAP_WEBRTC_BUILD} PATH_SUFFIXES webrtc REQUIRED)
+    target_sources(mutap_aec_compare PRIVATE backends/webrtc_backend.cpp)
+    target_include_directories(mutap_aec_compare PRIVATE
+        ${MUTAP_WEBRTC_DIR} ${MUTAP_WEBRTC_BUILD})
+    target_link_libraries(mutap_aec_compare PRIVATE ${WEBRTC_APM_LIB})
+    target_compile_definitions(mutap_aec_compare PRIVATE MUTAP_COMPARE_HAVE_WEBRTC=1)
+    if(DEFINED MUTAP_ABSL_PREFIX)
+        target_link_directories(mutap_aec_compare PRIVATE ${MUTAP_ABSL_PREFIX}/lib)
+    endif()
+endif()
