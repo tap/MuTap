@@ -56,16 +56,16 @@ namespace {
 
     // G.168-adapted battery, typed over <float, double>: float32 (/0) is
     // the deployment target, double (/1) the certified golden model. NLP-on
-    // rows run compliance_dut<Sample>; NLP-off rows the bare canceller via
-    // raw_canceller_dut<Sample> (itu_chain.h). Gates carry a per-precision
+    // rows run compliance_dut<TypeParam>; NLP-off rows the bare canceller via
+    // raw_canceller_dut<TypeParam> (itu_chain.h). Gates carry a per-precision
     // column (prec_gate); the double column is the original certified gate.
     using sample_types = ::testing::Types<float, double>;
     template <typename T>
-    class G168Adapted : public ::testing::Test {};
-    TYPED_TEST_SUITE(G168Adapted, sample_types);
+    class g168_adapted : public ::testing::Test {};
+    TYPED_TEST_SUITE(g168_adapted, sample_types);
     template <typename T>
-    class ItuG167 : public ::testing::Test {};
-    TYPED_TEST_SUITE(ItuG167, sample_types);
+    class itu_g167 : public ::testing::Test {};
+    TYPED_TEST_SUITE(itu_g167, sample_types);
 
     double fig9(double l_act) {
         return l_act <= -10.0 ? -65.0 : -65.0 + (l_act + 10.0);
@@ -104,9 +104,9 @@ namespace {
         return v;
     }
 
-    template <typename Sample = double>
-    typename mutap::aec_chain<Sample>::config nlp_on_cfg(const rate_setup& rs) {
-        auto cfg                     = chain_config<Sample>(rs);
+    template <typename TypeParam = double>
+    typename mutap::aec_chain<TypeParam>::config nlp_on_cfg(const rate_setup& rs) {
+        auto cfg                     = chain_config<TypeParam>(rs);
         cfg.postfilter.comfort_noise = false; // Figure 9's instruction
         return cfg;
     }
@@ -115,16 +115,15 @@ namespace {
     // rec's range. Measured (worst level): loss[0,50ms] 22.6 dB,
     // loss[50ms,1s] 22.3, steady max -68.8 vs Figure 9 -61 (at -6 dBm0).
     // The target "20 dB by 25 ms" is met by the whole [0,50ms] window.
-    TYPED_TEST(G168Adapted, ConvergenceNlpOn) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ConvergenceNlpOn) {
         for (const auto& rs : required_rates()) {
             const auto cab = erl_path(room::cabin, rs, 6.0);
             for (double l : {-30.0, -16.0, -6.0}) {
-                compliance_dut<Sample> c(nlp_on_cfg<Sample>(rs), rs.block);
-                auto                   x  = css_at_act(l, 20, rs);
-                auto                   rr = run_chain(c, cab, rs.block, x);
-                auto                   tr = g168_meter(rr.out, rs.fs);
-                measure<Sample>("NlpOn.steady", rs, max_in(tr, rs.fs, 1.4, 6.9));
+                compliance_dut<TypeParam> c(nlp_on_cfg<TypeParam>(rs), rs.block);
+                auto                      x  = css_at_act(l, 20, rs);
+                auto                      rr = run_chain(c, cab, rs.block, x);
+                auto                      tr = g168_meter(rr.out, rs.fs);
+                measure<TypeParam>("NlpOn.steady", rs, max_in(tr, rs.fs, 1.4, 6.9));
                 EXPECT_GE(l - max_in(tr, rs.fs, 0.0, 0.05), 20.0) << "fs " << rs.fs << " L " << l;
                 EXPECT_GE(l - max_in(tr, rs.fs, 0.05, 1.0), 20.0) << "fs " << rs.fs << " L " << l;
                 EXPECT_LE(max_in(tr, rs.fs, 1.4, 6.9), fig9(l) - 6.0) << "fs " << rs.fs << " L " << l;
@@ -135,16 +134,15 @@ namespace {
     // Test 2B: convergence with NLP disabled (bare canceller). Measured:
     // loss[0,50ms] 16.5 / 14.6 dB, loss[1s,10s] 49.3 / 50.1, steady
     // -75.2 / -86.8 vs Figure 11 -43.3.
-    TYPED_TEST(G168Adapted, ConvergenceNlpOff) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ConvergenceNlpOff) {
         for (const auto& rs : required_rates()) {
-            const auto                cab = erl_path(room::cabin, rs, 6.0);
-            const double              l   = -16.0;
-            raw_canceller_dut<Sample> b(chain_config<Sample>(rs).canceller);
-            auto                      x  = css_at_act(l, 33, rs);
-            auto                      rr = run_chain(b, cab, rs.block, x);
-            auto                      tr = g168_meter(rr.out, rs.fs);
-            measure<Sample>("NlpOff.steady", rs, max_in(tr, rs.fs, 10.0, 11.2));
+            const auto                   cab = erl_path(room::cabin, rs, 6.0);
+            const double                 l   = -16.0;
+            raw_canceller_dut<TypeParam> b(chain_config<TypeParam>(rs).canceller);
+            auto                         x  = css_at_act(l, 33, rs);
+            auto                         rr = run_chain(b, cab, rs.block, x);
+            auto                         tr = g168_meter(rr.out, rs.fs);
+            measure<TypeParam>("NlpOff.steady", rs, max_in(tr, rs.fs, 10.0, 11.2));
             EXPECT_GE(l - max_in(tr, rs.fs, 0.0, 0.05), 12.0) << "fs " << rs.fs;
             EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 10.0), 20.0) << "fs " << rs.fs;
             EXPECT_LE(max_in(tr, rs.fs, 10.0, 11.2), fig11(l) - 6.0) << "fs " << rs.fs;
@@ -160,12 +158,11 @@ namespace {
     // deviation closes). Gates a few dB shy of measured. A swap to a
     // LOUDER path does not over-explain and keeps the baseline
     // trajectory — see the rescue's config comment and HANDOFF.
-    TYPED_TEST(G168Adapted, ReConvergenceAfterPathChange) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ReConvergenceAfterPathChange) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -175,12 +172,12 @@ namespace {
             sim.set_echo_path(stu16.data(), stu16.size());
             auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 30, rs));
             auto tr = g168_meter(rr.out, rs.fs);
-            measure<Sample>("ReConv.loss_1_2", rs, l - max_in(tr, rs.fs, 1.0, 2.0));
-            measure<Sample>("ReConv.deep", rs, max_in(tr, rs.fs, 8.0, 10.5));
+            measure<TypeParam>("ReConv.loss_1_2", rs, l - max_in(tr, rs.fs, 1.0, 2.0));
+            measure<TypeParam>("ReConv.deep", rs, max_in(tr, rs.fs, 8.0, 10.5));
             EXPECT_GE(l - max_in(tr, rs.fs, 0.0, 1.0), 6.0) << "fs " << rs.fs; // measured 12.7 / 14.0
-            EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 2.0), expected<Sample>({{42.0, 45.0}, {42.0, 45.0}}, rs))
+            EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 2.0), expected<TypeParam>({{42.0, 45.0}, {42.0, 45.0}}, rs))
                 << "fs " << rs.fs;
-            EXPECT_LE(max_in(tr, rs.fs, 8.0, 10.5), expected<Sample>({{-90.0, -115.0}, {-90.0, -115.0}}, rs))
+            EXPECT_LE(max_in(tr, rs.fs, 8.0, 10.5), expected<TypeParam>({{-90.0, -115.0}, {-90.0, -115.0}}, rs))
                 << "fs " << rs.fs;
         }
     }
@@ -188,21 +185,20 @@ namespace {
     // Test 2C: convergence in noise (Hoth at LRin - 15 dB). Requirement:
     // returned echo <= LSgen within 1 s (target 0.5 s). Measured max in
     // [0.5, 1] s: -34.4 / -32.8 vs LSgen -29.1 / -28.8.
-    TYPED_TEST(G168Adapted, ConvergenceInNoise) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ConvergenceInNoise) {
         for (const auto& rs : required_rates()) {
-            const auto             cab = erl_path(room::cabin, rs, 6.0);
-            const double           l   = -16.0;
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block); // comfort ON: noise present
-            auto                   x     = css_at_act(l, 12, rs);
-            auto                   noise = make_hoth_noise(x.size(), 7, rs.fs);
+            const auto                cab = erl_path(room::cabin, rs, 6.0);
+            const double              l   = -16.0;
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block); // comfort ON: noise present
+            auto                      x     = css_at_act(l, 12, rs);
+            auto                      noise = make_hoth_noise(x.size(), 7, rs.fs);
             set_level_dbm0(noise, l - 15.0);
             exp_level_meter nm(rs.fs, 0.035);
             const auto      ntr   = nm.trace_dbm0(noise);
             const double    lsgen = *std::max_element(ntr.begin() + static_cast<long>(rs.fs), ntr.end());
             auto            rr    = run_chain(c, cab, rs.block, x, &noise);
             auto            tr    = g168_meter(rr.out, rs.fs);
-            measure<Sample>("ConvInNoise.margin", rs, lsgen - max_in(tr, rs.fs, 0.5, 1.0));
+            measure<TypeParam>("ConvInNoise.margin", rs, lsgen - max_in(tr, rs.fs, 0.5, 1.0));
             EXPECT_LE(max_in(tr, rs.fs, 0.5, 1.0), lsgen) << "fs " << rs.fs;
         }
     }
@@ -211,14 +207,13 @@ namespace {
     // adaptation — converged within 5 s (target 2.5), output at the near
     // end's own level. Measured out [1.25, 2.5] s: -31.9 / -35.9 vs
     // near-end max -30.8 / -28.6.
-    TYPED_TEST(G168Adapted, LowNearEndDoesNotBlockAdaptation) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, LowNearEndDoesNotBlockAdaptation) {
         for (const auto& rs : required_rates()) {
-            const auto             cab = erl_path(room::cabin, rs, 6.0);
-            const double           l   = -16.0;
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
-            auto                   x = css_at_act(l, 17, rs);
-            css_config             cd;
+            const auto                cab = erl_path(room::cabin, rs, 6.0);
+            const double              l   = -16.0;
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block);
+            auto                      x = css_at_act(l, 17, rs);
+            css_config                cd;
             cd.periods = 17;
             cd.kind    = css_kind::double_talk;
             cd.shaped  = true;
@@ -230,7 +225,7 @@ namespace {
             exp_level_meter nm(rs.fs, 0.035);
             const auto      tv    = nm.trace_dbm0(v);
             const double    v_max = max_in(tv, rs.fs, 3.0, 5.5);
-            measure<Sample>("LowNearEnd.over_vmax", rs, max_in(tr, rs.fs, 1.25, 2.5) - v_max);
+            measure<TypeParam>("LowNearEnd.over_vmax", rs, max_in(tr, rs.fs, 1.25, 2.5) - v_max);
             EXPECT_LE(max_in(tr, rs.fs, 1.25, 2.5), v_max + 1.5) << "fs " << rs.fs;
             EXPECT_LE(max_in(tr, rs.fs, 2.5, 5.0), v_max + 1.5) << "fs " << rs.fs;
         }
@@ -240,12 +235,11 @@ namespace {
     // far-end level (the harsh case), residual back under Figure 11 + 5
     // (target) after the mask's own 1 s re-convergence grace. Measured
     // LRES in [1, 2] s after DT: -62.6 / -67.0 vs bound -38.3.
-    TYPED_TEST(G168Adapted, DoubleTalkDivergenceBounded) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, DoubleTalkDivergenceBounded) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            raw_canceller_dut<Sample>         b(chain_config<Sample>(rs).canceller);
+            raw_canceller_dut<TypeParam>      b(chain_config<TypeParam>(rs).canceller);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -262,7 +256,7 @@ namespace {
             run_chain_on(sim, b, rs.block, x2, &v);
             auto rr = run_chain_on(sim, b, rs.block, css_at_act(l, 9, rs));
             auto tr = g168_meter(rr.out, rs.fs);
-            measure<Sample>("DtDivergence.lres", rs, max_in(tr, rs.fs, 1.0, 2.0));
+            measure<TypeParam>("DtDivergence.lres", rs, max_in(tr, rs.fs, 1.0, 2.0));
             EXPECT_LE(max_in(tr, rs.fs, 1.0, 2.0), fig11(l) + 5.0) << "fs " << rs.fs;
         }
     }
@@ -271,12 +265,11 @@ namespace {
     // burst: peaks in the single-talk second after each DT phase bounded
     // by the near-end generator level. Measured worst of 3 cycles:
     // -24.9 / -22.1 vs LSgen -17.7.
-    TYPED_TEST(G168Adapted, ConversationalAlternationNoBursts) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ConversationalAlternationNoBursts) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -296,20 +289,19 @@ namespace {
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 6, rs));
                 worst   = std::max(worst, max_in(g168_meter(rr.out, rs.fs), rs.fs, 0.0, 1.0));
             }
-            measure<Sample>("ConvAlternation.worst", rs, worst);
-            EXPECT_LE(worst, expected<Sample>({{-20.0, -20.0}, {-20.0, -20.0}}, rs)) << "fs " << rs.fs;
+            measure<TypeParam>("ConvAlternation.worst", rs, worst);
+            EXPECT_LE(worst, expected<TypeParam>({{-20.0, -20.0}, {-20.0, -20.0}}, rs)) << "fs " << rs.fs;
         }
     }
 
     // Test 4: leak rate — 45 s of silence (adapted from the rec's 2 min)
     // must not degrade the converged filter by more than 5 dB (target).
     // Measured: it IMPROVES (-82.5 -> -84.8 / -96.5 -> -97.4).
-    TYPED_TEST(G168Adapted, LeakRate) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, LeakRate) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -320,7 +312,7 @@ namespace {
             std::vector<double> silence(static_cast<size_t>(45.0 * rs.fs), 0.0);
             run_chain_on(sim, c, rs.block, silence);
             auto r2 = run_chain_on(sim, c, rs.block, css_at_act(l, 6, rs));
-            measure<Sample>("LeakRate.degrade", rs, max_in(g168_meter(r2.out, rs.fs), rs.fs, 0.5, 2.0) - before);
+            measure<TypeParam>("LeakRate.degrade", rs, max_in(g168_meter(r2.out, rs.fs), rs.fs, 0.5, 2.0) - before);
             EXPECT_LE(max_in(g168_meter(r2.out, rs.fs), rs.fs, 0.5, 2.0), before + 5.0) << "fs " << rs.fs;
         }
     }
@@ -330,12 +322,11 @@ namespace {
     // opened path is total over-explanation — the rescue fires and the
     // phantom decays at cold-start speed (measured loss 46.1 / 46.8 dB
     // in [1, 4] s; was 31.7 / 27.8 before the rescue).
-    TYPED_TEST(G168Adapted, InfiniteErlNoPhantomEcho) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, InfiniteErlNoPhantomEcho) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -345,7 +336,7 @@ namespace {
             sim.set_echo_path(open_path.data(), open_path.size());
             auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 12, rs));
             auto tr = g168_meter(rr.out, rs.fs);
-            measure<Sample>("InfiniteErl.loss", rs, l - max_in(tr, rs.fs, 1.0, 4.0));
+            measure<TypeParam>("InfiniteErl.loss", rs, l - max_in(tr, rs.fs, 1.0, 4.0));
             EXPECT_GE(l - max_in(tr, rs.fs, 1.0, 4.0), 40.0) << "fs " << rs.fs;
         }
     }
@@ -357,12 +348,11 @@ namespace {
     // inside the [1, 3] s window at 16 kHz (measured -57.5; -43.8 with
     // the rescue alone, -35.0 baseline) and just past it at 48 kHz
     // (fire at ~0.8 s, deep by ~3 s; the window max stays -36.9).
-    TYPED_TEST(G168Adapted, PathSwings) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, PathSwings) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -377,8 +367,8 @@ namespace {
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 9, rs));
                 worst   = std::max(worst, max_in(g168_meter(rr.out, rs.fs), rs.fs, 1.0, 3.1));
             }
-            measure<Sample>("PathSwings.worst", rs, worst);
-            EXPECT_LE(worst, expected<Sample>({{-34.0, -52.0}, {-34.0, -52.0}}, rs)) << "fs " << rs.fs;
+            measure<TypeParam>("PathSwings.worst", rs, worst);
+            EXPECT_LE(worst, expected<TypeParam>({{-34.0, -52.0}, {-34.0, -52.0}}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -386,12 +376,11 @@ namespace {
     // corrupt the filter: the residual right after the tones still sits
     // far under Figure 11. Measured [0, 1] s after: -77.7 / -86.0 vs
     // Figure 11 -43.3.
-    TYPED_TEST(G168Adapted, NarrowBandSignalsDoNotCorrupt) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, NarrowBandSignalsDoNotCorrupt) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -405,7 +394,7 @@ namespace {
             set_level_dbm0(tone, l);
             run_chain_on(sim, c, rs.block, tone);
             auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 12, rs));
-            measure<Sample>("NarrowBand.residual", rs, max_in(g168_meter(rr.out, rs.fs), rs.fs, 0.0, 1.0));
+            measure<TypeParam>("NarrowBand.residual", rs, max_in(g168_meter(rr.out, rs.fs), rs.fs, 0.0, 1.0));
             EXPECT_LE(max_in(g168_meter(rr.out, rs.fs), rs.fs, 0.0, 1.0), fig11(l) - 6.0) << "fs " << rs.fs;
         }
     }
@@ -414,19 +403,18 @@ namespace {
     // residual <= 0.83 x LRin - 30 dB after 10 s, no divergence. Measured
     // max [10, 30] s: -245 (48 kHz: numerically zero) / -104 dBm0 vs the
     // -49.3 target line.
-    TYPED_TEST(G168Adapted, ToneStability) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ToneStability) {
         for (const auto& rs : required_rates()) {
-            const auto             cab = erl_path(room::cabin, rs, 6.0);
-            const double           l   = -16.0;
-            compliance_dut<Sample> c(nlp_on_cfg<Sample>(rs), rs.block);
-            std::vector<double>    tone(static_cast<size_t>(30.0 * rs.fs));
+            const auto                cab = erl_path(room::cabin, rs, 6.0);
+            const double              l   = -16.0;
+            compliance_dut<TypeParam> c(nlp_on_cfg<TypeParam>(rs), rs.block);
+            std::vector<double>       tone(static_cast<size_t>(30.0 * rs.fs));
             for (size_t i = 0; i < tone.size(); ++i) {
                 tone[i] = std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(i) / rs.fs);
             }
             set_level_dbm0(tone, l);
             auto rr = run_chain(c, cab, rs.block, tone);
-            measure<Sample>("ToneStability.max", rs, max_in(g168_meter(rr.out, rs.fs), rs.fs, 10.0, 30.0));
+            measure<TypeParam>("ToneStability.max", rs, max_in(g168_meter(rr.out, rs.fs), rs.fs, 10.0, 30.0));
             EXPECT_LE(max_in(g168_meter(rr.out, rs.fs), rs.fs, 10.0, 30.0), 0.83 * l - 30.0 - 6.0) << "fs " << rs.fs;
         }
     }
@@ -435,14 +423,13 @@ namespace {
     // step within +-2 dB (measured -1.24 / -1.72) and a 20 dB downward
     // ramp within +-6 (measured -0.19 / -0.02). Ramp adapted: 20 s over
     // 20 dB (rec: 170 s over 66 dB).
-    TYPED_TEST(G168Adapted, ComfortNoiseTracksBackground) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, ComfortNoiseTracksBackground) {
         for (const auto& rs : required_rates()) {
-            const auto             cab = erl_path(room::cabin, rs, 6.0);
-            const double           l   = -16.0;
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block); // comfort ON — the row under test
-            const size_t           n = static_cast<size_t>(34.0 * rs.fs);
-            auto                   x = css_at_act(l, 100, rs);
+            const auto                cab = erl_path(room::cabin, rs, 6.0);
+            const double              l   = -16.0;
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block); // comfort ON — the row under test
+            const size_t              n = static_cast<size_t>(34.0 * rs.fs);
+            auto                      x = css_at_act(l, 100, rs);
             x.resize(n);
             auto noise = make_hoth_noise(n, 7, rs.fs);
             set_level_dbm0(noise, -56.0);
@@ -466,8 +453,8 @@ namespace {
                 }
                 return 10.0 * std::log10(so / sn);
             };
-            measure<Sample>("ComfortTrack.step", rs, seg_delta(11.0, 14.0));
-            measure<Sample>("ComfortTrack.ramp", rs, seg_delta(31.0, 34.0));
+            measure<TypeParam>("ComfortTrack.step", rs, seg_delta(11.0, 14.0));
+            measure<TypeParam>("ComfortTrack.ramp", rs, seg_delta(31.0, 34.0));
             EXPECT_LE(std::abs(seg_delta(11.0, 14.0)), 2.0) << "fs " << rs.fs;
             EXPECT_LE(std::abs(seg_delta(31.0, 34.0)), 6.0) << "fs " << rs.fs;
         }
@@ -482,12 +469,11 @@ namespace {
     // [1.4, 4.1] s read at 48 kHz (measured -65.4; -38.6 with the
     // rescue alone) and just past it at 16 kHz (-45.9, the fire at
     // ~2 s plus cold re-convergence).
-    TYPED_TEST(G168Adapted, AcousticThreePhaseScenario) {
-        using Sample = TypeParam;
+    TYPED_TEST(g168_adapted, AcousticThreePhaseScenario) {
         for (const auto& rs : required_rates()) {
             const auto                        cab = erl_path(room::cabin, rs, 6.0);
             const double                      l   = -16.0;
-            compliance_dut<Sample>            c(nlp_on_cfg<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(nlp_on_cfg<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = cab;
             sc.block_size = rs.block;
@@ -500,12 +486,12 @@ namespace {
                 sim.set_echo_path(phases[ph]->data(), phases[ph]->size());
                 auto rr = run_chain_on(sim, c, rs.block, css_at_act(l, 12, rs));
                 auto tr = g168_meter(rr.out, rs.fs);
-                measure<Sample>(ph == 0   ? "Acoustic.p0"
-                                : ph == 1 ? "Acoustic.p1"
-                                          : "Acoustic.p2",
-                                rs, max_in(tr, rs.fs, 1.4, 4.1));
+                measure<TypeParam>(ph == 0   ? "Acoustic.p0"
+                                   : ph == 1 ? "Acoustic.p1"
+                                             : "Acoustic.p2",
+                                   rs, max_in(tr, rs.fs, 1.4, 4.1));
                 EXPECT_GE(l - max_in(tr, rs.fs, 0.0, 1.0), 6.0) << "fs " << rs.fs << " phase " << ph;
-                EXPECT_LE(max_in(tr, rs.fs, 1.4, 4.1), expected<Sample>(gates[ph], rs))
+                EXPECT_LE(max_in(tr, rs.fs, 1.4, 4.1), expected<TypeParam>(gates[ph], rs))
                     << "fs " << rs.fs << " phase " << ph;
             }
         }
@@ -516,11 +502,10 @@ namespace {
     // 48 kHz cabin, requirement-level assertions on the hands-free
     // figures: TCLwst >= [45], TCLwdt >= [30], Asdt <= 6 (unbracketed),
     // Tic >= [20 dB] within [1 s], per-direction delay <= [16 ms].
-    TYPED_TEST(ItuG167, HistoricalRowRunAndReported) {
-        using Sample                          = TypeParam;
+    TYPED_TEST(itu_g167, HistoricalRowRunAndReported) {
         const auto                        rs  = setup_48k();
         const auto                        cab = compliance_path(room::cabin, rs); // unit energy: worst case
-        compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
+        compliance_dut<TypeParam>         c(chain_config<TypeParam>(rs), rs.block);
         typename echo_sim<double>::config sc;
         sc.echo_path  = cab;
         sc.block_size = rs.block;
