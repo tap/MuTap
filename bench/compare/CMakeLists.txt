@@ -4,29 +4,32 @@
 # SRT_BUILD_COMPARE_BENCH, this pulls in third-party echo cancellers and
 # is a host-only measurement tool. Configure with -DMUTAP_BUILD_COMPARE=ON.
 #
-# Each third-party subject is a separate feature that degrades gracefully:
+# The subjects live in a small static library (mutap_compare_backends) so
+# more than one tool can drive them: the comparison CLI here, and the ITU
+# cross-canceller dump (tools/notebook/itu_compare_dump.cpp). Each
+# third-party subject is a separate feature that degrades gracefully:
 #   -DMUTAP_COMPARE_SPEEX=ON   builds the Speex MDF subject (sources are
 #                              cloned/pointed to via MUTAP_SPEEXDSP_DIR).
 #   -DMUTAP_COMPARE_WEBRTC=ON  builds the WebRTC AEC3 subject against a
-#                              prebuilt webrtc-audio-processing (meson);
-#                              point MUTAP_WEBRTC_DIR at its source and
-#                              MUTAP_WEBRTC_BUILD at its meson builddir.
-# With neither, the tool still compares the three MuTap variants — useful
+#                              prebuilt webrtc-audio-processing (meson),
+#                              resolved via MUTAP_WEBRTC_PC_PATH.
+# With neither, the library still offers the three MuTap variants — useful
 # for tracking our own linear-vs-chain and f32-vs-f64 gaps over time.
 
-add_executable(mutap_aec_compare
-    compare_main.cpp
+add_library(mutap_compare_backends STATIC
     aec_backend.cpp
     backends/mutap_backend.cpp)
+target_link_libraries(mutap_compare_backends PUBLIC MuTap::MuTap)
+target_include_directories(mutap_compare_backends PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(mutap_compare_backends PUBLIC cxx_std_20)
 
+add_executable(mutap_aec_compare compare_main.cpp)
 # A host-only measurement tool: -Wall/-Wextra, but not the library's
 # strict -Wconversion (the driver's size_t<->double window arithmetic is
 # deliberate and would otherwise need a cast on every line).
-target_link_libraries(mutap_aec_compare PRIVATE MuTap::MuTap)
+target_link_libraries(mutap_aec_compare PRIVATE mutap_compare_backends)
 target_compile_options(mutap_aec_compare PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra>)
-target_include_directories(mutap_aec_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_features(mutap_aec_compare PRIVATE cxx_std_20)
 
 # ----------------------------------------------------------------------
 # Speex MDF subject
@@ -55,9 +58,9 @@ if(MUTAP_COMPARE_SPEEX)
     # selects the float + KISS-FFT build (no autotools, no SIMD deps).
     target_compile_definitions(mutap_speexdsp PRIVATE HAVE_CONFIG_H)
     # Third-party C: no MuTap warning flags.
-    target_link_libraries(mutap_aec_compare PRIVATE mutap_speexdsp)
-    target_sources(mutap_aec_compare PRIVATE backends/speex_backend.cpp)
-    target_compile_definitions(mutap_aec_compare PRIVATE MUTAP_COMPARE_HAVE_SPEEX=1)
+    target_sources(mutap_compare_backends PRIVATE backends/speex_backend.cpp)
+    target_link_libraries(mutap_compare_backends PUBLIC mutap_speexdsp)
+    target_compile_definitions(mutap_compare_backends PUBLIC MUTAP_COMPARE_HAVE_SPEEX=1)
 endif()
 
 # ----------------------------------------------------------------------
@@ -76,7 +79,20 @@ if(MUTAP_COMPARE_WEBRTC)
         set(ENV{PKG_CONFIG_PATH} "${MUTAP_WEBRTC_PC_PATH}:$ENV{PKG_CONFIG_PATH}")
     endif()
     pkg_check_modules(WEBRTC REQUIRED IMPORTED_TARGET webrtc-audio-processing-2)
-    target_sources(mutap_aec_compare PRIVATE backends/webrtc_backend.cpp)
-    target_link_libraries(mutap_aec_compare PRIVATE PkgConfig::WEBRTC)
-    target_compile_definitions(mutap_aec_compare PRIVATE MUTAP_COMPARE_HAVE_WEBRTC=1)
+    target_sources(mutap_compare_backends PRIVATE backends/webrtc_backend.cpp)
+    target_link_libraries(mutap_compare_backends PUBLIC PkgConfig::WEBRTC)
+    target_compile_definitions(mutap_compare_backends PUBLIC MUTAP_COMPARE_HAVE_WEBRTC=1)
 endif()
+
+# ----------------------------------------------------------------------
+# ITU cross-canceller dump — feeds notebooks/itu_comparison.ipynb. Reuses
+# the compliance scenario machinery in tests/support (header-only) to run
+# all linked-in subjects through the ITU scenarios. Host-only, off unless
+# the comparison harness is being built.
+# ----------------------------------------------------------------------
+add_executable(itu_compare_dump ${CMAKE_SOURCE_DIR}/tools/notebook/itu_compare_dump.cpp)
+target_link_libraries(itu_compare_dump PRIVATE mutap_compare_backends)
+target_include_directories(itu_compare_dump PRIVATE
+    ${CMAKE_SOURCE_DIR}/tests/support
+    ${CMAKE_SOURCE_DIR}/tests/fixtures)
+target_compile_features(itu_compare_dump PRIVATE cxx_std_20)
