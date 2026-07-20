@@ -254,12 +254,178 @@ namespace {
         return out + "}";
     }
 
+    // Stateful "converge then measure": run the subject over the WHOLE
+    // [convergence ; measurement] stream (so the canceller is converged
+    // by the measurement phase) and return the measurement-phase output.
+    std::vector<double> run_converged(const std::string& subj, const rate_setup& rs, const std::vector<double>& far,
+                                      const std::vector<double>& mic, size_t meas_start) {
+        const auto e = run_send(subj, rs, far, mic);
+        if (e.empty()) return {};
+        return {e.begin() + static_cast<long>(meas_start), e.end()};
+    }
+
+    std::vector<double> settled_half(const std::vector<double>& s) {
+        return {s.begin() + static_cast<long>(s.size() / 2), s.end()};
+    }
+
+    // ---- Scenario 5: double-talk echo loss + send attenuation (ITU comb). ----
+    // The real P.501 AM-FM method the compliance suite gates: converge on
+    // CSS, then the far end on the receive comb and the near end on the
+    // orthogonal send comb. Echo loss = clean far-end level MINUS residual
+    // in the output, worst over receive bands (near end quiet, -25.7 dBPa;
+    // >= 27 dB required). Send attenuation = clean near-end level minus
+    // near-end left in the output, worst over send bands (near end loud,
+    // -1.7 dBPa; <= 3 dB required). Reference is the CLEAN comb signal, not
+    // the room-smeared echo — that was the fix over the near-keep proxy.
+    std::string scen_dt_comb(const rate_setup& rs) {
+        auto         cvg  = css_m16(rs, 30);                 // convergence preamble
+        // Block-align the AM-FM phase: the certified test runs convergence
+        // and measurement as two separate block-gridded passes, so the
+        // AM-FM phase starts on a block boundary. Front-pad the convergence
+        // so it does here too (a misaligned overlap-save grid costs ~8 dB).
+        const size_t pad  = (rs.block - cvg.size() % rs.block) % rs.block;
+        cvg.insert(cvg.begin(), pad, 0.0);
+        const auto   path = compliance_path(room::cabin, rs); // unit-energy, as the test
+        const size_t na   = static_cast<size_t>(8 * rs.fs);   // AM-FM phase length
+        auto         xa   = make_amfm(amfm_receive_plan(), na, rs.fs);
+        set_level_dbm0(xa, -16.0);
+        const auto rp = amfm_receive_plan();
+        const auto sp = amfm_send_plan();
+
+        // far = [cvg ; amfm_receive]; near differs by phase level.
+        std::vector<double> far = cvg;
+        far.insert(far.end(), xa.begin(), xa.end());
+        const auto echo = convolve(far, path);
+        const size_t meas = cvg.size();
+
+        auto near_at = [&](double send_dbpa) {
+            auto v = make_amfm(amfm_send_plan(), na, rs.fs);
+            const double vg = dbpa_to_rms(send_dbpa) / rms_of(v.data(), v.size());
+            for (auto& s : v) s *= vg;
+            std::vector<double> nv(cvg.size(), 0.0);
+            nv.insert(nv.end(), v.begin(), v.end());
+            return nv;
+        };
+        auto band_worst = [&](const amfm_plan& plan, const std::vector<double>& refh, const std::vector<double>& oh,
+                              bool want_min) {
+            double worst = want_min ? 1e9 : -1e9;
+            for (size_t b = 0; b < plan.f0.size(); ++b) {
+                if (plan.f0[b] < 200.0 || plan.f0[b] > 6950.0 || plan.f0[b] > rs.fs / 2 * 0.9) continue;
+                amfm_plan one;
+                one.f0.push_back(plan.f0[b]);
+                one.df.push_back(plan.df[b]);
+                const double d = comb_band_level_db(refh, one, 0.0, rs.fs) - comb_band_level_db(oh, one, 0.0, rs.fs);
+                worst = want_min ? std::min(worst, d) : std::max(worst, d);
+            }
+            return worst;
+        };
+
+        std::string out = "{";
+        bool        first = true;
+        for (const auto& subj : subjects()) {
+            // Echo loss: quiet near end.
+            const auto near_q = near_at(-25.7);
+            std::vector<double> micq(echo.size());
+            for (size_t i = 0; i < echo.size(); ++i) micq[i] = echo[i] + near_q[i];
+            const auto oq = run_converged(subj, rs, far, micq, meas);
+            if (oq.empty()) continue;
+            const double echo_loss = band_worst(rp, settled_half(xa), settled_half(oq), true);
+
+            // Send attenuation: loud near end.
+            const auto near_l = near_at(-1.7);
+            std::vector<double> vl(make_amfm(amfm_send_plan(), na, rs.fs));
+            const double vg = dbpa_to_rms(-1.7) / rms_of(vl.data(), vl.size());
+            for (auto& s : vl) s *= vg;
+            std::vector<double> micl(echo.size());
+            for (size_t i = 0; i < echo.size(); ++i) micl[i] = echo[i] + near_l[i];
+            const auto ol = run_converged(subj, rs, far, micl, meas);
+            const double send_atten = band_worst(sp, settled_half(vl), settled_half(ol), false);
+
+            out += (first ? "" : ",");
+            first = false;
+            out += "\"" + subj + "\":{\"echo_loss_db\":" + jnum(echo_loss) + ",\"send_atten_db\":" + jnum(send_atten) + "}";
+        }
+        return out + "}";
+    }
+
+    // ---- Scenario 6: spectral echo attenuation vs the §11.11.3 WB mask. ----
+    // Converged single talk; third-octave attenuation spectrum of the echo
+    // vs the send output, overlaid on the WB mask.
+    std::string scen_spectral(const rate_setup& rs) {
+        const auto   x    = css_m16(rs, 30);
+        const auto   path = compliance_path(room::cabin, rs);
+        const auto   echo = convolve(x, path);
+        const double f1   = std::min(8000.0, rs.fs / 2 * 0.94);
+        std::string  out = "{";
+        bool         first = true;
+        for (const auto& subj : subjects()) {
+            const auto e = run_send(subj, rs, x, echo);
+            if (e.empty()) continue;
+            const size_t from = e.size() - static_cast<size_t>(4 * 0.35 * rs.fs);
+            std::vector<double> ref(echo.begin() + static_cast<long>(from), echo.end());
+            std::vector<double> o(e.begin() + static_cast<long>(from), e.end());
+            const auto          sp = attenuation_spectrum(ref, o, rs.fs, 8192, 100.0, f1);
+            out += (first ? "" : ",");
+            first = false;
+            out += "\"" + subj + "\":{\"f\":" + jarr(sp.f_center) + ",\"atten_db\":" + jarr(sp.atten_db) + "}";
+        }
+        return out + "}";
+    }
+
+    // ---- Scenario 7: send activation build-up time (§11.11.8.1). ----
+    // Far end silent; a near-end CSS talker at -26 dBPa turns on after 1 s
+    // of silence. Build-up time = ms from onset until the A-weighted 5 ms
+    // send level reaches within 3 dB of its settled median. Requirement
+    // <= 50 ms, target <= 25 ms. (For a black box: how fast the near-end
+    // talker passes through — a canceller that gates the near end is slow.)
+    std::string scen_activation(const rate_setup& rs) {
+        css_config cd;
+        cd.periods = 10;
+        cd.kind    = css_kind::double_talk;
+        cd.shaped  = true;
+        auto         v  = make_css_at(cd, rs.fs);
+        const double vg = dbpa_to_rms(-26.0) / rms_of(v.data(), v.size());
+        for (auto& s : v) s *= vg;
+        const size_t        pre = static_cast<size_t>(1.0 * rs.fs);
+        std::vector<double> near(pre, 0.0);
+        near.insert(near.end(), v.begin(), v.end());
+        std::vector<double> far(near.size(), 0.0); // far silent -> mic = near
+        std::string         out = "{";
+        bool                first = true;
+        for (const auto& subj : subjects()) {
+            const auto e = run_send(subj, rs, far, near);
+            if (e.empty()) continue;
+            a_weighting     aw(rs.fs);
+            auto            seg = aw.apply(e);
+            exp_level_meter m(rs.fs, 0.005);
+            const auto      tr = m.trace_dbm0(seg);
+            double          build_ms = 1e9;
+            if (tr.size() >= pre + static_cast<size_t>(2 * rs.fs)) {
+                const long          s0 = static_cast<long>(pre) + static_cast<long>(rs.fs);
+                std::vector<double> settled(tr.begin() + s0, tr.begin() + s0 + static_cast<long>(rs.fs));
+                std::nth_element(settled.begin(), settled.begin() + static_cast<long>(settled.size() / 2), settled.end());
+                const double target = settled[settled.size() / 2];
+                size_t       t_hit  = tr.size();
+                for (size_t i = pre; i < tr.size(); ++i)
+                    if (tr[i] >= target - 3.0) { t_hit = i - pre; break; }
+                build_ms = 1000.0 * static_cast<double>(t_hit) / rs.fs;
+            }
+            out += (first ? "" : ",");
+            first = false;
+            out += "\"" + subj + "\":" + jnum(build_ms);
+        }
+        return out + "}";
+    }
+
     std::string dump_rate(const rate_setup& rs) {
         std::string o = "{";
         o += "\"convergence\":" + scen_convergence(rs) + ",";
         o += "\"reconvergence\":" + scen_reconv(rs) + ",";
         o += "\"steady_erl\":" + scen_steady(rs) + ",";
-        o += "\"doubletalk_near_keep\":" + scen_doubletalk(rs);
+        o += "\"doubletalk_near_keep\":" + scen_doubletalk(rs) + ",";
+        o += "\"dt_comb\":" + scen_dt_comb(rs) + ",";
+        o += "\"spectral\":" + scen_spectral(rs) + ",";
+        o += "\"activation\":" + scen_activation(rs);
         return o + "}";
     }
 

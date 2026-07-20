@@ -116,34 +116,100 @@ chain recovers more slowly to a much deeper floor (its rescue comparator
 is tuned conservative, per docs/itu-compliance.md). The trade is depth
 vs agility, made visible.""")
 
-md("""## 3. Steady-state ERL and double-talk near-end preservation
+md("""## 3. Spectral echo attenuation vs the §11.11.3 WB mask
 
-Left: converged single-talk ERL (depth). Right: near-end level preserved
-during double talk — a CSS talker enters mid-run over the echo; 0 dB =
-the near end passes untouched, negative = the canceller ducks it. The
-orthogonal ITU echo-loss-during-double-talk measurement needs the full
-comb analysis and stays in the compliance suite; this is the duplex
-companion.""")
+Converged single talk: the third-octave attenuation spectrum of the echo
+vs the send output, overlaid on the P.1110/P.1120 wideband echo mask
+(dashed — the requirement is to sit *above* it). Depth as a function of
+frequency, the way the recs actually score echo.""")
+
+code("""MASK_F = [100, 1300, 3450, 5200, 7500, 8000]; MASK_DB = [41, 41, 46, 46, 37, 37]
+def mask_at(f):
+    return np.interp(np.log(f), np.log(MASK_F), MASK_DB)
+fig, axes = plt.subplots(1, 2, figsize=(13, 4.2), sharey=True)
+for ax, fs in zip(axes, ['48000', '16000']):
+    for s in SUBJECTS:
+        sp = D[fs]['spectral'].get(s)
+        if not sp: continue
+        ax.semilogx(sp['f'], sp['atten_db'], color=COL[s], label=LBL[s], lw=1.8, marker='o', ms=3)
+    ff = np.array(D[fs]['spectral'][SUBJECTS[0]]['f'])
+    ax.semilogx(ff, [mask_at(f) for f in ff], 'k--', alpha=0.6, label='WB mask (§11.11.3)')
+    ax.set_title(f'{int(fs)//1000} kHz'); ax.set_xlabel('frequency (Hz)'); ax.grid(alpha=0.3, which='both')
+axes[0].set_ylabel('echo attenuation (dB) — above the mask = pass'); axes[0].legend(fontsize=8)
+fig.suptitle('Spectral echo attenuation vs the WB mask', y=1.02)
+plt.tight_layout(); plt.show()""")
+
+md("""MuTap clears the mask by 15–40 dB across the band; Speex clears it
+comfortably too; AEC3 rides much closer, dipping toward the mask at the
+band edges — again the depth-vs-robustness split, now resolved by
+frequency.""")
+
+md("""## 4. Double talk — the real ITU AM-FM comb method (§11.12)
+
+The proper measurement (corrected from the earlier near-keep proxy):
+converge on CSS, then far end on the receive comb and near end on the
+orthogonal send comb. **Echo loss** = how far the residual echo sits
+below the clean far end, worst receive band, quiet near end (≥ 27 dB
+required). **Send attenuation** = how much the *near end* is ducked
+during loud double talk, worst send band (≤ 3 dB required — lower is
+better duplex).""")
+
+code("""fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.2))
+x = np.arange(len(SUBJECTS)); w = 0.36
+for i, fs in enumerate(['48000', '16000']):
+    ax1.bar(x + i*w, [D[fs]['dt_comb'].get(s, {}).get('echo_loss_db', 0) for s in SUBJECTS], w,
+            label=f'{int(fs)//1000} kHz', color=['#4c78a8', '#a0c4e0'][i])
+    ax2.bar(x + i*w, [D[fs]['dt_comb'].get(s, {}).get('send_atten_db', 0) for s in SUBJECTS], w,
+            label=f'{int(fs)//1000} kHz', color=['#e45756', '#f2a6a5'][i])
+ax1.axhline(27, ls='--', color='k', alpha=0.6); ax1.annotate('≥27 dB req', (0, 28), fontsize=8)
+ax2.axhline(3, ls='--', color='k', alpha=0.6); ax2.annotate('≤3 dB req', (0, 3.4), fontsize=8)
+for ax, ttl, yl in ((ax1, 'DT echo loss, worst band (↑ better)', 'echo loss (dB)'),
+                    (ax2, 'DT near-end ducking, worst band (↓ better)', 'send attenuation (dB)')):
+    ax.set_xticks(x + w/2); ax.set_xticklabels([LBL[s] for s in SUBJECTS])
+    ax.set_title(ttl); ax.set_ylabel(yl); ax.grid(axis='y', alpha=0.3); ax.legend()
+plt.tight_layout(); plt.show()""")
+
+md("""**Reading it.** MuTap's echo loss (37.8 / 38.0 dB) reproduces the
+certified compliance figure to a few tenths — the black-box path measures
+the same chain the suite gates. Speex is comparably deep (its double-talk
+detector freezes adaptation). **AEC3 reads ~0 dB echo loss on this
+signal** — the orthogonal AM-FM comb is a synthetic ITU probe that its
+speech-tuned nonlinear model does not cancel, so that bar reflects signal
+mismatch, *not* AEC3's speech-echo capability. The **send-attenuation**
+panel is the architecture-representative double-talk result: MuTap and
+Speex leave the near end essentially untouched (≤ 2 dB), while AEC3 ducks
+it ~15 dB — its deliberate echo-first double-talk behaviour, consistent
+with the AECMOS degradation scores in the doc.""")
+
+md("""## 5. Steady-state ERL and send-path activation build-up
+
+Left: converged single-talk ERL depth. Right: how fast the near-end
+talker's onset reaches the send output (§11.11.8.1 build-up; ≤ 50 ms
+required, dashed) — for a black-box canceller, how quickly it lets a
+near-end talker through.""")
 
 code("""fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 4.2))
 x = np.arange(len(SUBJECTS)); w = 0.36
 for i, fs in enumerate(['48000', '16000']):
     ax1.bar(x + i*w, [D[fs]['steady_erl'].get(s, 0) for s in SUBJECTS], w,
             label=f'{int(fs)//1000} kHz', color=['#4c78a8', '#a0c4e0'][i])
-    ax2.bar(x + i*w, [D[fs]['doubletalk_near_keep'].get(s, 0) for s in SUBJECTS], w,
-            label=f'{int(fs)//1000} kHz', color=['#e45756', '#f2a6a5'][i])
+    ax2.bar(x + i*w, [min(D[fs]['activation'].get(s, 0), 60) for s in SUBJECTS], w,
+            label=f'{int(fs)//1000} kHz', color=['#54a24b', '#a7d49b'][i])
+ax2.axhline(50, ls='--', color='k', alpha=0.6); ax2.annotate('≤50 ms req', (0, 51), fontsize=8)
 for ax, ttl, yl in ((ax1, 'Steady-state ERL (↑ deeper)', 'ERL (dB)'),
-                    (ax2, 'Double-talk near-end preservation (0 = ideal)', 'out/near level (dB)')):
+                    (ax2, 'Send activation build-up (↓ faster)', 'build-up time (ms)')):
     ax.set_xticks(x + w/2); ax.set_xticklabels([LBL[s] for s in SUBJECTS])
     ax.set_title(ttl); ax.set_ylabel(yl); ax.grid(axis='y', alpha=0.3); ax.legend()
-ax2.axhline(0, color='k', lw=1)
 plt.tight_layout(); plt.show()""")
 
-md("""**Reading it together.** MuTap trades convergence speed for
-steady-state depth and near-perfect double-talk transparency; AEC3 trades
-depth for the fastest lock and re-lock while ducking the near end a little
-more; Speex is the classical middle. The full numeric matrix, the
-reciprocal AECMOS scoring, and every caveat are in
+md("""**Reading it all together.** Across the ITU battery the same split
+holds: MuTap trades convergence and re-convergence speed for the deepest
+steady echo removal, the widest mask margin, certified-grade double-talk
+echo loss, and near-perfect near-end preservation; AEC3 locks fastest and
+lets the near end through fastest but rides shallow and ducks the near end
+hard under double talk; Speex is the classical middle. All three clear the
+activation build-up requirement comfortably. The full numeric matrix, the
+reciprocal AECMOS scoring, and every fairness caveat are in
 [`docs/aec-comparison.md`](../docs/aec-comparison.md).""")
 
 nb["cells"] = cells

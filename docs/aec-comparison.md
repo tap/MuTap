@@ -197,6 +197,40 @@ python3 tools/compare/aecmos_eval.py \
 #   ...add --real-dir <dir of {st,nst,dt}_{far,mic}.wav> for the real corpus.
 ```
 
+## Direction 1b — the ITU battery on all three cancellers
+
+Beyond the core metrics above, every subject is also run through the
+*actual* ITU compliance scenarios — the same P.501 signals, image-source
+cabin/studio paths, dBm0 meters and masks the certified suite gates
+(`tools/notebook/itu_compare_dump.cpp`, rendered by
+[`notebooks/itu_comparison.ipynb`](../notebooks/itu_comparison.ipynb)).
+This is the certified `test_itu_*` machinery pointed at black boxes.
+
+Measured 2026-07 (`bench/compare/results/itu_comparison.json`), cabin
+path, 48 / 16 kHz:
+
+| Row | MuTap | WebRTC AEC3 | Speex MDF |
+|---|---|---|---|
+| Convergence to 40 dB ERL | fast, deepest floor | instant, shallow | slow, mid |
+| Re-convergence after path swap | slow, deep | **fastest** | mid |
+| Spectral atten. vs WB mask (§11.11.3) | **+15…40 dB over** | rides near / dips to it | comfortably over |
+| DT echo loss, worst band (§11.12, ≥27 dB) | **37.8 / 38.0** | ~0 / 2.8 † | 38.9 / 53.5 |
+| DT near-end ducking, worst band (≤3 dB) | **1.7 / 2.0** | 15.6 / 14.6 | **0.2 / 0.1** |
+| Send activation build-up (≤50 ms) | 15.7 / 21.1 | 14.0 / 12.9 | 4.9 / 5.1 |
+
+MuTap's DT echo loss reproduces the certified compliance figure
+(37.5 / 38.0 dB) to a few tenths — the black-box path measures the same
+chain the suite gates.
+
+**† The AM-FM caveat.** The ITU double-talk echo-loss probe is an
+orthogonal AM-FM tone comb. MuTap and Speex (adaptive filters) cancel it;
+AEC3's speech-tuned nonlinear echo model does not engage on it, so its
+~0 dB bar reflects signal mismatch, **not** its speech-echo capability.
+The **near-end-ducking** column is the architecture-representative
+double-talk result and needs no such caveat: AEC3 ducks the near end
+~15 dB during double talk (echo-first by design), where MuTap and Speex
+leave it essentially untouched.
+
 ## What this comparison does not cover
 
 Kept explicit, in the spirit of [itu-compliance.md](itu-compliance.md)'s
@@ -215,10 +249,14 @@ Kept explicit, in the spirit of [itu-compliance.md](itu-compliance.md)'s
 - **Real-speech corpora and calibrated AECMOS.** Blocked by LFS access
   in this environment; the pipeline is real and one flag from the blind
   set.
-- **The full ITU battery on the third-party cancellers.** Direction 1
-  applies our *core* metrics to their algorithms; retrofitting the whole
-  `test_itu_*` battery (comb-filter double-talk echo loss, spectral
-  masks, switching dynamics) onto a black-box backend is a further step.
+- **The remaining ITU rows.** Direction 1b now runs the headline battery
+  on all three (convergence, re-convergence, spectral mask, AM-FM comb
+  double-talk echo loss + send attenuation, activation build-up). The
+  longer tail — TCL, echo-level-vs-time, comfort-noise level/spectrum,
+  noise pumping, the stability sweep — remains MuTap-only in the
+  compliance suite; and the AM-FM echo-loss probe is adversarial to
+  AEC3's speech tuning (see the † caveat above), so speech-signal echo
+  loss is better read from the AECMOS table than that row.
 - **AEC3 tuned configurations.** We run AEC3 with the echo canceller
   enabled and everything else off, for an apples-to-apples echo
   comparison. Its shipping product bundles AGC, noise suppression and a
