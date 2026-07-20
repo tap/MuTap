@@ -70,6 +70,35 @@ if(MUTAP_FFT_CMSIS)
 endif()
 
 # ------------------------------------------------------------------------------
+# Apple vDSP (Accelerate) FFT backend. When ON, the float32 real FFT in
+# include/mutap/fft.h routes through Apple's vDSP instead of Ooura — measured
+# ~3x faster per transform than clang-autovectorized Ooura on Apple Silicon
+# (docs/optimization.md), which is what the mutap.aec~ Max external runs.
+# Double is untouched (always Ooura), so the double-precision ITU certification
+# is unaffected; on the float32 path vDSP agrees with Ooura to single-precision
+# rounding (not bit-identical). Default ON for Apple, OFF everywhere else; it is
+# mutually exclusive with the CMSIS backend. Force Ooura with
+# -DMUTAP_FFT_ACCELERATE=OFF.
+# ------------------------------------------------------------------------------
+if(APPLE AND NOT MUTAP_FFT_CMSIS)
+    set(_mutap_fft_accel_default ON)
+else()
+    set(_mutap_fft_accel_default OFF)
+endif()
+option(MUTAP_FFT_ACCELERATE "Route the float32 FFT through Apple's vDSP (Accelerate) backend (Apple only)" ${_mutap_fft_accel_default})
+if(MUTAP_FFT_ACCELERATE)
+    if(NOT APPLE)
+        message(FATAL_ERROR "MUTAP_FFT_ACCELERATE requires Apple's Accelerate framework (macOS).")
+    endif()
+    if(MUTAP_FFT_CMSIS)
+        message(FATAL_ERROR "MUTAP_FFT_ACCELERATE and MUTAP_FFT_CMSIS are mutually exclusive.")
+    endif()
+    target_compile_definitions(mutap INTERFACE MUTAP_FFT_ACCELERATE)
+    target_link_libraries(mutap INTERFACE "-framework Accelerate")
+    message(STATUS "MuTap: float32 FFT backend = Apple vDSP (Accelerate)")
+endif()
+
+# ------------------------------------------------------------------------------
 # Options
 # ------------------------------------------------------------------------------
 
