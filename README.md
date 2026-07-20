@@ -374,6 +374,12 @@ in CI. Run `pre-commit install` once per clone (`pipx install pre-commit`) so
 the `.pre-commit-config.yaml` hook formats staged C/C++ with the same pinned
 clang-format the CI gate uses — no more format-only CI failures.
 
+The pre-commit hook covers **clang-format only**; clang-tidy (the naming and
+mandatory-braces gate) needs a compile database, so it stays a CI gate. Mirror
+it locally before pushing with `scripts/tidy.sh` — no args sweeps every project
+TU like CI, or pass the files you changed for a fast check
+(`scripts/tidy.sh tests/test_foo.cpp`).
+
 ## License
 
 MIT (see [LICENSE](LICENSE)). Bundled third-party components are listed in
