@@ -309,6 +309,22 @@ suite is too slow, [`tests/test_float32.cpp`](tests/test_float32.cpp)
 runs the headline rows on-target (float-vs-double 0.1–0.7 dB; tone row
 −64.8 dBm0(A) at 16 kHz against the −49.3 requirement).
 
+## How it compares to WebRTC AEC3 and Speex
+
+A head-to-head against the two echo cancellers most people can name lives
+in [`docs/aec-comparison.md`](docs/aec-comparison.md) (harness:
+`bench/compare/`, `-DMUTAP_BUILD_COMPARE=ON`; plots:
+[`notebooks/aec_comparison.ipynb`](notebooks/aec_comparison.ipynb)),
+measured in both directions: every canceller run through MuTap's echo
+scenarios and metrics as a black box, **and** MuTap's output scored by
+WebRTC/Microsoft's own AECMOS predictor. Short version — MuTap reaches
+2–3× the steady ERLE (62 dB at 48 kHz / 87 at 16 kHz) and keeps the near
+end essentially untouched through double talk; WebRTC AEC3 converges and
+re-converges several times faster and, being a nonlinear-echo product,
+wins AECMOS in far-end single talk where deep ERLE stops being audible;
+Speex MDF sits between. The doc spells out the fairness controls and what
+the linear-path bench does not cover.
+
 ## Quick start
 
 ```cmake
