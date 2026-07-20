@@ -33,12 +33,12 @@ namespace {
     // Typed over <float, double>: float32 (/0) is the deployment target,
     // double (/1) the certified golden model. Gates carry a per-precision
     // column (itu_chain.h prec_gate); the double column is unchanged. The
-    // closed-loop and open-loop sims stay double; compliance_dut<Sample>
-    // runs the chain at Sample behind the double interface.
+    // closed-loop and open-loop sims stay double; compliance_dut<TypeParam>
+    // runs the chain at TypeParam behind the double interface.
     using sample_types = ::testing::Types<float, double>;
     template <typename T>
-    class ItuDynamics : public ::testing::Test {};
-    TYPED_TEST_SUITE(ItuDynamics, sample_types);
+    class itu_dynamics : public ::testing::Test {};
+    TYPED_TEST_SUITE(itu_dynamics, sample_types);
 
     // ITU_ActivationSend + ITU_P340_BuildUpSingle/VoiceSwitchBuildUp:
     // near-end CSS onset at the -26 dBPa target activation level from
@@ -47,12 +47,11 @@ namespace {
     // (P.340's bracketed [20 ms] is provisional and superseded by the
     // in-force automotive series it feeds — precedence recorded in the
     // matrix.)
-    TYPED_TEST(ItuDynamics, SendActivationBuildUp) {
-        using Sample = TypeParam;
+    TYPED_TEST(itu_dynamics, SendActivationBuildUp) {
         for (const auto& rs : required_rates()) {
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
-            const auto             path = compliance_path(room::cabin, rs);
-            css_config             cd;
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block);
+            const auto                path = compliance_path(room::cabin, rs);
+            css_config                cd;
             cd.periods      = 10;
             cd.kind         = css_kind::double_talk;
             cd.shaped       = true;
@@ -86,8 +85,8 @@ namespace {
             // Measured 15.7 ms at 48 kHz, 21.1 ms at 16 kHz (the 16 kHz
             // figure carries the 16 ms block latency).
             const double t_hit_ms = 1000.0 * static_cast<double>(t_hit) / rs.fs;
-            measure<Sample>("SendActivation.ms", rs, t_hit_ms);
-            EXPECT_LE(t_hit_ms, expected<Sample>({{25.0, 25.0}, {25.0, 25.0}}, rs)) << "fs " << rs.fs; // req <=50
+            measure<TypeParam>("SendActivation.ms", rs, t_hit_ms);
+            EXPECT_LE(t_hit_ms, expected<TypeParam>({{25.0, 25.0}, {25.0, 25.0}}, rs)) << "fs " << rs.fs; // req <=50
         }
     }
 
@@ -95,10 +94,9 @@ namespace {
     // continuous), echo attenuation recovers. P.340 requirement (both
     // values provisional): >= [20 dB] within [1 s]; target >= 26 dB
     // within 0.5 s.
-    TYPED_TEST(ItuDynamics, HangoverRecoveryAfterDoubleTalk) {
-        using Sample = TypeParam;
+    TYPED_TEST(itu_dynamics, HangoverRecoveryAfterDoubleTalk) {
         for (const auto& rs : required_rates()) {
-            compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
+            compliance_dut<TypeParam>         c(chain_config<TypeParam>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -129,25 +127,24 @@ namespace {
             // (16 kHz — target missed; gate at the measured value). At
             // +1.0 s: 45.0 / 23.1 dB against the [20 dB] provisional
             // requirement.
-            measure<Sample>("Hangover.0p5", rs, erl.by(t_end + 0.5));
-            measure<Sample>("Hangover.1p0", rs, erl.by(t_end + 1.0));
-            EXPECT_GE(erl.by(t_end + 0.5), expected<Sample>({{26.0, 15.0}, {26.0, 15.0}}, rs)) << "fs " << rs.fs;
+            measure<TypeParam>("Hangover.0p5", rs, erl.by(t_end + 0.5));
+            measure<TypeParam>("Hangover.1p0", rs, erl.by(t_end + 1.0));
+            EXPECT_GE(erl.by(t_end + 0.5), expected<TypeParam>({{26.0, 15.0}, {26.0, 15.0}}, rs)) << "fs " << rs.fs;
             // The [20 dB within 1 s] provisional requirement.
-            EXPECT_GE(erl.by(t_end + 1.0), expected<Sample>({{20.0, 20.0}, {20.0, 20.0}}, rs)) << "fs " << rs.fs;
+            EXPECT_GE(erl.by(t_end + 1.0), expected<TypeParam>({{20.0, 20.0}, {20.0, 20.0}}, rs)) << "fs " << rs.fs;
         }
     }
 
     // ITU_P340_NoiseFluctuation: transmitted background-noise level
     // fluctuation <= +-3 dB (span 6); target span <= 3.5 (the Hoth
     // source's own 35 ms meter span measures ~3).
-    TYPED_TEST(ItuDynamics, TransmittedNoiseFluctuation) {
-        using Sample = TypeParam;
+    TYPED_TEST(itu_dynamics, TransmittedNoiseFluctuation) {
         for (const auto& rs : required_rates()) {
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
-            const auto             path = compliance_path(room::cabin, rs);
-            const size_t           n    = static_cast<size_t>(10 * rs.fs);
-            std::vector<double>    x(n, 0.0);
-            auto                   noise = make_hoth_noise(n, 7, rs.fs);
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block);
+            const auto                path = compliance_path(room::cabin, rs);
+            const size_t              n    = static_cast<size_t>(10 * rs.fs);
+            std::vector<double>       x(n, 0.0);
+            auto                      noise = make_hoth_noise(n, 7, rs.fs);
             set_level_dbm0(noise, -46.0);
             auto   rr   = run_chain(c, path, rs.block, x, &noise);
             auto   tr   = level_trace_dbm0a(rr.out, rs.fs);
@@ -157,8 +154,8 @@ namespace {
                 vmax = std::max(vmax, tr[i]);
                 vmin = std::min(vmin, tr[i]);
             }
-            measure<Sample>("NoiseFluctuation.span", rs, vmax - vmin);
-            EXPECT_LE(vmax - vmin, expected<Sample>({{3.5, 3.5}, {3.5, 3.5}}, rs)) << "fs " << rs.fs; // req span<=6
+            measure<TypeParam>("NoiseFluctuation.span", rs, vmax - vmin);
+            EXPECT_LE(vmax - vmin, expected<TypeParam>({{3.5, 3.5}, {3.5, 3.5}}, rs)) << "fs " << rs.fs; // req span<=6
         }
     }
 
@@ -166,13 +163,12 @@ namespace {
     // noise during far-end single talk vs idle. Level requirement
     // +2/-5 dB (target +1/-2.5); spectrum within the mask (half-mask
     // target: +-6 dB to 800 Hz, +-5 to 2 kHz, +-3 above).
-    TYPED_TEST(ItuDynamics, ComfortNoiseLevelAndSpectrum) {
-        using Sample = TypeParam;
+    TYPED_TEST(itu_dynamics, ComfortNoiseLevelAndSpectrum) {
         for (const auto& rs : required_rates()) {
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
-            const auto             path   = compliance_path(room::cabin, rs);
-            const size_t           n_half = static_cast<size_t>(10 * rs.fs);
-            css_config             cc;
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block);
+            const auto                path   = compliance_path(room::cabin, rs);
+            const size_t              n_half = static_cast<size_t>(10 * rs.fs);
+            css_config                cc;
             cc.periods = 28;
             cc.shaped  = true;
             auto x     = make_css_at(cc, rs.fs);
@@ -197,9 +193,9 @@ namespace {
             // calibrates floor_bias per rate (5.6 at 16 ms blocks;
             // uncalibrated it read -2.91 and G.168's +-2 step-tracking
             // requirement failed outright).
-            measure<Sample>("ComfortNoise.delta", rs, delta);
-            EXPECT_LE(delta, expected<Sample>({{1.0, 1.0}, {1.0, 1.0}}, rs)) << "fs " << rs.fs;     // req +2
-            EXPECT_GE(delta, expected<Sample>({{-2.5, -2.5}, {-2.5, -2.5}}, rs)) << "fs " << rs.fs; // req -5
+            measure<TypeParam>("ComfortNoise.delta", rs, delta);
+            EXPECT_LE(delta, expected<TypeParam>({{1.0, 1.0}, {1.0, 1.0}}, rs)) << "fs " << rs.fs;     // req +2
+            EXPECT_GE(delta, expected<TypeParam>({{-2.5, -2.5}, {-2.5, -2.5}}, rs)) << "fs " << rs.fs; // req -5
 
             const auto   bt      = welch_psd_db(talk, 8192);
             const auto   bq      = welch_psd_db(quiet, 8192);
@@ -230,14 +226,13 @@ namespace {
     // Requirement <= 10 dB; measured 8.0 / 9.6 dB — the <= 5 target is
     // not met in driving noise (~3 dB of the reading is the synthetic
     // noise's own slow drift), recorded in the matrix.
-    TYPED_TEST(ItuDynamics, NoisePumpingAcrossFarEndBursts) {
-        using Sample = TypeParam;
+    TYPED_TEST(itu_dynamics, NoisePumpingAcrossFarEndBursts) {
         for (const auto& rs : required_rates()) {
-            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
-            const auto             path  = compliance_path(room::cabin, rs);
-            const double           pre   = 15.0;
-            const size_t           n     = static_cast<size_t>((pre + 16.0) * rs.fs);
-            auto                   noise = make_driving_noise(n, 7, rs.fs);
+            compliance_dut<TypeParam> c(chain_config<TypeParam>(rs), rs.block);
+            const auto                path  = compliance_path(room::cabin, rs);
+            const double              pre   = 15.0;
+            const size_t              n     = static_cast<size_t>((pre + 16.0) * rs.fs);
+            auto                      noise = make_driving_noise(n, 7, rs.fs);
             {
                 a_weighting  aw(rs.fs);
                 auto         na  = aw.apply(noise);
@@ -281,8 +276,8 @@ namespace {
                 lmax            = std::max({lmax, lb, ln});
                 lmin            = std::min({lmin, lb, ln});
             }
-            measure<Sample>("NoisePump.span", rs, lmax - lmin);
-            EXPECT_LE(lmax - lmin, expected<Sample>({{10.0, 10.0}, {10.0, 10.0}}, rs)) << "fs " << rs.fs; // req <=10
+            measure<TypeParam>("NoisePump.span", rs, lmax - lmin);
+            EXPECT_LE(lmax - lmin, expected<TypeParam>({{10.0, 10.0}, {10.0, 10.0}}, rs)) << "fs " << rs.fs; // req <=10
         }
     }
 
@@ -291,8 +286,7 @@ namespace {
     // chain reset each step, near-end CSS at nominal send level. PASS =
     // stable (bounded output) at EVERY step including the 0 dB floor —
     // measured stable at both rates; minimum stable far-end ERL: 0 dB.
-    TYPED_TEST(ItuDynamics, ClosedLoopStabilitySweep) {
-        using Sample = TypeParam;
+    TYPED_TEST(itu_dynamics, ClosedLoopStabilitySweep) {
         for (const auto& rs : required_rates()) {
             const auto path = compliance_path(room::cabin, rs);
             css_config cc;
@@ -304,7 +298,7 @@ namespace {
                 s *= vg;
             }
             for (double erl = 50.0; erl >= -0.5; erl -= 5.0) {
-                compliance_dut<Sample>                   c(chain_config<Sample>(rs), rs.block);
+                compliance_dut<TypeParam>                c(chain_config<TypeParam>(rs), rs.block);
                 typename closed_loop_sim<double>::config lc;
                 lc.feedback_path   = path;
                 lc.block_size      = rs.block;
@@ -331,7 +325,7 @@ namespace {
     // (target: half). 10.7 ms at 48 kHz, 32 ms at 16 kHz.
     // Precision-independent (block geometry only), but kept in the typed
     // suite for one ID space; both legs assert the same budget.
-    TYPED_TEST(ItuDynamics, AlgorithmicDelayWithinBudget) {
+    TYPED_TEST(itu_dynamics, AlgorithmicDelayWithinBudget) {
         for (const auto& rs : required_rates()) {
             const double delay_ms = 2.0 * 1000.0 * static_cast<double>(rs.block) / rs.fs;
             EXPECT_LE(delay_ms, 35.0) << "fs " << rs.fs;
