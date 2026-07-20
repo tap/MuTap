@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -20,17 +21,29 @@ void rdft(int n, int isgn, double* a, int* ip, double* w);
 void rdft_f(int n, int isgn, float* a, int* ip, float* w);
 }
 
-// Optional Helium (Cortex-M55 MVE) FFT backend. When MUTAP_FFT_CMSIS is
-// defined (set by the CMSIS_DSP CMake option on ARM), the float32 real FFT
-// routes through CMSIS-DSP's hand-tuned arm_rfft_fast_f32 instead of Ooura;
-// double and non-ARM float stay on Ooura. Measured on the M55: ~3x fewer
-// instructions per transform than GCC-autovectorized Ooura (see bench/
-// README.md). The wrapper below re-presents CMSIS output in Ooura's exact
-// numeric contract (same packed layout, exp(+i) sign convention, unnormalized
-// inverse), so every intermediate spectrum matches the Ooura build to float
-// epsilon and the float32 test battery remains a valid oracle.
+// Optional per-platform float32 FFT backends, chosen by the build. AT MOST ONE
+// may be defined (they are mutually exclusive), and each applies ONLY to float
+// — double always stays Ooura, the golden model, so the double-precision ITU
+// certification is unaffected:
+//   MUTAP_FFT_CMSIS       CMSIS-DSP Helium on the bare-metal Cortex-M55
+//   MUTAP_FFT_ACCELERATE  Apple's vDSP (Accelerate) on macOS
+// Each wrapper below re-presents its backend in Ooura's EXACT numeric contract
+// (same packed layout, exp(+i) sign convention, unnormalized inverse), so every
+// intermediate spectrum matches the Ooura build to float epsilon and the whole
+// float32 test battery stays a valid oracle. Measured vs autovectorized Ooura:
+// ~3x fewer instructions on the M55, ~3x faster on Apple Silicon per transform
+// (docs/optimization.md).
+#if defined(MUTAP_FFT_CMSIS) && defined(MUTAP_FFT_ACCELERATE)
+#error "MUTAP_FFT_CMSIS and MUTAP_FFT_ACCELERATE are mutually exclusive"
+#endif
 #if defined(MUTAP_FFT_CMSIS)
 #include "arm_math.h"
+#endif
+#if defined(MUTAP_FFT_ACCELERATE)
+#include <Accelerate/Accelerate.h>
+#endif
+#if defined(MUTAP_FFT_CMSIS) || defined(MUTAP_FFT_ACCELERATE)
+#define MUTAP_FFT_FLOAT_BACKEND 1
 #endif
 
 namespace mutap {
@@ -89,12 +102,81 @@ namespace mutap {
             int                        m_n = 0;
         };
 
-        // Empty stand-in so basic_real_fft<double> carries no CMSIS state.
-        struct cmsis_noop {
+#endif // MUTAP_FFT_CMSIS
+
+#if defined(MUTAP_FFT_ACCELERATE)
+        // Wraps Apple's vDSP real FFT (Accelerate) to reproduce Ooura's exact
+        // float32 contract. vDSP works in split-complex form, in the
+        // engineering convention exp(-i2*pi/N), with a 2x-scaled forward; we
+        // deinterleave/reinterleave (ctoz/ztoc), conjugate the imaginary bins,
+        // and apply the measured scales — x0.5 on the forward, x0.25 on the
+        // inverse, which lands on Ooura's UNNORMALIZED inverse (the caller's
+        // 2/N then normalizes the round trip). Constants verified on Apple
+        // Silicon to <4e-7 relative error at N=512 and N=2048 (bench/vdsp).
+        class accelerate_real_fft_f32 {
+          public:
+            void init(int n) {
+                m_n     = n;
+                m_log2n = static_cast<int>(std::lround(std::log2(static_cast<double>(n))));
+                // Shared, read-only twiddle tables: copyable value semantics
+                // (basic_real_fft is held by value in the chain) with a single
+                // owner-managed lifetime, and safe to share across transforms.
+                m_setup = std::shared_ptr<std::remove_pointer_t<FFTSetup>>(
+                    vDSP_create_fftsetup(static_cast<vDSP_Length>(m_log2n), kFFTRadix2), vDSP_destroy_fftsetup);
+                m_rp.assign(static_cast<size_t>(n) / 2, 0.0f);
+                m_ip.assign(static_cast<size_t>(n) / 2, 0.0f);
+            }
+
+            void forward_inplace(float* a) noexcept {
+                DSPSplitComplex sp{m_rp.data(), m_ip.data()};
+                vDSP_ctoz(reinterpret_cast<const DSPComplex*>(a), 2, &sp, 1, static_cast<vDSP_Length>(m_n / 2));
+                vDSP_fft_zrip(m_setup.get(), &sp, 1, static_cast<vDSP_Length>(m_log2n), kFFTDirection_Forward);
+                a[0] = m_rp[0] * 0.5f; // DC (real)
+                a[1] = m_ip[0] * 0.5f; // Nyquist (real)
+                for (int k = 1; k < m_n / 2; ++k) {
+                    a[2 * k]     = m_rp[k] * 0.5f;
+                    a[2 * k + 1] = -m_ip[k] * 0.5f; // conjugate into Ooura's exp(+i)
+                }
+            }
+
+            void inverse_inplace(float* a) noexcept {
+                // a is an Ooura-packed spectrum: rebuild vDSP's split form (undo
+                // the 0.5, conjugate back to exp(-i)), invert, interleave, and
+                // rescale to Ooura's unnormalized inverse.
+                DSPSplitComplex sp{m_rp.data(), m_ip.data()};
+                m_rp[0] = 2.0f * a[0];
+                m_ip[0] = 2.0f * a[1];
+                for (int k = 1; k < m_n / 2; ++k) {
+                    m_rp[k] = 2.0f * a[2 * k];
+                    m_ip[k] = -2.0f * a[2 * k + 1];
+                }
+                vDSP_fft_zrip(m_setup.get(), &sp, 1, static_cast<vDSP_Length>(m_log2n), kFFTDirection_Inverse);
+                vDSP_ztoc(&sp, 1, reinterpret_cast<DSPComplex*>(a), 2, static_cast<vDSP_Length>(m_n / 2));
+                for (int i = 0; i < m_n; ++i) {
+                    a[i] *= 0.25f;
+                }
+            }
+
+          private:
+            std::shared_ptr<std::remove_pointer_t<FFTSetup>> m_setup;
+            std::vector<float>                               m_rp, m_ip;
+            int                                              m_n     = 0;
+            int                                              m_log2n = 0;
+        };
+#endif // MUTAP_FFT_ACCELERATE
+
+#if defined(MUTAP_FFT_FLOAT_BACKEND)
+#if defined(MUTAP_FFT_CMSIS)
+        using float_fft_engine = cmsis_real_fft_f32;
+#else
+        using float_fft_engine = accelerate_real_fft_f32;
+#endif
+        // Empty stand-in so basic_real_fft<double> carries no backend state.
+        struct fft_engine_noop {
             void init(int) noexcept {}
         };
         template <typename Sample>
-        using cmsis_engine_t = std::conditional_t<std::is_same_v<Sample, float>, cmsis_real_fft_f32, cmsis_noop>;
+        using float_engine_t = std::conditional_t<std::is_same_v<Sample, float>, float_fft_engine, fft_engine_noop>;
 #endif
     } // namespace detail
 
@@ -129,9 +211,9 @@ namespace mutap {
         explicit basic_real_fft(size_t size)
             : m_size(static_cast<int>(size)) {
             assert(size >= 4 && (size & (size - 1)) == 0);
-#if defined(MUTAP_FFT_CMSIS)
+#if defined(MUTAP_FFT_FLOAT_BACKEND)
             if constexpr (std::is_same_v<Sample, float>) {
-                m_cmsis.init(m_size); // Ooura workspace stays unallocated
+                m_engine.init(m_size); // Ooura workspace stays unallocated
                 return;
             }
 #endif
@@ -145,9 +227,9 @@ namespace mutap {
 
         /// In-place forward FFT: time-domain Sample[size] -> packed spectrum Sample[size].
         void forward_inplace(Sample* data) noexcept {
-#if defined(MUTAP_FFT_CMSIS)
+#if defined(MUTAP_FFT_FLOAT_BACKEND)
             if constexpr (std::is_same_v<Sample, float>) {
-                m_cmsis.forward_inplace(data);
+                m_engine.forward_inplace(data);
                 return;
             }
 #endif
@@ -157,9 +239,9 @@ namespace mutap {
         /// In-place inverse FFT: packed spectrum Sample[size] -> time-domain Sample[size],
         /// UNSCALED — multiply by 2/size for a normalized round trip.
         void inverse_inplace(Sample* data) noexcept {
-#if defined(MUTAP_FFT_CMSIS)
+#if defined(MUTAP_FFT_FLOAT_BACKEND)
             if constexpr (std::is_same_v<Sample, float>) {
-                m_cmsis.inverse_inplace(data);
+                m_engine.inverse_inplace(data);
                 return;
             }
 #endif
@@ -195,8 +277,8 @@ namespace mutap {
         int                 m_size;
         std::vector<int>    m_ip;
         std::vector<Sample> m_w;
-#if defined(MUTAP_FFT_CMSIS)
-        detail::cmsis_engine_t<Sample> m_cmsis;
+#if defined(MUTAP_FFT_FLOAT_BACKEND)
+        detail::float_engine_t<Sample> m_engine;
 #endif
     };
 

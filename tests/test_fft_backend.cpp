@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: MIT
 // Copyright 2026 MuTap contributors
 //
-// Parity oracle for the optional CMSIS-DSP Helium FFT backend (MUTAP_FFT_CMSIS,
-// see include/mutap/fft.h and docs/optimization.md). When that backend is
-// active, basic_real_fft<float> routes through CMSIS's arm_rfft_fast_f32; this
-// test pins it to Ooura's rdft_f — the golden model — bin-for-bin at the two
-// certified geometries (512-pt canceller, 2048-pt suppressor analysis).
+// Parity oracle for the optional float32 FFT backends (MUTAP_FFT_CMSIS on the
+// M55, MUTAP_FFT_ACCELERATE on Apple; see include/mutap/fft.h and
+// docs/optimization.md). When one is active, basic_real_fft<float> routes
+// through that backend; this test pins it to Ooura's rdft_f — the golden model
+// — bin-for-bin at the two certified geometries (512-pt canceller, 2048-pt
+// suppressor analysis).
 //
-// The reconciliation under test: CMSIS uses the engineering convention
-// exp(-i2*pi/N) and a 1/N-normalized inverse, while our contract is Ooura's
-// exp(+i2*pi/N) with an unnormalized inverse. The wrapper conjugates the
-// imaginary bins and rescales the inverse by N/2; if that ever drifts, the
+// The reconciliation under test: both backends use the engineering convention
+// exp(-i2*pi/N), while our contract is Ooura's exp(+i2*pi/N) with an
+// unnormalized inverse. Each wrapper conjugates the imaginary bins and rescales
+// so every intermediate spectrum matches Ooura; if that ever drifts, the
 // bin-for-bin comparison below fails loudly.
 //
-// When MUTAP_FFT_CMSIS is NOT defined (the default desktop/Hexagon build),
+// When no backend is defined (the default desktop/Hexagon/Linux build),
 // basic_real_fft<float> already IS Ooura, so these become Ooura-vs-Ooura
 // identity checks — trivially exact, and a live guard that the reference path
 // keeps matching the wrapper. The rest of the FFT contract (packing, the +i

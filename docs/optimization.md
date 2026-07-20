@@ -120,6 +120,58 @@ pinned by commit in `third_party/cmsis-dsp/VENDOR.md`. To bump it: re-run the
 files it opens, update `VENDOR.md`, then re-run `tests/test_fft_backend.cpp` and
 the full float32 battery on the M55 leg. Do not hand-edit vendored sources.
 
+## FFT backend: Apple vDSP on macOS
+
+The same seam carries a second backend: on macOS the float32 real FFT routes
+through Apple's **vDSP** (Accelerate) instead of Ooura (`MUTAP_FFT_ACCELERATE`,
+default ON for Apple). This is the FFT the `mutap.aec~` Max external runs, and
+it is the *only* fast FFT Apple Silicon gets — the CMSIS backend is scoped to
+the bare-metal M55, so arm64 macOS was on Ooura before this.
+
+### Measured (Apple Silicon, macOS CI runner)
+
+Per forward transform, ns, **including** the split-complex conversion vDSP needs
+(its data layout is split real/imag, ours is interleaved — the conversion is the
+part that could have eaten the win; it didn't):
+
+| N (use)                    | Ooura (clang autovec) | vDSP  | advantage |
+|----------------------------|----------------------:|------:|-----------|
+| 2048 (suppressor analysis) | 4885 ns               | 1552 ns | 3.15x   |
+| 512  (canceller)           | 1103 ns               | 347 ns  | 3.18x   |
+
+Unlike the M55 — where the win was load-bearing against a tight budget — a Mac
+has enormous headroom, so this is a "best FFT per platform" consistency win, not
+a necessity. It was cheap to add because the backend seam already existed.
+
+### Reconciliation
+
+vDSP works in split-complex form, the engineering convention exp(−i2π/N), and a
+2×-scaled forward. The wrapper (`detail::accelerate_real_fft_f32` in `fft.h`)
+re-presents it in Ooura's exact contract with constants **measured on Apple
+Silicon** (not derived), verified to <4e-7 relative error and an exact round
+trip at N=512 and N=2048:
+
+- **Forward** — `vDSP_ctoz` (deinterleave) → `vDSP_fft_zrip` → conjugate the
+  imaginary bins and scale by 0.5 (undo vDSP's 2×).
+- **Inverse** — rebuild vDSP's split spectrum (undo the 0.5, conjugate back),
+  `vDSP_fft_zrip` inverse, `vDSP_ztoc` (reinterleave), scale by 0.25 to land on
+  Ooura's unnormalized inverse (the caller's 2/N then normalizes).
+
+`double` stays Ooura (golden model), so the ITU certification — measured on the
+double path — is unaffected. Not bit-identical (float epsilon), same as CMSIS.
+
+### How it is wired / validated
+
+Default ON for Apple (`APPLE` in CMake), OFF elsewhere, mutually exclusive with
+the CMSIS backend; CMake links `-framework Accelerate` and defines the macro on
+the `mutap` interface target. Force Ooura with `-DMUTAP_FFT_ACCELERATE=OFF`.
+Validation is automatic: the `macos-latest` CI job builds with the backend on by
+default, so `tests/test_fft_backend.cpp` (bin-for-bin vs Ooura `rdft_f`), the
+whole `test_fft.cpp` contract suite, and the full float32 battery all run on
+vDSP there. The vDSP setup's read-only twiddle tables are held by a shared_ptr
+so `basic_real_fft` keeps value semantics; transforms are noexcept and
+allocation-free.
+
 ## Suppressor pass-1: branch-free on Helium
 
 The suppressor's pass-1 per-bin estimator (`residual_suppressor::process_block`)
