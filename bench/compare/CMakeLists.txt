@@ -65,20 +65,18 @@ endif()
 # ----------------------------------------------------------------------
 option(MUTAP_COMPARE_WEBRTC "Build the WebRTC AEC3 subject into the comparison tool" OFF)
 if(MUTAP_COMPARE_WEBRTC)
-    if(NOT DEFINED MUTAP_WEBRTC_DIR OR NOT DEFINED MUTAP_WEBRTC_BUILD)
-        message(FATAL_ERROR
-            "MUTAP_COMPARE_WEBRTC=ON needs MUTAP_WEBRTC_DIR (webrtc-audio-"
-            "processing source) and MUTAP_WEBRTC_BUILD (its meson builddir).")
+    # Resolve webrtc-audio-processing + its abseil deps entirely through
+    # pkg-config (the installed .pc lists every transitive abseil lib).
+    # Point MUTAP_WEBRTC_PC_PATH at the pkgconfig dirs of the
+    # webrtc-audio-processing and abseil install prefixes, e.g.
+    #   -DMUTAP_WEBRTC_PC_PATH="<webrtc>/lib/x86_64-linux-gnu/pkgconfig:<absl>/lib/pkgconfig"
+    # (see docs/aec-comparison.md for the one-time build recipe).
+    find_package(PkgConfig REQUIRED)
+    if(DEFINED MUTAP_WEBRTC_PC_PATH)
+        set(ENV{PKG_CONFIG_PATH} "${MUTAP_WEBRTC_PC_PATH}:$ENV{PKG_CONFIG_PATH}")
     endif()
-    find_library(WEBRTC_APM_LIB
-        NAMES webrtc-audio-processing-2 webrtc-audio-processing webrtc_audio_processing
-        PATHS ${MUTAP_WEBRTC_BUILD} PATH_SUFFIXES webrtc REQUIRED)
+    pkg_check_modules(WEBRTC REQUIRED IMPORTED_TARGET webrtc-audio-processing-2)
     target_sources(mutap_aec_compare PRIVATE backends/webrtc_backend.cpp)
-    target_include_directories(mutap_aec_compare PRIVATE
-        ${MUTAP_WEBRTC_DIR} ${MUTAP_WEBRTC_BUILD})
-    target_link_libraries(mutap_aec_compare PRIVATE ${WEBRTC_APM_LIB})
+    target_link_libraries(mutap_aec_compare PRIVATE PkgConfig::WEBRTC)
     target_compile_definitions(mutap_aec_compare PRIVATE MUTAP_COMPARE_HAVE_WEBRTC=1)
-    if(DEFINED MUTAP_ABSL_PREFIX)
-        target_link_directories(mutap_aec_compare PRIVATE ${MUTAP_ABSL_PREFIX}/lib)
-    endif()
 endif()
