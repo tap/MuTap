@@ -28,13 +28,15 @@ namespace {
     using namespace mutap_test;
     using namespace mutap_test::itu;
 
-    struct rate_pair {
-        double at48;
-        double at16;
-    };
-    double expected(const rate_pair& p, const rate_setup& rs) {
-        return rs.fs == 48000.0 ? p.at48 : p.at16;
-    }
+    // Typed over <float, double>: float32 (/0) is the deployment target,
+    // double (/1) the certified golden model. Gate tables (itu_chain.h
+    // prec_gate) carry a column per precision; the double column is the
+    // original certified gate. The converge_css / run_amfm_dt helpers are
+    // already generic on the processor, so compliance_dut<Sample> drops in.
+    using sample_types = ::testing::Types<float, double>;
+    template <typename T>
+    class ItuDoubleTalk : public ::testing::Test {};
+    TYPED_TEST_SUITE(ItuDoubleTalk, sample_types);
 
     template <typename Proc>
     void converge_css(Proc& p, echo_sim<double>& sim, const rate_setup& rs, unsigned seed = 501) {
@@ -77,9 +79,10 @@ namespace {
     // ITU_DtSendAtten (integrated) + ITU_DtSentSpeech (per send band
     // 200-6900 Hz): near end at -1.7 dBPa (loud), requirement <= 3 dB,
     // target <= 1.5. One run grades both.
-    TEST(ItuDoubleTalk, SendAttenuationDuringDoubleTalk) {
+    TYPED_TEST(ItuDoubleTalk, SendAttenuationDuringDoubleTalk) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain                  c(chain_config(rs));
+            compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -91,7 +94,8 @@ namespace {
             const auto sp = amfm_send_plan();
 
             const double integ = comb_band_level_db(vh, sp, 0.0, rs.fs) - comb_band_level_db(oh, sp, 0.0, rs.fs);
-            EXPECT_LE(integ, 1.5) << "fs " << rs.fs; // measured: see header table
+            measure<Sample>("DtSendAtten.integ", rs, integ);
+            EXPECT_LE(integ, expected<Sample>({{1.5, 1.5}, {1.5, 1.5}}, rs)) << "fs " << rs.fs; // req <=3, target <=1.5
 
             double worst = -1e9;
             for (size_t b = 0; b < sp.f0.size(); ++b) {
@@ -104,16 +108,18 @@ namespace {
                 worst =
                     std::max(worst, comb_band_level_db(vh, one, 0.0, rs.fs) - comb_band_level_db(oh, one, 0.0, rs.fs));
             }
-            EXPECT_LE(worst, expected({2.0, 2.5}, rs)) << "fs " << rs.fs;
+            measure<Sample>("DtSentSpeech.worst_band", rs, worst);
+            EXPECT_LE(worst, expected<Sample>({{2.0, 2.5}, {2.0, 2.5}}, rs)) << "fs " << rs.fs;
         }
     }
 
     // ITU_DtEchoLoss: near end at -25.7 dBPa (the clause's quiet
     // competing talker), echo loss >= 27 dB required / >= 33 target in
     // EACH receive band 200-6950 Hz.
-    TEST(ItuDoubleTalk, EchoLossDuringDoubleTalkPerBand) {
+    TYPED_TEST(ItuDoubleTalk, EchoLossDuringDoubleTalkPerBand) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain                  c(chain_config(rs));
+            compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -134,7 +140,8 @@ namespace {
                 worst =
                     std::min(worst, comb_band_level_db(xh, one, 0.0, rs.fs) - comb_band_level_db(oh, one, 0.0, rs.fs));
             }
-            EXPECT_GE(worst, expected({33.0, 33.0}, rs)) << "fs " << rs.fs;
+            measure<Sample>("DtEchoLoss.worst_band", rs, worst);
+            EXPECT_GE(worst, expected<Sample>({{33.0, 33.0}, {33.0, 33.0}}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -145,9 +152,10 @@ namespace {
     // seed — with the default seed both deterministic PN segments
     // correlate and the canceller subtracts near-end content the far end
     // predicts (a simulation artifact worth 0.5 dB, recorded here).
-    TEST(ItuDoubleTalk, TransferFunctionConstancy) {
+    TYPED_TEST(ItuDoubleTalk, TransferFunctionConstancy) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain                  c(chain_config(rs));
+            compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
             typename echo_sim<double>::config sc;
             sc.echo_path  = compliance_path(room::cabin, rs);
             sc.block_size = rs.block;
@@ -191,7 +199,8 @@ namespace {
             for (size_t i = 0; i < t_dt.f_center.size() && i < t_st.f_center.size(); ++i) {
                 worst = std::max(worst, std::abs(t_dt.atten_db[i] - t_st.atten_db[i]));
             }
-            EXPECT_LE(worst, 3.0) << "fs " << rs.fs;
+            measure<Sample>("TransferConstancy.worst", rs, worst);
+            EXPECT_LE(worst, expected<Sample>({{3.0, 3.0}, {3.0, 3.0}}, rs)) << "fs " << rs.fs;
         }
     }
 

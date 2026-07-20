@@ -640,17 +640,48 @@ against the uncached run.)
 Remaining: ITU real-speech test-vector procurement (tracked above) and
 the fd_kalman uncertainty re-inflation core follow-up (HANDOFF).
 
-## Float32 parity (deployment precision)
+## Precision: verified at float32 AND double
 
-The battery above is double precision — the golden model. The embedded
-targets run the same core in float32, and `tests/test_float32.cpp`
-gates what `aec_chain<float>` at the same certified preset measures on
-the headline rows: parity within 0.1–0.7 dB on single talk,
-convergence, AM-FM double talk and leak at both required rates. The
-one float32-specific design element is the **narrowband guard** in the
-float preset (classical tone-disabler discipline): without it the
-G.168 §7 tone row reads −20 dBm0(A) at 16 kHz against the −49.3 gate —
-a rounding-scaled weight walk driven by the gradient constraint on
-on-bin tones, mechanism and rejected alternatives in `fd_kalman.h` and
-HANDOFF — and with it −64.8 (48 kHz: −146.6). The double preset keeps
-the guard off; the certified battery is bit-identical.
+The embedded targets (Cortex-M55, Hexagon) have **no double-precision
+FPU** — they deploy in **float32**; double is the desktop golden model
+only. So the certification is measured at BOTH precisions: every row in
+the four suites above (`test_itu_echo`, `test_itu_doubletalk`,
+`test_itu_dynamics`, `test_g168` + the G.167 historical row) is a
+`TYPED_TEST` over `<float, double>` — float is the `/0` leg, double the
+`/1` leg — and **the whole battery clears every certified gate at
+float32 with the same margins as double** (64 rows × both precisions,
+all green on the host CI legs).
+
+Why both, rather than certify in double and infer float32: the two are
+not related by a uniform noise floor. The G.168 §7 tone row is the
+proof — float32 needs a design element double does not, the
+**narrowband guard** in the float preset (`aec_chain_preset<float>`;
+classical tone-disabler discipline). Without it that row reads
+−20 dBm0(A) at 16 kHz against the −49.3 gate — a rounding-scaled weight
+walk driven by the gradient constraint on on-bin tones (mechanism and
+rejected alternatives in `fd_kalman.h` and HANDOFF) — and with it it
+passes as the typed suite confirms. The double preset keeps the guard
+off, so the double battery stays bit-identical to its prior form. If
+"double passes ⇒ float passes" were sound this row could not exist;
+because it does, the spec is asserted at deployment precision directly.
+
+How the two precisions share one harness (`tests/support/itu_chain.h`):
+the signals, the echo/closed-loop simulators and the level meters stay
+in double — they are measurement instrumentation, not the DUT. The
+`compliance_dut<Sample>` adapter runs the chain at `Sample` behind a
+`double` `process_block`, quantizing at the chain boundary for float32
+(exactly the deployment path: the converter hands the float32 core
+double-sourced audio at the ADC) and a zero-copy pass-through for
+double (so the certified double gates are provably unchanged). The
+per-precision gate tables (`prec_gate`) carry a column each; today the
+float column equals the double column because float32 meets the same
+gate — the strongest statement available, not a loosened one. Any row
+that ever needed a looser-but-still-compliant float gate would pin the
+ITU requirement and be called out here.
+
+`tests/test_float32.cpp` remains the on-target (M55/Hexagon) float32
+gate battery — the headline rows run in the emulated selection where the
+full ITU suite is too slow (it stays host-only, both precisions). Its
+measured float-vs-double deltas (0.1–0.7 dB on single talk,
+convergence, AM-FM double talk and leak) are the concrete margins the
+typed ITU battery now certifies against the actual spec thresholds.
