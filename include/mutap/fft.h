@@ -128,14 +128,18 @@ namespace mutap {
             }
 
             void forward_inplace(float* a) noexcept {
-                DSPSplitComplex sp{m_rp.data(), m_ip.data()};
+                // Index the split halves through raw pointers (pointer + int is
+                // warning-free; a std::vector subscript would be int->size_t).
+                float* const    rp = m_rp.data();
+                float* const    ip = m_ip.data();
+                DSPSplitComplex sp{rp, ip};
                 vDSP_ctoz(reinterpret_cast<const DSPComplex*>(a), 2, &sp, 1, static_cast<vDSP_Length>(m_n / 2));
                 vDSP_fft_zrip(m_setup.get(), &sp, 1, static_cast<vDSP_Length>(m_log2n), kFFTDirection_Forward);
-                a[0] = m_rp[0] * 0.5f; // DC (real)
-                a[1] = m_ip[0] * 0.5f; // Nyquist (real)
+                a[0] = rp[0] * 0.5f; // DC (real)
+                a[1] = ip[0] * 0.5f; // Nyquist (real)
                 for (int k = 1; k < m_n / 2; ++k) {
-                    a[2 * k]     = m_rp[k] * 0.5f;
-                    a[2 * k + 1] = -m_ip[k] * 0.5f; // conjugate into Ooura's exp(+i)
+                    a[2 * k]     = rp[k] * 0.5f;
+                    a[2 * k + 1] = -ip[k] * 0.5f; // conjugate into Ooura's exp(+i)
                 }
             }
 
@@ -143,12 +147,14 @@ namespace mutap {
                 // a is an Ooura-packed spectrum: rebuild vDSP's split form (undo
                 // the 0.5, conjugate back to exp(-i)), invert, interleave, and
                 // rescale to Ooura's unnormalized inverse.
-                DSPSplitComplex sp{m_rp.data(), m_ip.data()};
-                m_rp[0] = 2.0f * a[0];
-                m_ip[0] = 2.0f * a[1];
+                float* const    rp = m_rp.data();
+                float* const    ip = m_ip.data();
+                DSPSplitComplex sp{rp, ip};
+                rp[0] = 2.0f * a[0];
+                ip[0] = 2.0f * a[1];
                 for (int k = 1; k < m_n / 2; ++k) {
-                    m_rp[k] = 2.0f * a[2 * k];
-                    m_ip[k] = -2.0f * a[2 * k + 1];
+                    rp[k] = 2.0f * a[2 * k];
+                    ip[k] = -2.0f * a[2 * k + 1];
                 }
                 vDSP_fft_zrip(m_setup.get(), &sp, 1, static_cast<vDSP_Length>(m_log2n), kFFTDirection_Inverse);
                 vDSP_ztoc(&sp, 1, reinterpret_cast<DSPComplex*>(a), 2, static_cast<vDSP_Length>(m_n / 2));
