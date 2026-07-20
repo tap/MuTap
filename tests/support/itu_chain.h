@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
+#include <type_traits>
 #include <vector>
 
 #include "../fixtures/rir_cabin.h"
@@ -33,6 +35,93 @@
 namespace mutap_test::itu {
 
     using compliance_chain = mutap::aec_chain<double>;
+
+    // ------------------------------------------------------------ precision
+    //
+    // The certified battery below is measured at BOTH the double golden
+    // model AND float32 — the precision the M55/Hexagon actually deploy
+    // (docs/optimization.md: neither embedded FPU has double; double is the
+    // desktop reference only). Verifying the ITU thresholds at double alone
+    // and inferring float32 compliance is not sound: the G.168 tone row
+    // already needed a float32-only design response (the narrowband guard,
+    // which aec_chain_preset<double> does not even enable — see
+    // test_float32.cpp) to meet a spec limit double clears on margin. So
+    // every row runs typed over <float, double>.
+    //
+    // The harness (echo_sim, meters, signals) stays double throughout — it
+    // is measurement instrumentation, not the DUT. A float32 run therefore
+    // quantizes ONLY at the chain boundary, exactly the deployment path
+    // (the converter hands the float32 core double-sourced audio at the
+    // ADC). The compliance_dut adapter below is that boundary; for
+    // Sample=double it is a pass-through, so the certified double gates are
+    // bit-identical to driving aec_chain<double> directly.
+    //
+    // Test files declare the type list (kept out of this header so it needs
+    // no <gtest> — itu_dump.cpp and postfilter.h include it too):
+    //   using sample_types = ::testing::Types<float, double>; // /0 float, /1 double
+    // The /0 (float) suffix is what the on-target selection filters pick
+    // (tests/bare_metal_main.cpp, tests/CMakeLists.txt).
+
+    /// Double-facing adapter that runs the compliance chain at Sample
+    /// precision behind a process_block(const double*, ...) interface, so
+    /// the double harness can drive it. Pass-through for double (no copies,
+    /// bit-identical); boundary-quantizes for float32.
+    template <typename Sample>
+    struct compliance_dut {
+        mutap::aec_chain<Sample> chain;
+        std::vector<Sample>      xb, yb, eb;
+        explicit compliance_dut(const typename mutap::aec_chain<Sample>::config& cfg, size_t block)
+            : chain(cfg)
+            , xb(std::is_same_v<Sample, double> ? size_t{0} : block)
+            , yb(std::is_same_v<Sample, double> ? size_t{0} : block)
+            , eb(std::is_same_v<Sample, double> ? size_t{0} : block) {}
+        void process_block(const double* x, const double* y, double* e) noexcept {
+            if constexpr (std::is_same_v<Sample, double>) {
+                chain.process_block(x, y, e);
+            }
+            else {
+                const size_t b = xb.size();
+                for (size_t i = 0; i < b; ++i) {
+                    xb[i] = static_cast<Sample>(x[i]);
+                    yb[i] = static_cast<Sample>(y[i]);
+                }
+                chain.process_block(xb.data(), yb.data(), eb.data());
+                for (size_t i = 0; i < b; ++i) {
+                    e[i] = static_cast<double>(eb[i]);
+                }
+            }
+        }
+    };
+
+    /// Same double-facing boundary for a bare partitioned_fdkf canceller
+    /// (the NLP-off / raw-Kalman G.168 rows run the canceller alone, no
+    /// suppressor). Exposes the core so rows can read canceller state.
+    template <typename Sample>
+    struct raw_canceller_dut {
+        mutap::partitioned_fdkf<Sample> core;
+        std::vector<Sample>             xb, yb, eb;
+        explicit raw_canceller_dut(const typename mutap::partitioned_fdkf<Sample>::config& c)
+            : core(c)
+            , xb(std::is_same_v<Sample, double> ? size_t{0} : c.block_size)
+            , yb(std::is_same_v<Sample, double> ? size_t{0} : c.block_size)
+            , eb(std::is_same_v<Sample, double> ? size_t{0} : c.block_size) {}
+        void process_block(const double* x, const double* y, double* e) noexcept {
+            if constexpr (std::is_same_v<Sample, double>) {
+                core.process_block(x, y, e);
+            }
+            else {
+                const size_t b = xb.size();
+                for (size_t i = 0; i < b; ++i) {
+                    xb[i] = static_cast<Sample>(x[i]);
+                    yb[i] = static_cast<Sample>(y[i]);
+                }
+                core.process_block(xb.data(), yb.data(), eb.data());
+                for (size_t i = 0; i < b; ++i) {
+                    e[i] = static_cast<double>(eb[i]);
+                }
+            }
+        }
+    };
 
     /// One required operating rate and the chain geometry pinned for it.
     struct rate_setup {
@@ -68,8 +157,47 @@ namespace mutap_test::itu {
     /// failing gate, never as silent drift. The historical per-rate
     /// rationale (why transition is NOT rescaled, why floor_bias is
     /// calibrated per geometry) lives with the preset.
-    inline compliance_chain::config chain_config(const rate_setup& rs) {
-        return mutap::aec_chain_preset<double>(rs.block, rs.taps / rs.block, rs.fs);
+    template <typename Sample = double>
+    inline typename mutap::aec_chain<Sample>::config chain_config(const rate_setup& rs) {
+        return mutap::aec_chain_preset<Sample>(rs.block, rs.taps / rs.block, rs.fs);
+    }
+
+    /// Per-rate expectation with a precision axis. The double column holds
+    /// the original certified gates (unchanged); the float column holds the
+    /// float32-measured gates — measured-with-margin, and still clearing
+    /// the ITU requirement. expected<Sample>() selects the column, then the
+    /// rate. Where a float32 row can only meet the ITU requirement (not our
+    /// tighter target), the float gate pins the requirement and the
+    /// shortfall is called out in the row comment and the matrix.
+    struct rate_pair {
+        double at48;
+        double at16;
+    };
+    struct prec_gate {
+        rate_pair dbl; ///< double (certified golden) gates
+        rate_pair flt; ///< float32 (deployment) gates
+    };
+    template <typename Sample>
+    inline double expected(const prec_gate& g, const rate_setup& rs) {
+        const rate_pair& p = std::is_same_v<Sample, double> ? g.dbl : g.flt;
+        return rs.fs == 48000.0 ? p.at48 : p.at16;
+    }
+
+    /// Re-measurable instrumentation: emit a row's measured value for both
+    /// precisions so the float32 gates can be (re)derived measured-first.
+    /// A compile-time no-op unless MUTAP_ITU_MEASURE is defined, so it never
+    /// touches normal test output; build with -DMUTAP_ITU_MEASURE and grep
+    /// the "MEAS\t" lines to refresh the float column of the gate tables.
+    template <typename Sample>
+    inline void measure(const char* tag, const rate_setup& rs, double v) {
+#ifdef MUTAP_ITU_MEASURE
+        std::fprintf(stderr, "MEAS\t%s\t%s\t%.0f\t%.4f\n", tag, std::is_same_v<Sample, double> ? "dbl" : "flt", rs.fs,
+                     v);
+#else
+        (void)tag;
+        (void)rs;
+        (void)v;
+#endif
     }
 
     enum class room { cabin, studio };

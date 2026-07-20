@@ -53,25 +53,30 @@ namespace {
     using namespace mutap_test;
     using namespace mutap_test::itu;
 
-    // Per-rate expectations keyed off the rate (48 kHz first).
-    struct rate_pair {
-        double at48;
-        double at16;
-    };
-    double expected(const rate_pair& p, const rate_setup& rs) {
-        return rs.fs == 48000.0 ? p.at48 : p.at16;
-    }
+    // Every echo row runs at BOTH deployment precisions: float32 (the
+    // M55/Hexagon target, /0) and the double golden model (/1). The gate
+    // tables carry a column per precision (itu_chain.h prec_gate); the
+    // double column is the original certified gate, the float column is
+    // measured-with-margin and still clears the ITU requirement. The
+    // compliance_dut boundary (itu_chain.h) runs the chain at Sample while
+    // the echo_sim/meters stay double — so the double leg is bit-identical
+    // to the prior TEST() and the float leg is the deployment path.
+    using sample_types = ::testing::Types<float, double>;
+    template <typename T>
+    class ItuEcho : public ::testing::Test {};
+    TYPED_TEST_SUITE(ItuEcho, sample_types);
 
     // ITU_TCL (P1110/P1120 11.11.1, [MIXED] — simulated-path component):
     // CSS at -10 dBm0 as the compressed-speech stand-in (method-equivalent
     // until the P.501 attachment WAVs are procured), first 17 s discarded,
     // unweighted 100 Hz-8 kHz power ratio. Requirement >= 46, target
     // >= 52. Measured 68.4 dB at 48 kHz, 80.6 at 16 kHz.
-    TEST(ItuEcho, Tcl) {
+    TYPED_TEST(ItuEcho, Tcl) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
-            const auto       path = compliance_path(room::cabin, rs);
-            css_config       cc;
+            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
+            const auto             path = compliance_path(room::cabin, rs);
+            css_config             cc;
             cc.periods = static_cast<size_t>(27.0 / 0.35);
             cc.shaped  = true;
             auto x     = make_css_at(cc, rs.fs);
@@ -95,7 +100,10 @@ namespace {
                 so += std::pow(10.0, pout[k] / 10.0);
             }
             const double tcl = 10.0 * std::log10(sr / so);
-            EXPECT_GE(tcl, expected({62.0, 72.0}, rs)) << "fs " << rs.fs;
+            measure<Sample>("Tcl", rs, tcl);
+            // Requirement >= 46, target >= 52. float col = double col until
+            // measured; float32 clears the same gate.
+            EXPECT_GE(tcl, expected<Sample>({{62.0, 72.0}, {62.0, 72.0}}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -103,21 +111,23 @@ namespace {
     // A-weighted 35 ms meter, max over the settled tail. Requirement
     // < -58 dBm0(A), target < -64. Measured: 48 kHz -76.4 (cabin) /
     // -85.7 (studio); 16 kHz -81.0 / -101.2.
-    TEST(ItuEcho, EchoLevel) {
-        const rate_pair gate_cabin{-70.0, -78.0};
-        const rate_pair gate_studio{-80.0, -90.0};
+    TYPED_TEST(ItuEcho, EchoLevel) {
+        using Sample = TypeParam;
+        const prec_gate gate_cabin{{-70.0, -78.0}, {-70.0, -78.0}};
+        const prec_gate gate_studio{{-80.0, -90.0}, {-80.0, -90.0}};
         for (const auto& rs : required_rates()) {
             for (room r : {room::cabin, room::studio}) {
-                compliance_chain c(chain_config(rs));
-                const auto       path = compliance_path(r, rs);
-                css_config       cc;
+                compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
+                const auto             path = compliance_path(r, rs);
+                css_config             cc;
                 cc.periods = 40;
                 cc.shaped  = true;
                 auto x     = make_css_at(cc, rs.fs);
                 set_level_dbm0(x, -16.0);
                 auto         rr  = run_chain(c, path, rs.block, x);
                 const double lvl = max_level_dbm0a(rr.out, rs.fs, rr.out.size() * 2 / 3, rr.out.size());
-                EXPECT_LT(lvl, expected(r == room::cabin ? gate_cabin : gate_studio, rs))
+                measure<Sample>(r == room::cabin ? "EchoLevel.cabin" : "EchoLevel.studio", rs, lvl);
+                EXPECT_LT(lvl, expected<Sample>(r == room::cabin ? gate_cabin : gate_studio, rs))
                     << "fs " << rs.fs << " room " << (r == room::cabin ? "cabin" : "studio");
             }
         }
@@ -131,9 +141,10 @@ namespace {
     // target missed by 1.0 dB at attenuation depths of 74..85 dB, where
     // the variation is the meter reading the suppressor floor; the
     // requirement is met with 2.3 dB to spare (gate at 4.5).
-    TEST(ItuEcho, EchoStability) {
+    TYPED_TEST(ItuEcho, EchoStability) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain                  c(chain_config(rs));
+            compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
             const auto                        path = compliance_path(room::cabin, rs);
             typename echo_sim<double>::config sc;
             sc.echo_path  = path;
@@ -158,7 +169,9 @@ namespace {
                     amax           = std::max(amax, a);
                     amin           = std::min(amin, a);
                 }
-                EXPECT_LE(amax - amin, expected({3.0, 4.5}, rs)) << "fs " << rs.fs << " level " << lvl;
+                measure<Sample>("EchoStability", rs, amax - amin);
+                EXPECT_LE(amax - amin, expected<Sample>({{3.0, 4.5}, {3.0, 4.5}}, rs))
+                    << "fs " << rs.fs << " level " << lvl;
             }
         }
     }
@@ -167,11 +180,12 @@ namespace {
     // WB mask, third-octave bands, 8k FFT, settled single talk. Margin
     // target: >= 6 dB over the mask everywhere. Measured worst margins:
     // +13.2 dB (48 kHz), +22.3 dB (16 kHz).
-    TEST(ItuEcho, EchoSpectral) {
+    TYPED_TEST(ItuEcho, EchoSpectral) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
-            const auto       path = compliance_path(room::cabin, rs);
-            css_config       cc;
+            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
+            const auto             path = compliance_path(room::cabin, rs);
+            css_config             cc;
             cc.periods = 30;
             cc.shaped  = true;
             auto x     = make_css_at(cc, rs.fs);
@@ -183,10 +197,13 @@ namespace {
             std::vector<double> out(rr.out.begin() + static_cast<long>(from), rr.out.end());
             const auto      sp = attenuation_spectrum(ref, out, rs.fs, 8192, 100.0, std::min(8000.0, rs.fs / 2 * 0.94));
             const freq_mask mask{{100, 1300, 3450, 5200, 7500, 8000}, {41, 41, 46, 46, 37, 37}};
+            double          worst_margin = 1e9;
             for (size_t i = 0; i < sp.f_center.size(); ++i) {
+                worst_margin = std::min(worst_margin, sp.atten_db[i] - mask.at(sp.f_center[i]));
                 EXPECT_GE(sp.atten_db[i], mask.at(sp.f_center[i]) + 6.0)
                     << "fs " << rs.fs << " band " << sp.f_center[i] << " Hz";
             }
+            measure<Sample>("EchoSpectral.worst_margin", rs, worst_margin);
         }
     }
 
@@ -204,19 +221,22 @@ namespace {
     // the 46 target after the per-rate comfort-noise floor bias (which
     // bought G.168's +-2 step-tracking REQUIREMENT); the 40 dB
     // requirement holds with 5.4 dB. Gates at measured values.
-    TEST(ItuEcho, ConvergenceQuiet) {
+    TYPED_TEST(ItuEcho, ConvergenceQuiet) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
-            const auto       path = compliance_path(room::cabin, rs);
-            css_config       cc;
+            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
+            const auto             path = compliance_path(room::cabin, rs);
+            css_config             cc;
             cc.periods = 12;
             cc.shaped  = true;
             auto x     = make_css_at(cc, rs.fs);
             set_level_dbm0(x, -16.0);
             auto       rr = run_chain(c, path, rs.block, x);
             erl_reader erl(rr.echo, rr.out, rs.fs);
-            EXPECT_GE(erl.by(0.6), 32.0) << "fs " << rs.fs;
-            EXPECT_GE(erl.by(1.2), expected({46.0, 44.5}, rs)) << "fs " << rs.fs;
+            measure<Sample>("ConvergenceQuiet.0p6", rs, erl.by(0.6));
+            measure<Sample>("ConvergenceQuiet.1p2", rs, erl.by(1.2));
+            EXPECT_GE(erl.by(0.6), expected<Sample>({{32.0, 32.0}, {32.0, 32.0}}, rs)) << "fs " << rs.fs;
+            EXPECT_GE(erl.by(1.2), expected<Sample>({{46.0, 44.5}, {46.0, 44.5}}, rs)) << "fs " << rs.fs;
         }
     }
 
@@ -234,12 +254,13 @@ namespace {
     // ~600 ms: with echo 30 dB above BGN+10 at onset, the first mask
     // segment demands more switched loss than the A_H,S allowance —
     // recorded in the matrix as a scenario note, not asserted.
-    TEST(ItuEcho, ConvergenceNoise) {
+    TYPED_TEST(ItuEcho, ConvergenceNoise) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain c(chain_config(rs));
-            const auto       path = compliance_path(room::cabin, rs);
-            const size_t     pre  = static_cast<size_t>(2.0 * rs.fs);
-            css_config       cc;
+            compliance_dut<Sample> c(chain_config<Sample>(rs), rs.block);
+            const auto             path = compliance_path(room::cabin, rs);
+            const size_t           pre  = static_cast<size_t>(2.0 * rs.fs);
+            css_config             cc;
             cc.periods = 12;
             cc.shaped  = true;
             auto css   = make_css_at(cc, rs.fs);
@@ -267,6 +288,9 @@ namespace {
                 return m;
             };
             const double ref = max_in(1.0, 2.0);
+            measure<Sample>("ConvergenceNoise.onset_over_ref", rs, max_in(2.1, 2.2) - ref);
+            measure<Sample>("ConvergenceNoise.750_over_ref", rs, max_in(2.75, 3.0) - ref);
+            measure<Sample>("ConvergenceNoise.1500_over_ref", rs, max_in(3.5, 4.0) - ref);
             EXPECT_LE(max_in(2.1, 2.2), ref + 10.0) << "fs " << rs.fs; // mask from 100 ms
             EXPECT_LE(max_in(2.75, 3.0), ref) << "fs " << rs.fs;       // target: by 750 ms
             EXPECT_LE(max_in(3.5, 4.0), ref) << "fs " << rs.fs;        // requirement: by 1500 ms
@@ -281,9 +305,10 @@ namespace {
     // -55.6 at 16 kHz — requirement met with 3.6 dB margin, target
     // missed (the depth-vs-tracking trade pinned by ITU_DtEchoLoss's
     // transition choice); gate at -54.
-    TEST(ItuEcho, TimeVariantPath) {
+    TYPED_TEST(ItuEcho, TimeVariantPath) {
+        using Sample = TypeParam;
         for (const auto& rs : required_rates()) {
-            compliance_chain                  c(chain_config(rs));
+            compliance_dut<Sample>            c(chain_config<Sample>(rs), rs.block);
             const auto                        base = compliance_path(room::cabin, rs);
             typename echo_sim<double>::config sc;
             sc.echo_path  = base;
@@ -313,7 +338,8 @@ namespace {
                 out.insert(out.end(), e.begin(), e.end());
             }
             const double lvl = max_level_dbm0a(out, rs.fs, out.size() / 3, out.size());
-            EXPECT_LT(lvl, expected({-58.0, -54.0}, rs)) << "fs " << rs.fs;
+            measure<Sample>("TimeVariantPath", rs, lvl);
+            EXPECT_LT(lvl, expected<Sample>({{-58.0, -54.0}, {-58.0, -54.0}}, rs)) << "fs " << rs.fs;
         }
     }
 

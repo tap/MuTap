@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright 2026 MuTap contributors
 //
-// Float32 parity gates: the deployment-precision correctness oracle for
-// the embedded targets (Cortex-M55 / Hexagon run the same float32 core
-// as the desktop golden model). The certified compliance battery is
-// double precision; these gates pin what chain<float> at the SAME
-// certified preset measures on the headline rows, so performance work
-// in float32 has a behavioral baseline that CI enforces.
+// Float32 gates: the deployment-precision correctness oracle for the
+// embedded targets (Cortex-M55 / Hexagon run the same float32 core as
+// the desktop golden model). The full ITU compliance battery is now
+// certified at float32 as well as double (typed <float, double> suites,
+// docs/itu-compliance.md), but that battery is host-only; this file is
+// the float32 headline-row battery that runs ON TARGET in the emulated
+// selection (tests/bare_metal_main.cpp, tests/CMakeLists.txt), so
+// performance work in float32 has a behavioral baseline CI enforces
+// where the full ITU suite is too slow to run.
 //
 // Measured (s9 scratch series; double reference in parentheses):
 //

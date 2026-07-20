@@ -43,14 +43,16 @@ is **not** bit-identical — it agrees only to single-precision rounding
 (measured max relative error 1.3e-7 at N=512, 2.0e-7 at N=2048, i.e. float32
 epsilon). Two things make that acceptable as the M55 default:
 
-- **The ITU certification is unaffected.** It is measured on the
-  double-precision path, which is *always* Ooura (`basic_real_fft<double>`
-  never routes through CMSIS). The double golden model and every bit-identity
-  claim in `docs/itu-compliance.md` stand unchanged.
-- **The float32 embedded path stays within its asserted gates.** The full
-  float32 ITU battery (`tests/test_float32.cpp` and the emulated suites) passes
-  on CMSIS — it was always a tolerance oracle, never a bit-exact one, precisely
-  because float32 is a rounding-level approximation of the double reference.
+- **The double golden model is unaffected.** `basic_real_fft<double>` never
+  routes through CMSIS, so the double leg of the certification (and every
+  bit-identity claim in `docs/itu-compliance.md`) stands unchanged.
+- **The float32 embedded path stays within its asserted gates.** The ITU
+  battery is now certified at float32 as well as double (typed `<float, double>`
+  suites, `docs/itu-compliance.md`); that full battery is host-only, and on the
+  M55 the float32 gate battery `tests/test_float32.cpp` — the headline ITU rows
+  at deployment precision — passes on the CMSIS backend. The parity oracle was
+  always a tolerance oracle, never bit-exact, precisely because float32 is a
+  rounding-level approximation of the double reference.
 
 So the backend is **default ON for the bare-metal M55 embedded profile** — the
 deployment target — and OFF everywhere else. The Ooura float32 path remains one
@@ -157,8 +159,12 @@ trip at N=512 and N=2048:
   `vDSP_fft_zrip` inverse, `vDSP_ztoc` (reinterleave), scale by 0.25 to land on
   Ooura's unnormalized inverse (the caller's 2/N then normalizes).
 
-`double` stays Ooura (golden model), so the ITU certification — measured on the
-double path — is unaffected. Not bit-identical (float epsilon), same as CMSIS.
+`double` stays Ooura (golden model), so the double leg of the certification is
+unaffected. Not bit-identical (float epsilon), same as CMSIS — but note the
+stronger guarantee this backend gets: the full float32 ITU battery (the typed
+`<float, double>` suites, `docs/itu-compliance.md`) runs on the `macos-latest`
+CI host with vDSP active, so the `/0` legs certify the ITU thresholds at
+deployment precision *through vDSP itself*, not merely parity against Ooura.
 
 ### How it is wired / validated
 
