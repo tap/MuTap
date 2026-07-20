@@ -13,18 +13,22 @@
 # (mutap_aec_compare --wav <subject> far mic enh), so MuTap, Speex and
 # WebRTC are scored on identical clips by identical code.
 #
-# DATA. The AEC-Challenge blind clips are Git-LFS objects; if network
-# policy blocks them (as in the sandbox this was built in), the script
-# falls back to a clearly-labelled SYNTHETIC eval set — speech-like
-# excitation through a synthetic room. Absolute AECMOS values on
-# synthetic audio are uncalibrated (the predictor is trained on real
-# speech), but every subject sees the identical input, so the RELATIVE
-# ordering is the readable result. Point --real-dir at a directory of
-# {farend,mic} wav pairs to score the real corpus once LFS is available.
+# DATA, best first:
+#   --real-dir DIR    a directory of <scen>_{far,mic}.wav pairs — the real
+#                     AEC-Challenge blind clips (ideal, calibrated).
+#   --speech-dir DIR  real speech clips (>= 2 speakers, e.g. CMU ARCTIC);
+#                     the script builds far/near from distinct speakers and
+#                     an image-source room (pyroomacoustics) for the echo.
+#                     Calibrated, since AECMOS is trained on real speech.
+#   (neither)         a SYNTHETIC resonator set — absolutes uncalibrated,
+#                     RELATIVE ordering only. A last resort.
+# The AEC-Challenge blind clips are Git-LFS objects some proxies will not
+# authorize; --speech-dir is the calibrated path when they are blocked.
 #
 # Usage:
 #   python3 aecmos_eval.py --tool <path/to/mutap_aec_compare> \
-#       --model <path/to/AECMOS Run_..._Stage_0.onnx> [--real-dir DIR] \
+#       --model <path/to/AECMOS Run_..._Stage_0.onnx> \
+#       (--real-dir DIR | --speech-dir DIR) \
 #       [--subjects mutap,speex,webrtc] [--out results/aecmos.json]
 #
 # The AECMOS transform/inference below reproduces AEC-Challenge's
@@ -166,6 +170,77 @@ def make_synthetic_set(work, fs=16000, secs=10.0):
     return clips
 
 
+def _concat_speaker(speech_dir, speaker, want_n, fs):
+    """Concatenate a speaker's clips (real speech) to ~want_n samples,
+    normalized to -24 dBFS RMS. Tiles if the material is short."""
+    import librosa
+    files = sorted(f for f in os.listdir(speech_dir) if speaker in f and f.endswith(".wav"))
+    if not files:
+        raise SystemExit(f"no clips for speaker {speaker} in {speech_dir}")
+    segs = []
+    total = 0
+    while total < want_n:
+        for fn in files:
+            y, _ = librosa.load(os.path.join(speech_dir, fn), sr=fs, mono=True)
+            segs.append(y)
+            total += len(y)
+            if total >= want_n:
+                break
+    x = np.concatenate(segs)[:want_n].astype(np.float32)
+    x *= 0.06 / (np.sqrt(np.mean(x ** 2)) + 1e-12)
+    return x
+
+
+def _room_rir(fs):
+    """A small-room image-source RIR (pyroomacoustics) for the echo path;
+    falls back to the synthetic exponential path if pra is unavailable."""
+    try:
+        import pyroomacoustics as pra
+        room = pra.ShoeBox([4.0, 3.0, 2.5], fs=fs, materials=pra.Material(0.3), max_order=12)
+        room.add_source([1.0, 1.0, 1.2])                       # loudspeaker
+        room.add_microphone([2.4, 2.1, 1.2])                   # mic ~1.8 m away
+        room.compute_rir()
+        rir = np.asarray(room.rir[0][0], dtype=np.float32)
+        return rir[: int(0.2 * fs)], "pyroomacoustics ShoeBox (RT60~0.3 s)"
+    except Exception as e:  # pragma: no cover
+        return make_rir(fs, 3.0, 120.0, 100.0, 8.0, 7), f"synthetic exp path (pra unavailable: {e})"
+
+
+def make_realspeech_set(speech_dir, work, fs=16000, secs=10.0, erl_db=6.0):
+    """Three scenarios from REAL speech (distinct speakers for far/near)
+    through a simulated room. AECMOS is trained on speech, so this yields
+    calibrated absolutes — unlike the synthetic resonator set. Not the
+    Microsoft blind clips (LFS-blocked here), but real speech through a
+    real room, which is what the calibration needs."""
+    from scipy.signal import fftconvolve
+    os.makedirs(work, exist_ok=True)
+    n = int(secs * fs)
+    speakers = sorted({fn.rsplit("_a", 1)[0] for fn in os.listdir(speech_dir) if fn.endswith(".wav")})
+    if len(speakers) < 2:
+        raise SystemExit(f"need >=2 speakers in {speech_dir}, found {speakers}")
+    far = _concat_speaker(speech_dir, speakers[0], n, fs)
+    near = _concat_speaker(speech_dir, speakers[1], n, fs)
+    rir, rir_desc = _room_rir(fs)
+    echo = fftconvolve(far, rir)[:n].astype(np.float32)
+    # Set the echo coupling to a defined ERL below the far end (the RIR sets
+    # the reverberant *shape*; erl_db sets the overall level, as the
+    # AEC-Challenge synthetic generator does).
+    echo *= (10 ** (-erl_db / 20.0)) * np.sqrt(np.mean(far ** 2)) / (np.sqrt(np.mean(echo ** 2)) + 1e-12)
+    print(f"real-speech set: far={speakers[0]}, near={speakers[1]}, echo path = {rir_desc}, ERL {erl_db:.0f} dB")
+    clips = {}
+    for scen, (f, m) in {
+        "st": (far, echo),
+        "nst": (np.zeros(n, np.float32), near),
+        "dt": (far, echo + near),
+    }.items():
+        fp = os.path.join(work, f"{scen}_far.wav")
+        mp = os.path.join(work, f"{scen}_mic.wav")
+        wav_write(fp, f, fs)
+        wav_write(mp, m, fs)
+        clips[scen] = (fp, mp)
+    return clips
+
+
 def discover_real_set(real_dir):
     """Expect files named <scen>_far.wav / <scen>_mic.wav for scen in
     st/nst/dt (rename the AEC-Challenge farend/mic clips accordingly)."""
@@ -183,42 +258,79 @@ def main():
     ap.add_argument("--tool", required=True, help="path to mutap_aec_compare")
     ap.add_argument("--model", required=True, help="path to an AECMOS *.onnx model")
     ap.add_argument("--subjects", default="mutap,speex,webrtc")
-    ap.add_argument("--real-dir", default=None, help="dir of <scen>_{far,mic}.wav; else synthetic")
+    ap.add_argument("--real-dir", default=None, help="dir of <scen>_{far,mic}.wav (e.g. AEC-Challenge); highest priority")
+    ap.add_argument("--speech-dir", default=None, help="dir of real speech clips (>=2 speakers) -> real-speech eval set")
     ap.add_argument("--work", default="/tmp/mutap_aecmos")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
     subjects = [s for s in args.subjects.split(",") if s]
-    synthetic = args.real_dir is None
-    clips = discover_real_set(args.real_dir) if args.real_dir else make_synthetic_set(args.work)
+    # Data source, best first: an explicit far/mic corpus (the real
+    # AEC-Challenge blind set), else real speech through a simulated room
+    # (calibrated), else the synthetic resonator set (relative only).
+    if args.real_dir:
+        kind, clips = "real-corpus", discover_real_set(args.real_dir)
+    elif args.speech_dir:
+        kind, clips = "real-speech", make_realspeech_set(args.speech_dir, args.work)
+    else:
+        kind, clips = "synthetic", make_synthetic_set(args.work)
     if not clips:
         print("no clips found", file=sys.stderr)
         return 2
+    calibrated = kind != "synthetic"
 
     mos = AECMOS(args.model)
     os.makedirs(args.work, exist_ok=True)
     rows = []
-    print(f"\nAECMOS scores ({'SYNTHETIC eval set — relative only' if synthetic else args.real_dir}); "
-          f"model {os.path.basename(args.model)}")
-    print(f"  {'subject':<10} {'scenario':<8} {'echoMOS':>8} {'degMOS':>8}")
+    label = {"real-corpus": args.real_dir, "real-speech": "real speech + simulated room (calibrated)",
+             "synthetic": "SYNTHETIC eval set — relative only"}[kind]
+    # Each backend adds its own processing latency; the tool latency-
+    # compensates approximately, but a residual few-ms lag between enh and
+    # mic — differing per subject — would confound AECMOS (its mel hop is
+    # 16 ms). Remove it: measure each subject's residual lag once on the
+    # near-end scenario (where enh ~ mic, so cross-correlation is clean)
+    # and shift that subject's enh to zero lag in every scenario.
+    def best_lag(a, b, max_ms=40, fs=16000):
+        m = min(len(a), len(b))
+        a = a[:m] - np.mean(a[:m])
+        b = b[:m] - np.mean(b[:m])
+        w = int(max_ms * fs / 1000)
+        xc = np.correlate(a, b, "full")
+        c = len(b) - 1
+        seg = xc[c - w: c + w + 1]
+        return (np.argmax(seg) - w)  # samples enh leads(+)/lags(-) mic
+
+    print(f"\nAECMOS scores ({label}); model {os.path.basename(args.model)}")
+    print(f"  {'subject':<10} {'scenario':<8} {'echoMOS':>8} {'degMOS':>8}   (lag-aligned)")
     for subj in subjects:
+        enh_paths, sigs, lag = {}, {}, 0
+        ok = True
         for scen, (fp, mp) in clips.items():
             enh = os.path.join(args.work, f"{subj}_{scen}_enh.wav")
             r = subprocess.run([args.tool, "--wav", subj, fp, mp, enh], capture_output=True, text=True)
             if r.returncode != 0:
                 print(f"  {subj:<10} {scen:<8}   (skipped: {r.stderr.strip() or 'tool error'})")
-                continue
+                ok = False
+                break
             lpb, _ = wav_read(fp)
             mic, _ = wav_read(mp)
             en, _ = wav_read(enh)
-            echo_mos, deg_mos = mos.score(scen, lpb, mic, en)
+            sigs[scen] = (lpb, mic, en)
+        if not ok:
+            continue
+        if "nst" in sigs:
+            _, mic, en = sigs["nst"]
+            lag = int(best_lag(en, mic))  # enh leads mic by `lag` samples
+        for scen, (lpb, mic, en) in sigs.items():
+            ea = np.roll(en, -lag) if lag else en  # undo enh's lead/lag -> align to mic
+            echo_mos, deg_mos = mos.score(scen, lpb, mic, ea)
             rows.append({"subject": subj, "scenario": scen, "echo_mos": echo_mos, "deg_mos": deg_mos})
-            print(f"  {subj:<10} {scen:<8} {echo_mos:8.3f} {deg_mos:8.3f}")
+            print(f"  {subj:<10} {scen:<8} {echo_mos:8.3f} {deg_mos:8.3f}   (lag {lag:+d})")
 
     if args.out:
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
         with open(args.out, "w") as f:
-            json.dump({"synthetic": synthetic, "model": os.path.basename(args.model), "rows": rows}, f, indent=2)
+            json.dump({"kind": kind, "calibrated": calibrated, "model": os.path.basename(args.model), "rows": rows}, f, indent=2)
         print(f"\nwrote {args.out}")
     return 0
 

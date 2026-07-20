@@ -107,39 +107,50 @@ Reading guide:
 predictor: an **echo MOS** (1–5, higher = less audible echo) and a
 **degradation MOS** (1–5, higher = better near-end quality).
 
-⚠️ **Data caveat.** The AEC-Challenge blind clips are Git-LFS objects
-the build sandbox's network policy would not authorize, so the committed
-run (`bench/compare/results/aecmos.json`) uses a **synthetic** eval set.
-AECMOS is trained on real speech, so absolute MOS on synthetic audio is
-uncalibrated — the low degradation-MOS values below are that
-miscalibration, not the cancellers. Every subject sees identical input,
-so **relative ordering is the readable result**; point the driver at the
-real corpus (`--real-dir`) once LFS access is available for calibrated
-absolutes.
+The committed run (`bench/compare/results/aecmos.json`) scores **real
+speech** — distinct CMU ARCTIC speakers for the far and near ends —
+through a **pyroomacoustics-simulated room** (image-source, RT60 ≈ 0.3 s,
+6 dB ERL). AECMOS is trained on real speech, so these absolutes are
+calibrated. The output is cross-correlation-aligned to the microphone per
+subject so each canceller's processing latency is not a confound.
 
-Measured with the 16 kHz AECMOS model (`Run_1663915512_Stage_0.onnx`):
+> The Microsoft AEC-Challenge *blind* clips would be the ideal input, but
+> they are Git-LFS objects this environment's proxy will not authorize
+> (`Not authorized to access repository microsoft/aec-challenge`).
+> `--real-dir <dir of {st,nst,dt}_{far,mic}.wav>` points the identical
+> driver at them when access is available; `--speech-dir` produces the
+> real-speech-through-a-room set used here.
 
-| Subject | far-end ST echoMOS ↑ | double-talk echoMOS ↑ | near-end ST degMOS ↑ (relative) |
+Measured with the 16 kHz AECMOS model (`Run_1663915512_Stage_0.onnx`),
+echo MOS / degradation MOS (both 1–5, higher better):
+
+| Subject | far-end ST (echo / deg) | double-talk (echo / deg) | near-end ST (echo / deg) |
 |---|---:|---:|---:|
-| mutap | 4.18 | **4.71** | 1.32 |
-| speex | 3.98 | 4.63 | 1.60 |
-| webrtc | **4.72** | 4.59 | 1.59 |
+| mutap | **4.36** / 5.00 | 3.06 / 3.06 | 5.00 / 3.06 |
+| speex | 1.64 / 5.00 | 3.39 / **4.15** | 5.00 / **4.00** |
+| webrtc | **4.74** / 5.00 | **3.96** / 2.63 | 5.00 / 4.00 |
 
-Reading guide:
+Reading guide — the calibrated real-speech picture is more balanced (and
+more humbling for MuTap) than the short-path ITU battery:
 
-- **A perceptual metric does not reward raw ERLE 1:1.** MuTap's 62 dB
-  ERLE beats AEC3's 26 dB by 36 dB in direction 1, yet in far-end single
-  talk AECMOS scores AEC3's echo *higher* (4.72 vs 4.18): once the echo
-  is below audibility, AEC3's suppression reads as cleaner to the
-  predictor. This is the single most useful thing running "our algorithm
-  through their test" reveals — the ERLE gap overstates the perceived
-  echo advantage in single talk.
-- **MuTap's double-talk advantage survives their metric.** In double
-  talk MuTap takes the top echoMOS (4.71 vs AEC3 4.59) — the detector-
-  free robustness holds up under AECMOS, not just under our own
-  suppression number.
-- Degradation MOS is uncalibrated here (synthetic near end); the numbers
-  cluster and should not be read as absolute near-end quality.
+- **Echo removal on a reverberant room favours the products with a
+  residual stage.** WebRTC AEC3 (4.74) and MuTap (4.36) clear far-end
+  echo well; **Speex collapses to 1.64** — its bare MDF canceller
+  (64 ms filter) cannot model the ~300 ms reverb tail and has no
+  suppressor to clean the residual, so echo stays audible. MuTap's
+  coherence suppressor + comfort noise and AEC3's NLP mop it up.
+- **Near-end quality is the mirror image.** Speex, which barely touches
+  the near end, scores the best degradation MOS in double talk (4.15);
+  **AEC3 scores the worst (2.63)** — its ~15 dB double-talk ducking
+  (direction 1b) costs perceived near-end quality; MuTap sits between
+  (3.06).
+- **A perceptual metric does not reward raw ERLE 1:1, and long reverb
+  narrows MuTap's lead.** MuTap's 87 dB ITU ERL was measured on a cabin
+  path inside its 64 ms filter span; on a 0.3 s room its echo MOS (4.36)
+  is close to AEC3's and its double-talk echo MOS (3.06) trails — the
+  "echo tails beyond filter capacity" caveat, made audible. This is the
+  single most useful thing running "our algorithm through their test"
+  reveals.
 
 ## Building the harness
 

@@ -1,60 +1,61 @@
 {
-  "synthetic": true,
+  "kind": "real-speech",
+  "calibrated": true,
   "model": "Run_1663915512_Stage_0.onnx",
   "rows": [
     {
       "subject": "mutap",
       "scenario": "st",
-      "echo_mos": 4.177084445953369,
-      "deg_mos": 4.999107360839844
+      "echo_mos": 4.357138633728027,
+      "deg_mos": 4.999222755432129
     },
     {
       "subject": "mutap",
       "scenario": "nst",
-      "echo_mos": 4.99983549118042,
-      "deg_mos": 1.3191676139831543
+      "echo_mos": 4.999954700469971,
+      "deg_mos": 3.062432050704956
     },
     {
       "subject": "mutap",
       "scenario": "dt",
-      "echo_mos": 4.705556869506836,
-      "deg_mos": 1.1863993406295776
+      "echo_mos": 3.058272123336792,
+      "deg_mos": 3.055079460144043
     },
     {
       "subject": "speex",
       "scenario": "st",
-      "echo_mos": 3.9782352447509766,
-      "deg_mos": 4.999224662780762
+      "echo_mos": 1.6380525827407837,
+      "deg_mos": 5.0
     },
     {
       "subject": "speex",
       "scenario": "nst",
-      "echo_mos": 4.9999775886535645,
-      "deg_mos": 1.5991184711456299
+      "echo_mos": 4.997886657714844,
+      "deg_mos": 3.995358943939209
     },
     {
       "subject": "speex",
       "scenario": "dt",
-      "echo_mos": 4.6307783126831055,
-      "deg_mos": 1.3000261783599854
+      "echo_mos": 3.390204906463623,
+      "deg_mos": 4.1505446434021
     },
     {
       "subject": "webrtc",
       "scenario": "st",
-      "echo_mos": 4.719066619873047,
-      "deg_mos": 4.999244213104248
+      "echo_mos": 4.740226745605469,
+      "deg_mos": 4.999261379241943
     },
     {
       "subject": "webrtc",
       "scenario": "nst",
-      "echo_mos": 4.9999847412109375,
-      "deg_mos": 1.590070128440857
+      "echo_mos": 4.9981489181518555,
+      "deg_mos": 4.000837802886963
     },
     {
       "subject": "webrtc",
       "scenario": "dt",
-      "echo_mos": 4.5862226486206055,
-      "deg_mos": 1.3341174125671387
+      "echo_mos": 3.9552102088928223,
+      "deg_mos": 2.6315817832946777
     }
   ]
 }
