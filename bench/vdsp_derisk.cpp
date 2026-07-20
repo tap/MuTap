@@ -140,6 +140,42 @@ namespace {
             err  = std::fmax(err, std::fabs(got[i] - ref[i]));
         }
 
+        // --- inverse reconciliation: fit the constant that turns vDSP's
+        //     inverse RFFT into Ooura's UNNORMALIZED inverse (rdft -1), and
+        //     confirm the round trip recovers the input. ---
+        {
+            DSPSplitComplex sp{vd.m_rp.data(), vd.m_ip.data()};
+            // Rebuild the vDSP-convention split spectrum from the Ooura-packed
+            // ref: undo the forward's 0.5 scale, conjugate back to exp(-i).
+            sp.realp[0] = 2.0f * ref[0]; // DC
+            sp.imagp[0] = 2.0f * ref[1]; // Nyquist
+            for (int k = 1; k < n / 2; ++k) {
+                sp.realp[k] = 2.0f * ref[2 * k];
+                sp.imagp[k] = -2.0f * ref[2 * k + 1];
+            }
+            vDSP_fft_zrip(vd.m_setup, &sp, 1, vd.m_log2n, kFFTDirection_Inverse);
+            std::vector<float> vd_inv(n);
+            vDSP_ztoc(&sp, 1, reinterpret_cast<DSPComplex*>(vd_inv.data()), 2, n / 2);
+
+            std::vector<float> oo_inv = ref; // Ooura unnormalized inverse
+            rdft_f(n, -1, oo_inv.data(), oo.m_ip.data(), oo.m_w.data());
+
+            double inum = 0, iden = 0;
+            for (int i = 0; i < n; ++i) {
+                inum += static_cast<double>(vd_inv[i]) * oo_inv[i];
+                iden += static_cast<double>(vd_inv[i]) * vd_inv[i];
+            }
+            const float sinv = static_cast<float>(inum / iden);
+            float       imatch = 0, iref = 0, rt = 0;
+            for (int i = 0; i < n; ++i) {
+                imatch = std::fmax(imatch, std::fabs(vd_inv[i] * sinv - oo_inv[i]));
+                iref   = std::fmax(iref, std::fabs(oo_inv[i]));
+                rt     = std::fmax(rt, std::fabs(vd_inv[i] * sinv * (2.0f / n) - in[i]));
+            }
+            std::printf("N=%-5d inverse: fit_scale=%.6f (=%.4f/N) inv_match=%.2e roundtrip=%.2e\n",
+                        n, sinv, sinv * n, imatch / iref, rt);
+        }
+
         // --- speed: warm, then time a big batch of out-of-place forwards ---
         const int          iters = n <= 512 ? 400000 : 120000;
         std::vector<float> scratch(n);
