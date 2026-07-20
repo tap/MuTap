@@ -19,7 +19,12 @@ add_executable(mutap_aec_compare
     aec_backend.cpp
     backends/mutap_backend.cpp)
 
-target_link_libraries(mutap_aec_compare PRIVATE MuTap::MuTap mutap_warnings)
+# A host-only measurement tool: -Wall/-Wextra, but not the library's
+# strict -Wconversion (the driver's size_t<->double window arithmetic is
+# deliberate and would otherwise need a cast on every line).
+target_link_libraries(mutap_aec_compare PRIVATE MuTap::MuTap)
+target_compile_options(mutap_aec_compare PRIVATE
+    $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra>)
 target_include_directories(mutap_aec_compare PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(mutap_aec_compare PRIVATE cxx_std_20)
 
@@ -46,8 +51,9 @@ if(MUTAP_COMPARE_SPEEX)
         ${MUTAP_SPEEXDSP_DIR}/include
         ${MUTAP_SPEEXDSP_DIR}/libspeexdsp
         ${CMAKE_CURRENT_SOURCE_DIR}/speex_config)
-    target_compile_definitions(mutap_speexdsp PRIVATE
-        FLOATING_POINT USE_KISS_FFT EXPORT= HAVE_CONFIG_H)
+    # HAVE_CONFIG_H routes the sources through speex_config/config.h, which
+    # selects the float + KISS-FFT build (no autotools, no SIMD deps).
+    target_compile_definitions(mutap_speexdsp PRIVATE HAVE_CONFIG_H)
     # Third-party C: no MuTap warning flags.
     target_link_libraries(mutap_aec_compare PRIVATE mutap_speexdsp)
     target_sources(mutap_aec_compare PRIVATE backends/speex_backend.cpp)

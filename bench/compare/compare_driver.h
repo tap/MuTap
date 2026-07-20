@@ -66,8 +66,17 @@ namespace mutap_compare {
             const double t   = static_cast<double>(i) / fs;
             double       env = 0.575 + 0.425 * std::sin(2.0 * M_PI * env_hz * t);
             if (std::sin(2.0 * M_PI * 0.31 * t) > 0.7) env *= 0.15; // pauses
-            x[i] = static_cast<float>(0.05 * env * y0);
+            x[i] = static_cast<float>(env * y0);
         }
+        // Normalize to a realistic active-speech level: RMS -24 dBFS with a
+        // ~6 dB crest headroom, so no subject's fixed-point (int16) path
+        // clips — clipping would unfairly cripple it and is not the echo
+        // behavior under test.
+        double e = 0.0;
+        for (float v : x) e += double(v) * v;
+        const double rms   = std::sqrt(e / std::max<size_t>(1, x.size()));
+        const double scale = rms > 0.0 ? 0.06 / rms : 0.0;
+        for (float& v : x) v = static_cast<float>(v * scale);
         return x;
     }
 
