@@ -227,6 +227,45 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Nonlinear-loudspeaker distortion sweep: --nl-sweep [rate]
+    // ERLE (far-end single talk) for every subject as loudspeaker
+    // distortion rises (Hammerstein: SEF nonlinearity then room). Shows
+    // the linear cancellers shedding ERLE on the harmonics they cannot
+    // model while AEC3's nonlinear-aware suppressor holds up. JSON out.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--nl-sweep") {
+            const double fs   = (i + 1 < argc && argv[i + 1][0] != '-') ? std::stod(argv[i + 1]) : 16000.0;
+            const size_t n    = static_cast<size_t>(8.0 * fs);
+            const size_t cap  = static_cast<size_t>((fs <= 24000.0 ? 64.0 : 43.0) * fs / 1000.0);
+            const auto   rir  = make_rir(fs, 3.0, 45.0, 1000.0 * cap / fs, 12.0, 0xF17E);
+            const auto   far  = speechlike(n, fs, 0xFA00);
+            const std::vector<double> etas = {100.0, 3.0, 1.5, 0.8, 0.4}; // 100 = linear
+            std::vector<std::string>  keys;
+            for (auto& s : registry())
+                if (s.key == "mutap" || s.key == "speex" || s.key == "webrtc") keys.push_back(s.key);
+
+            std::printf("{\"fs\":%.0f,\"sweep\":[", fs);
+            for (size_t e = 0; e < etas.size(); ++e) {
+                const auto echo = convolve(loudspeaker(far, etas[e]), rir);
+                std::printf("%s{\"eta\":%.3g,\"thd_pct\":%.2f,\"results\":{", e ? "," : "", etas[e],
+                            loudspeaker_thd_pct(fs, etas[e]));
+                bool first = true;
+                for (auto& key : keys) {
+                    std::unique_ptr<aec_backend> be;
+                    for (auto& s : registry()) if (s.key == key) be = s.make(fs);
+                    if (!be) continue;
+                    const auto   out = run_stream(*be, far, echo, fs);
+                    const size_t lo  = static_cast<size_t>(0.6 * n);
+                    std::printf("%s\"%s\":%.2f", first ? "" : ",", key.c_str(), ratio_db(echo, out, lo, n));
+                    first = false;
+                }
+                std::printf("}}");
+            }
+            std::printf("]}\n");
+            return 0;
+        }
+    }
+
     bool                     json_only = false;
     std::vector<double>      rates     = {48000.0, 16000.0};
     std::vector<std::string> want; // empty = all

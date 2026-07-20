@@ -191,6 +191,28 @@ def _concat_speaker(speech_dir, speaker, want_n, fs):
     return x
 
 
+def loudspeaker(x, eta):
+    """Memoryless loudspeaker nonlinearity (scaled error function), the
+    standard nonlinear-echo test curve. eta -> inf linear; small eta
+    saturates. Level-restored so eta is the distortion knob, not a gain.
+    Mirrors bench/compare/compare_driver.h::loudspeaker."""
+    from scipy.special import erf
+    if eta >= 100:
+        return x
+    sigma = np.sqrt(np.mean(x ** 2)) + 1e-12
+    y = np.sqrt(np.pi / 2) * eta * erf((x / sigma) / (np.sqrt(2) * eta))
+    y *= sigma / (np.sqrt(np.mean(y ** 2)) + 1e-12)
+    return y.astype(np.float32)
+
+
+def _thd_pct(fs, eta):
+    t = 0.2 * np.sin(2 * np.pi * 997.0 * np.arange(int(fs)) / fs)
+    y = loudspeaker(t.astype(np.float32), eta)
+    a = np.dot(t, y) / (np.dot(t, t) + 1e-30)
+    resid = y - a * t
+    return 100.0 * np.sqrt(np.sum(resid ** 2) / (a * a * np.dot(t, t) + 1e-30))
+
+
 def _room_rir(fs):
     """A small-room image-source RIR (pyroomacoustics) for the echo path;
     falls back to the synthetic exponential path if pra is unavailable."""
@@ -206,12 +228,13 @@ def _room_rir(fs):
         return make_rir(fs, 3.0, 120.0, 100.0, 8.0, 7), f"synthetic exp path (pra unavailable: {e})"
 
 
-def make_realspeech_set(speech_dir, work, fs=16000, secs=10.0, erl_db=6.0):
+def make_realspeech_set(speech_dir, work, fs=16000, secs=10.0, erl_db=6.0, eta=100.0):
     """Three scenarios from REAL speech (distinct speakers for far/near)
     through a simulated room. AECMOS is trained on speech, so this yields
     calibrated absolutes — unlike the synthetic resonator set. Not the
     Microsoft blind clips (LFS-blocked here), but real speech through a
-    real room, which is what the calibration needs."""
+    real room, which is what the calibration needs. eta<100 inserts a
+    loudspeaker nonlinearity before the room (Hammerstein)."""
     from scipy.signal import fftconvolve
     os.makedirs(work, exist_ok=True)
     n = int(secs * fs)
@@ -221,7 +244,7 @@ def make_realspeech_set(speech_dir, work, fs=16000, secs=10.0, erl_db=6.0):
     far = _concat_speaker(speech_dir, speakers[0], n, fs)
     near = _concat_speaker(speech_dir, speakers[1], n, fs)
     rir, rir_desc = _room_rir(fs)
-    echo = fftconvolve(far, rir)[:n].astype(np.float32)
+    echo = fftconvolve(loudspeaker(far, eta), rir)[:n].astype(np.float32)
     # Set the echo coupling to a defined ERL below the far end (the RIR sets
     # the reverberant *shape*; erl_db sets the overall level, as the
     # AEC-Challenge synthetic generator does).
@@ -253,6 +276,50 @@ def discover_real_set(real_dir):
     return clips
 
 
+def _best_lag(a, b, max_ms=40, fs=16000):
+    """Samples enh (a) leads(+)/lags(-) mic (b), by max cross-correlation."""
+    m = min(len(a), len(b))
+    a = a[:m] - np.mean(a[:m])
+    b = b[:m] - np.mean(b[:m])
+    w = int(max_ms * fs / 1000)
+    xc = np.correlate(a, b, "full")
+    c = len(b) - 1
+    return int(np.argmax(xc[c - w: c + w + 1]) - w)
+
+
+def score_subjects(mos, tool, work, clips, subjects, quiet=False):
+    """Run every subject through the tool's --wav mode on `clips`, align
+    enh to mic per subject (latency out of the way), score with AECMOS,
+    return rows. Shared by the single-run and the nonlinear-sweep paths."""
+    rows = []
+    for subj in subjects:
+        sigs, lag, ok = {}, 0, True
+        for scen, (fp, mp) in clips.items():
+            enh = os.path.join(work, f"{subj}_{scen}_enh.wav")
+            r = subprocess.run([tool, "--wav", subj, fp, mp, enh], capture_output=True, text=True)
+            if r.returncode != 0:
+                if not quiet:
+                    print(f"  {subj:<10} {scen:<8}   (skipped: {r.stderr.strip() or 'tool error'})")
+                ok = False
+                break
+            lpb, _ = wav_read(fp)
+            mic, _ = wav_read(mp)
+            en, _ = wav_read(enh)
+            sigs[scen] = (lpb, mic, en)
+        if not ok:
+            continue
+        if "nst" in sigs:
+            _, mic, en = sigs["nst"]
+            lag = _best_lag(en, mic)
+        for scen, (lpb, mic, en) in sigs.items():
+            ea = np.roll(en, -lag) if lag else en
+            echo_mos, deg_mos = mos.score(scen, lpb, mic, ea)
+            rows.append({"subject": subj, "scenario": scen, "echo_mos": echo_mos, "deg_mos": deg_mos})
+            if not quiet:
+                print(f"  {subj:<10} {scen:<8} {echo_mos:8.3f} {deg_mos:8.3f}   (lag {lag:+d})")
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--tool", required=True, help="path to mutap_aec_compare")
@@ -262,9 +329,42 @@ def main():
     ap.add_argument("--speech-dir", default=None, help="dir of real speech clips (>=2 speakers) -> real-speech eval set")
     ap.add_argument("--work", default="/tmp/mutap_aecmos")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--nl-sweep", action="store_true",
+                    help="sweep loudspeaker distortion (needs --speech-dir); records far-end-ST echo MOS vs THD")
     args = ap.parse_args()
 
     subjects = [s for s in args.subjects.split(",") if s]
+    mos = AECMOS(args.model)
+    os.makedirs(args.work, exist_ok=True)
+
+    # Nonlinear-loudspeaker sweep: the perceptual companion to the C++
+    # ERLE sweep. At each distortion level, score the far-end single-talk
+    # echo MOS for every subject — does audible echo return as the speaker
+    # distorts, and for which cancellers?
+    if args.nl_sweep:
+        if not args.speech_dir:
+            print("--nl-sweep needs --speech-dir (real speech)", file=sys.stderr)
+            return 2
+        etas = [100.0, 3.0, 1.5, 0.8, 0.4]
+        sweep = []
+        print(f"\nAECMOS far-end-ST echo MOS vs loudspeaker distortion; model {os.path.basename(args.model)}")
+        print(f"  {'THD%':>6} " + "  ".join(f"{s:>8}" for s in subjects))
+        for eta in etas:
+            clips = make_realspeech_set(args.speech_dir, args.work, eta=eta)
+            rows = score_subjects(mos, args.tool, args.work, {"st": clips["st"], "nst": clips["nst"]},
+                                  subjects, quiet=True)
+            echo = {s: next((r["echo_mos"] for r in rows if r["subject"] == s and r["scenario"] == "st"), None)
+                    for s in subjects}
+            thd = _thd_pct(16000, eta)
+            sweep.append({"eta": eta, "thd_pct": thd, "echo_mos": echo})
+            print(f"  {thd:6.1f} " + "  ".join(f"{(echo[s] if echo[s] is not None else float('nan')):8.3f}" for s in subjects))
+        if args.out:
+            os.makedirs(os.path.dirname(args.out), exist_ok=True)
+            json.dump({"kind": "nl-sweep", "model": os.path.basename(args.model), "sweep": sweep},
+                      open(args.out, "w"), indent=2)
+            print(f"\nwrote {args.out}")
+        return 0
+
     # Data source, best first: an explicit far/mic corpus (the real
     # AEC-Challenge blind set), else real speech through a simulated room
     # (calibrated), else the synthetic resonator set (relative only).
@@ -279,53 +379,11 @@ def main():
         return 2
     calibrated = kind != "synthetic"
 
-    mos = AECMOS(args.model)
-    os.makedirs(args.work, exist_ok=True)
-    rows = []
     label = {"real-corpus": args.real_dir, "real-speech": "real speech + simulated room (calibrated)",
              "synthetic": "SYNTHETIC eval set — relative only"}[kind]
-    # Each backend adds its own processing latency; the tool latency-
-    # compensates approximately, but a residual few-ms lag between enh and
-    # mic — differing per subject — would confound AECMOS (its mel hop is
-    # 16 ms). Remove it: measure each subject's residual lag once on the
-    # near-end scenario (where enh ~ mic, so cross-correlation is clean)
-    # and shift that subject's enh to zero lag in every scenario.
-    def best_lag(a, b, max_ms=40, fs=16000):
-        m = min(len(a), len(b))
-        a = a[:m] - np.mean(a[:m])
-        b = b[:m] - np.mean(b[:m])
-        w = int(max_ms * fs / 1000)
-        xc = np.correlate(a, b, "full")
-        c = len(b) - 1
-        seg = xc[c - w: c + w + 1]
-        return (np.argmax(seg) - w)  # samples enh leads(+)/lags(-) mic
-
     print(f"\nAECMOS scores ({label}); model {os.path.basename(args.model)}")
     print(f"  {'subject':<10} {'scenario':<8} {'echoMOS':>8} {'degMOS':>8}   (lag-aligned)")
-    for subj in subjects:
-        enh_paths, sigs, lag = {}, {}, 0
-        ok = True
-        for scen, (fp, mp) in clips.items():
-            enh = os.path.join(args.work, f"{subj}_{scen}_enh.wav")
-            r = subprocess.run([args.tool, "--wav", subj, fp, mp, enh], capture_output=True, text=True)
-            if r.returncode != 0:
-                print(f"  {subj:<10} {scen:<8}   (skipped: {r.stderr.strip() or 'tool error'})")
-                ok = False
-                break
-            lpb, _ = wav_read(fp)
-            mic, _ = wav_read(mp)
-            en, _ = wav_read(enh)
-            sigs[scen] = (lpb, mic, en)
-        if not ok:
-            continue
-        if "nst" in sigs:
-            _, mic, en = sigs["nst"]
-            lag = int(best_lag(en, mic))  # enh leads mic by `lag` samples
-        for scen, (lpb, mic, en) in sigs.items():
-            ea = np.roll(en, -lag) if lag else en  # undo enh's lead/lag -> align to mic
-            echo_mos, deg_mos = mos.score(scen, lpb, mic, ea)
-            rows.append({"subject": subj, "scenario": scen, "echo_mos": echo_mos, "deg_mos": deg_mos})
-            print(f"  {subj:<10} {scen:<8} {echo_mos:8.3f} {deg_mos:8.3f}   (lag {lag:+d})")
+    rows = score_subjects(mos, args.tool, args.work, clips, subjects)
 
     if args.out:
         os.makedirs(os.path.dirname(args.out), exist_ok=True)

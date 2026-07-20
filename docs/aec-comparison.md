@@ -198,6 +198,7 @@ Run it:
 ./build/bench/compare/mutap_aec_compare              # full matrix, text + JSON
 ./build/bench/compare/mutap_aec_compare --list       # linked-in subjects
 ./build/bench/compare/mutap_aec_compare --rate 16000 # one rate
+./build/bench/compare/mutap_aec_compare --nl-sweep 16000 > bench/compare/results/nl_sweep.json  # distortion sweep
 
 # AECMOS (direction 2). Model ships in microsoft/AEC-Challenge (git clone;
 # the *.onnx models are committed, not LFS).
@@ -242,17 +243,53 @@ double-talk result and needs no such caveat: AEC3 ducks the near end
 ~15 dB during double talk (echo-first by design), where MuTap and Speex
 leave it essentially untouched.
 
+## Direction 1c — nonlinear loudspeaker (where AEC3 earns its reputation)
+
+Every path above is linear (room convolution). Real loudspeakers distort,
+and a linear canceller can only model the echo component correlated with
+the far end through a *linear* path — the harmonics a distorting speaker
+adds survive as residual. A Hammerstein model (a memoryless scaled-
+error-function nonlinearity, then the room) exercises exactly this, and it
+is the single most important reframing in the comparison.
+
+`mutap_aec_compare --nl-sweep` — **ERLE (linear cancellation depth) vs
+loudspeaker THD**, 16 kHz (`bench/compare/results/nl_sweep.json`):
+
+| THD % | MuTap | Speex | WebRTC AEC3 |
+|---:|---:|---:|---:|
+| 0.0 (linear) | **66.3** | 55.5 | 24.8 |
+| 0.9 | 23.0 | 18.8 | 23.8 |
+| 3.5 | 13.4 | 10.4 | **22.4** |
+| 10.6 | 7.8 | 6.0 | **20.4** |
+| 25.0 | 9.6 | 3.5 | **18.6** |
+
+MuTap and Speex shed 40+ dB the instant the speaker distorts and **cross
+AEC3 below ~1 % THD** (a decent speaker at moderate volume); AEC3's
+nonlinear-aware suppressor holds ~19–24 dB across the whole range. The
+linear-path dominance MuTap shows everywhere else is real *only on a
+linear path*.
+
+But the perceptual blow is softer, because MuTap is not only a linear
+filter. `aecmos_eval.py --nl-sweep` — **AECMOS echo MOS vs THD** on real
+speech (`nl_aecmos.json`) — barely moves for MuTap (4.36 → 4.26) or AEC3
+(4.74 → 4.64): MuTap's residual suppressor + comfort noise mask most of
+the residual its linear filter leaves, so raw ERLE *overstates* the
+nonlinear vulnerability of a chain that carries a suppressor. Speex, with
+no residual stage, stays low (floored by the reverb tail). The honest
+summary: AEC3 wins nonlinear echo decisively on cancellation *depth*;
+MuTap closes much of the *perceptual* gap with its suppressor; a bare
+linear canceller (Speex) has no answer.
+
 ## What this comparison does not cover
 
 Kept explicit, in the spirit of [itu-compliance.md](itu-compliance.md)'s
 "listed, not claimed":
 
-- **Nonlinear echo / loudspeaker distortion.** The paths here are
-  linear. AEC3 carries a nonlinear echo model and comfort-noise machinery
-  built for cheap loudspeakers; MuTap models a linear path. On real
-  hardware with a distorting speaker the gap in direction 1 would narrow
-  — this bench does not exercise that, and it is where AEC3 earns its
-  reputation.
+- **A memory / Volterra loudspeaker model.** Direction 1c uses a
+  *memoryless* nonlinearity (SEF), the standard AEC test curve; real
+  drivers add frequency-dependent (memory) distortion a full Volterra or
+  power-filter model would capture. The memoryless case already exercises
+  the linear-vs-nonlinear split; the memory refinement is a further step.
 - **Echo tails beyond the filter's modeling capacity.** Paths are capped
   near the canceller's filter length so the comparison is of algorithm
   quality, not who was given more taps. Long reverberant tails (the ITU

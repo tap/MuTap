@@ -117,6 +117,63 @@ namespace mutap_compare {
         return h;
     }
 
+    // ------------------------------------------------------------------
+    // Loudspeaker nonlinearity — the memoryless stage of a Hammerstein
+    // loudspeaker+room model (nonlinearity THEN room convolution), the
+    // standard structure for nonlinear acoustic echo. A linear canceller
+    // (MuTap, Speex) can only model the part of the echo correlated with
+    // the far end through a LINEAR path; the harmonics a distorting
+    // speaker adds are not in that reference, so they survive as residual
+    // — the regime WebRTC AEC3's nonlinear-aware suppressor is built for,
+    // and the one a linear-path bench cannot show.
+    //
+    // The curve is the Scaled Error Function (SEF), the canonical
+    // nonlinear-echo test function in the adaptive-filter literature:
+    //   f(x) = ∫₀ˣ exp(-t²/2η²) dt = √(π/2)·η·erf(x / (√2 η))
+    // η → ∞ is linear; small η saturates hard. Applied to the far end
+    // normalized to unit std so η is level-independent, then the output
+    // level is restored (the distortion changes the waveform, not the
+    // drive level). η is reported as its reciprocal "distortion" knob for
+    // readability (0 = linear).
+    // ------------------------------------------------------------------
+    inline std::vector<float> loudspeaker(const std::vector<float>& x, double eta) {
+        double e = 0.0;
+        for (float v : x) e += double(v) * v;
+        const double sigma = std::sqrt(e / std::max<size_t>(1, x.size()));
+        if (sigma <= 0.0 || eta >= 100.0) return x; // linear regime
+        std::vector<float> y(x.size());
+        const double       k = std::sqrt(M_PI / 2.0) * eta;
+        for (size_t i = 0; i < x.size(); ++i) {
+            const double u = static_cast<double>(x[i]) / sigma;
+            y[i]           = static_cast<float>(k * std::erf(u / (std::sqrt(2.0) * eta)));
+        }
+        double eo = 0.0;
+        for (float v : y) eo += double(v) * v;
+        const double sy = std::sqrt(eo / std::max<size_t>(1, y.size()));
+        const double ggain = sy > 0.0 ? sigma / sy : 0.0; // restore level
+        for (auto& v : y) v = static_cast<float>(v * ggain);
+        return y;
+    }
+
+    // Total harmonic distortion + noise (%) the SEF adds at a given η, on
+    // this signal — the human-readable label for a distortion level.
+    inline double loudspeaker_thd_pct(double fs, double eta) {
+        const auto tone = [&](size_t n) {
+            std::vector<float> s(n);
+            for (size_t i = 0; i < n; ++i) s[i] = 0.2f * std::sin(2.0 * M_PI * 997.0 * i / fs);
+            return s;
+        };
+        const auto x = tone(static_cast<size_t>(fs));
+        const auto y = loudspeaker(x, eta);
+        // residual after removing the best-fit linear component of the tone
+        double sxy = 0.0, sxx = 0.0, syy = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) { sxy += double(x[i]) * y[i]; sxx += double(x[i]) * x[i]; syy += double(y[i]) * y[i]; }
+        const double a = sxy / (sxx + 1e-30);
+        double resid = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) { const double d = y[i] - a * x[i]; resid += d * d; }
+        return 100.0 * std::sqrt(resid / (a * a * sxx + 1e-30));
+    }
+
     struct room {
         std::string name;
         double      delay_ms, rt60_ms, len_ms, coupling_db;
