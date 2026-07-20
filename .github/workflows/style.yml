@@ -3,7 +3,10 @@ name: Tap House Style
 # Enforces the shared Tap House Rules. clang-format is already checked in
 # ci.yml; this adds (1) a drift check against the canonical TapHouse configs
 # and (2) clang-tidy naming + mandatory-braces enforcement.
-on: [push, pull_request]
+on:
+  push:
+    branches-ignore: [claude/vdsp-derisk] # de-risk branch runs only vdsp-derisk.yml
+  pull_request:
 
 jobs:
   drift:

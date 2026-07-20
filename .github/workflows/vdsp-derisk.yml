@@ -1,0 +1,24 @@
+name: vDSP de-risk
+
+# One-shot measurement (NOT a gate): does Apple vDSP beat clang-autovectorized
+# Ooura for the float32 real FFT on the macos-latest (Apple Silicon) runner?
+# Lives only on the throwaway claude/vdsp-derisk branch; delete once the numbers
+# have driven the go/no-go on a vDSP FFT backend (docs/optimization.md).
+on:
+  push:
+    branches: [claude/vdsp-derisk]
+  workflow_dispatch:
+
+jobs:
+  vdsp:
+    name: vDSP vs Ooura (Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Runner arch
+        run: uname -m && sysctl -n machdep.cpu.brand_string || true
+      - name: Build and run the de-risk bench
+        run: |
+          clang++ -std=c++17 -O3 bench/vdsp_derisk.cpp third_party/ooura/fftsg_float.c \
+            -framework Accelerate -o vdsp_derisk
+          ./vdsp_derisk

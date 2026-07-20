@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches-ignore: [claude/vdsp-derisk] # de-risk branch runs only vdsp-derisk.yml
   pull_request:
 
 concurrency:
