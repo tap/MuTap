@@ -1,0 +1,60 @@
+{
+  "synthetic": true,
+  "model": "Run_1663915512_Stage_0.onnx",
+  "rows": [
+    {
+      "subject": "mutap",
+      "scenario": "st",
+      "echo_mos": 4.177084445953369,
+      "deg_mos": 4.999107360839844
+    },
+    {
+      "subject": "mutap",
+      "scenario": "nst",
+      "echo_mos": 4.99983549118042,
+      "deg_mos": 1.3191676139831543
+    },
+    {
+      "subject": "mutap",
+      "scenario": "dt",
+      "echo_mos": 4.705556869506836,
+      "deg_mos": 1.1863993406295776
+    },
+    {
+      "subject": "speex",
+      "scenario": "st",
+      "echo_mos": 3.9782352447509766,
+      "deg_mos": 4.999224662780762
+    },
+    {
+      "subject": "speex",
+      "scenario": "nst",
+      "echo_mos": 4.9999775886535645,
+      "deg_mos": 1.5991184711456299
+    },
+    {
+      "subject": "speex",
+      "scenario": "dt",
+      "echo_mos": 4.6307783126831055,
+      "deg_mos": 1.3000261783599854
+    },
+    {
+      "subject": "webrtc",
+      "scenario": "st",
+      "echo_mos": 4.719066619873047,
+      "deg_mos": 4.999244213104248
+    },
+    {
+      "subject": "webrtc",
+      "scenario": "nst",
+      "echo_mos": 4.9999847412109375,
+      "deg_mos": 1.590070128440857
+    },
+    {
+      "subject": "webrtc",
+      "scenario": "dt",
+      "echo_mos": 4.5862226486206055,
+      "deg_mos": 1.3341174125671387
+    }
+  ]
+}

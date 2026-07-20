@@ -27,6 +27,7 @@
 
 #include "backends/mutap_backend.h"
 #include "compare_driver.h"
+#include "wav.h"
 
 #if MUTAP_COMPARE_HAVE_SPEEX
 #include "backends/speex_backend.h"
@@ -196,6 +197,35 @@ int main(int argc, char** argv) {
 #if MUTAP_COMPARE_HAVE_WEBRTC
     register_webrtc_backend();
 #endif
+
+    // File mode: --wav <subject> <far.wav> <mic.wav> <out.wav>
+    // Runs one clip through one subject (built at the clip's rate) and
+    // writes the cleaned send, latency-aligned to the input. This is how
+    // an external corpus (the AEC-Challenge far/mic pairs) and an
+    // external metric (AECMOS) score our chain and the others uniformly —
+    // the "our algorithm through their tests" direction.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--wav") {
+            if (i + 4 >= argc) { std::fprintf(stderr, "usage: --wav <subject> <far.wav> <mic.wav> <out.wav>\n"); return 2; }
+            const std::string key = argv[i + 1];
+            const auto        far = wav_read(argv[i + 2]);
+            const auto        mic = wav_read(argv[i + 3]);
+            if (far.fs == 0 || mic.fs == 0 || far.fs != mic.fs) {
+                std::fprintf(stderr, "wav read failed or rate mismatch\n");
+                return 2;
+            }
+            const subject* s = nullptr;
+            for (auto& c : registry()) if (c.key == key) s = &c;
+            if (!s) { std::fprintf(stderr, "unknown subject: %s\n", key.c_str()); return 2; }
+            auto be = s->make(static_cast<double>(far.fs));
+            if (!be) { std::fprintf(stderr, "%s cannot run at %d Hz\n", key.c_str(), far.fs); return 2; }
+            const size_t n = std::min(far.samples.size(), mic.samples.size());
+            std::vector<float> f(far.samples.begin(), far.samples.begin() + n);
+            std::vector<float> m(mic.samples.begin(), mic.samples.begin() + n);
+            std::vector<float> e = run_stream(*be, f, m, static_cast<double>(far.fs));
+            return wav_write(argv[i + 4], e, far.fs) ? 0 : 2;
+        }
+    }
 
     bool                     json_only = false;
     std::vector<double>      rates     = {48000.0, 16000.0};
