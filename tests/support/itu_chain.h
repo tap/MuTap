@@ -4,7 +4,7 @@
 // ITU compliance suite (docs/itu-compliance.md). Every row-test builds on
 // this header so the whole suite measures ONE configuration:
 //
-//   mutap::aec_chain<double> — raw partitioned FD-Kalman canceller
+//   tap::mu::aec_chain<double> — raw partitioned FD-Kalman canceller
 //   (transition 0.9998, initial uncertainty 10; the measured AEC sweet
 //   spot, see test_postfilter.cpp) + residual suppressor at defaults.
 //
@@ -34,7 +34,7 @@
 
 namespace mutap_test::itu {
 
-    using compliance_chain = mutap::aec_chain<double>;
+    using compliance_chain = tap::mu::aec_chain<double>;
 
     // ------------------------------------------------------------ precision
     //
@@ -68,9 +68,9 @@ namespace mutap_test::itu {
     /// bit-identical); boundary-quantizes for float32.
     template <typename Sample>
     struct compliance_dut {
-        mutap::aec_chain<Sample> chain;
-        std::vector<Sample>      xb, yb, eb;
-        explicit compliance_dut(const typename mutap::aec_chain<Sample>::config& cfg, size_t block)
+        tap::mu::aec_chain<Sample> chain;
+        std::vector<Sample>        xb, yb, eb;
+        explicit compliance_dut(const typename tap::mu::aec_chain<Sample>::config& cfg, size_t block)
             : chain(cfg)
             , xb(std::is_same_v<Sample, double> ? size_t{0} : block)
             , yb(std::is_same_v<Sample, double> ? size_t{0} : block)
@@ -98,9 +98,9 @@ namespace mutap_test::itu {
     /// suppressor). Exposes the core so rows can read canceller state.
     template <typename Sample>
     struct raw_canceller_dut {
-        mutap::partitioned_fdkf<Sample> core;
-        std::vector<Sample>             xb, yb, eb;
-        explicit raw_canceller_dut(const typename mutap::partitioned_fdkf<Sample>::config& c)
+        tap::mu::partitioned_fdkf<Sample> core;
+        std::vector<Sample>               xb, yb, eb;
+        explicit raw_canceller_dut(const typename tap::mu::partitioned_fdkf<Sample>::config& c)
             : core(c)
             , xb(std::is_same_v<Sample, double> ? size_t{0} : c.block_size)
             , yb(std::is_same_v<Sample, double> ? size_t{0} : c.block_size)
@@ -150,7 +150,7 @@ namespace mutap_test::itu {
     }
 
     /// The pinned compliance configuration IS the library preset
-    /// (mutap::aec_chain_preset — Stage 5 moved the scaling rule there;
+    /// (tap::mu::aec_chain_preset — Stage 5 moved the scaling rule there;
     /// its header documents every constant and the two deliberate
     /// exceptions). The suite measures what the preset returns for
     /// block 256 at 48 and 16 kHz, so any preset change lands here as a
@@ -158,8 +158,8 @@ namespace mutap_test::itu {
     /// rationale (why transition is NOT rescaled, why floor_bias is
     /// calibrated per geometry) lives with the preset.
     template <typename Sample = double>
-    inline typename mutap::aec_chain<Sample>::config chain_config(const rate_setup& rs) {
-        return mutap::aec_chain_preset<Sample>(rs.block, rs.taps / rs.block, rs.fs);
+    inline typename tap::mu::aec_chain<Sample>::config chain_config(const rate_setup& rs) {
+        return tap::mu::aec_chain_preset<Sample>(rs.block, rs.taps / rs.block, rs.fs);
     }
 
     /// Per-rate expectation with a precision axis. The double column holds
@@ -310,10 +310,10 @@ namespace mutap_test::itu {
 
     /// Welch PSD in dB (Hann, 50% overlap, n power of two), bins 0..n/2.
     inline std::vector<double> welch_psd_db(const std::vector<double>& x, size_t n) {
-        mutap::basic_real_fft<double> fft(n);
-        std::vector<double>           psd(n / 2 + 1, 0.0);
-        std::vector<double>           buf(n);
-        std::vector<double>           win(n);
+        tap::mu::basic_real_fft<double> fft(n);
+        std::vector<double>             psd(n / 2 + 1, 0.0);
+        std::vector<double>             buf(n);
+        std::vector<double>             win(n);
         for (size_t i = 0; i < n; ++i) {
             win[i] = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(n - 1));
         }

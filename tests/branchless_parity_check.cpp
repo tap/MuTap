@@ -19,7 +19,7 @@
 #include "mutap/postfilter.h"
 
 int main() {
-    auto               chain = mutap::aec_chain<float>(mutap::aec_chain_preset<float>(256, 8, 48000.0));
+    auto               chain = tap::mu::aec_chain<float>(tap::mu::aec_chain_preset<float>(256, 8, 48000.0));
     constexpr int      B     = 256;
     std::vector<float> x(B), y(B), o(B);
 

@@ -15,7 +15,7 @@
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
 
-namespace mutap {
+namespace tap::mu {
 
     /// Partitioned-block frequency-domain Kalman filter (after Enzner & Vary
     /// 2006; Kuech, Mabande & Enzner 2014; PEM-wrapped for feedback
@@ -549,4 +549,4 @@ namespace mutap {
         bool                   m_adapt    = true;
     };
 
-} // namespace mutap
+} // namespace tap::mu

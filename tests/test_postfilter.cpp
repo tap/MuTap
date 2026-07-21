@@ -67,8 +67,8 @@ namespace {
 
     using namespace mutap_test;
 
-    using chain_kalman = mutap::aec_chain<double>;
-    using chain_nlms   = mutap::aec_chain<double, mutap::partitioned_fdaf<double>>;
+    using chain_kalman = tap::mu::aec_chain<double>;
+    using chain_nlms   = tap::mu::aec_chain<double, tap::mu::partitioned_fdaf<double>>;
 
     constexpr size_t k_block = 256;
     constexpr size_t k_taps  = 2048;
@@ -354,11 +354,11 @@ namespace {
 
         // Spectral match: Welch band levels, half-mask bounds.
         const auto band_levels = [&](const std::vector<double>& s) {
-            const size_t                  n = 8192;
-            mutap::basic_real_fft<double> fft(n);
-            std::vector<double>           psd(n / 2 + 1, 0.0);
-            std::vector<double>           buf(n);
-            std::vector<double>           win(n);
+            const size_t                    n = 8192;
+            tap::mu::basic_real_fft<double> fft(n);
+            std::vector<double>             psd(n / 2 + 1, 0.0);
+            std::vector<double>             buf(n);
+            std::vector<double>             win(n);
             for (size_t i = 0; i < n; ++i) {
                 win[i] =
                     0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(n - 1));
@@ -462,7 +462,7 @@ namespace {
     // The pem_afc 3-argument surface still composes (the closed-loop AFC
     // heritage path through aec_chain's echo_estimate_block() branch).
     TEST(ItuChain, PemAfcCancellerStillComposes) {
-        using chain_pem = mutap::aec_chain<double, mutap::pem_afc<double>>;
+        using chain_pem = tap::mu::aec_chain<double, tap::mu::pem_afc<double>>;
         chain_pem::config cfg;
         cfg.canceller.fdaf.block_size = k_block;
         cfg.canceller.fdaf.partitions = k_taps / k_block;
@@ -527,7 +527,7 @@ namespace {
     }
 
     TEST(PostFilterConfigValidation, RejectsBadConfigs) {
-        using pf = mutap::residual_suppressor<double>;
+        using pf = tap::mu::residual_suppressor<double>;
         pf::config good;
         EXPECT_NO_THROW(pf{good});
         {
@@ -586,8 +586,8 @@ namespace {
         itu::set_level_dbm0(x, -16.0);
 
         struct raw_kalman {
-            mutap::partitioned_fdkf<double> core;
-            explicit raw_kalman(const mutap::partitioned_fdkf<double>::config& c)
+            tap::mu::partitioned_fdkf<double> core;
+            explicit raw_kalman(const tap::mu::partitioned_fdkf<double>::config& c)
                 : core(c) {}
             void process_block(const double* xx, const double* yy, double* e) noexcept {
                 core.process_block(xx, yy, e);
@@ -596,7 +596,7 @@ namespace {
 
         // With the preset's prone-band knobs: the notch is closed.
         {
-            raw_kalman      b(mutap::aec_chain_preset<double>(128, 8, fs).canceller);
+            raw_kalman      b(tap::mu::aec_chain_preset<double>(128, 8, fs).canceller);
             auto            rr = itu::run_chain(b, path, 128, x);
             itu::erl_reader erl(rr.echo, rr.out, fs);
             EXPECT_GE(erl.by(0.6), 12.0); // measured 15.5
@@ -606,7 +606,7 @@ namespace {
         // documents the mechanism; if a future core change closes it
         // with the knobs off, celebrate and retire the gate).
         {
-            auto c                      = mutap::aec_chain_preset<double>(128, 8, fs).canceller;
+            auto c                      = tap::mu::aec_chain_preset<double>(128, 8, fs).canceller;
             c.novelty_smoothing         = 0.0;
             c.novelty_floor             = 0.0;
             c.initial_uncertainty_decay = 1.0;
@@ -620,21 +620,21 @@ namespace {
     // Preset knob policy: the counter-measures live strictly inside the
     // prone hop band — both certified geometries stay bit-identical.
     TEST(ItuChain, PresetNoveltyPolicy) {
-        const auto cert48 = mutap::aec_chain_preset<double>(256, 8, 48000.0).canceller;
+        const auto cert48 = tap::mu::aec_chain_preset<double>(256, 8, 48000.0).canceller;
         EXPECT_EQ(cert48.novelty_smoothing, 0.0);
         EXPECT_EQ(cert48.initial_uncertainty_decay, 1.0);
-        const auto cert16 = mutap::aec_chain_preset<double>(256, 4, 16000.0).canceller;
+        const auto cert16 = tap::mu::aec_chain_preset<double>(256, 4, 16000.0).canceller;
         EXPECT_EQ(cert16.novelty_smoothing, 0.0);
         EXPECT_EQ(cert16.initial_uncertainty_decay, 1.0);
 
-        const auto prone16 = mutap::aec_chain_preset<double>(128, 8, 16000.0).canceller;
+        const auto prone16 = tap::mu::aec_chain_preset<double>(128, 8, 16000.0).canceller;
         EXPECT_GT(prone16.novelty_smoothing, 0.0);
         EXPECT_LT(prone16.initial_uncertainty_decay, 1.0);
-        const auto prone32 = mutap::aec_chain_preset<double>(256, 8, 32000.0).canceller;
+        const auto prone32 = tap::mu::aec_chain_preset<double>(256, 8, 32000.0).canceller;
         EXPECT_GT(prone32.novelty_smoothing, 0.0);
 
         // knob validation
-        using fdkf = mutap::partitioned_fdkf<double>;
+        using fdkf = tap::mu::partitioned_fdkf<double>;
         fdkf::config good;
         {
             auto c              = good;
@@ -654,7 +654,7 @@ namespace {
     }
 
     TEST(PostFilterRtContract, ProcessingPathIsNoexcept) {
-        using pf = mutap::residual_suppressor<double>;
+        using pf = tap::mu::residual_suppressor<double>;
         static_assert(noexcept(std::declval<pf&>().process_block(nullptr, nullptr, nullptr)));
         static_assert(noexcept(std::declval<pf&>().reset()));
         static_assert(noexcept(std::declval<const pf&>().gain_at(0)));

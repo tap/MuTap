@@ -54,8 +54,8 @@ namespace {
         std::vector<double> r(3);
         std::vector<double> a(3);
         std::vector<double> scratch(3);
-        mutap::autocorrelation(x.data(), x.size(), r.data(), 2);
-        const size_t achieved = mutap::levinson(r.data(), size_t{2}, a.data(), scratch.data(), 1e-9);
+        tap::mu::autocorrelation(x.data(), x.size(), r.data(), 2);
+        const size_t achieved = tap::mu::levinson(r.data(), size_t{2}, a.data(), scratch.data(), 1e-9);
 
         EXPECT_EQ(achieved, 2u);
         EXPECT_NEAR(a[1], a1, 0.02);
@@ -67,8 +67,8 @@ namespace {
         std::vector<double> r(9);
         std::vector<double> a(9);
         std::vector<double> scratch(9);
-        mutap::autocorrelation(x.data(), x.size(), r.data(), 8);
-        mutap::levinson(r.data(), size_t{8}, a.data(), scratch.data(), 1e-9);
+        tap::mu::autocorrelation(x.data(), x.size(), r.data(), 8);
+        tap::mu::levinson(r.data(), size_t{8}, a.data(), scratch.data(), 1e-9);
         EXPECT_DOUBLE_EQ(a[0], 1.0);
         for (size_t j = 1; j <= 8; ++j) {
             EXPECT_LT(std::abs(a[j]), 0.05) << "coefficient " << j;
@@ -79,7 +79,7 @@ namespace {
         std::vector<double> r(9, 0.0);
         std::vector<double> a(9, 42.0);
         std::vector<double> scratch(9);
-        EXPECT_EQ(mutap::levinson(r.data(), size_t{8}, a.data(), scratch.data(), 1e-4), 0u);
+        EXPECT_EQ(tap::mu::levinson(r.data(), size_t{8}, a.data(), scratch.data(), 1e-4), 0u);
         EXPECT_DOUBLE_EQ(a[0], 1.0);
         for (size_t j = 1; j <= 8; ++j) {
             EXPECT_DOUBLE_EQ(a[j], 0.0);
@@ -91,7 +91,7 @@ namespace {
         r[0] = std::numeric_limits<double>::quiet_NaN();
         std::vector<double> a(5, 42.0);
         std::vector<double> scratch(5);
-        EXPECT_EQ(mutap::levinson(r.data(), size_t{4}, a.data(), scratch.data(), 1e-4), 0u);
+        EXPECT_EQ(tap::mu::levinson(r.data(), size_t{4}, a.data(), scratch.data(), 1e-4), 0u);
         EXPECT_DOUBLE_EQ(a[0], 1.0);
         EXPECT_DOUBLE_EQ(a[1], 0.0);
     }
@@ -103,8 +103,8 @@ namespace {
         std::vector<double> r(9);
         std::vector<double> a(9);
         std::vector<double> scratch(9);
-        mutap::autocorrelation(x.data(), x.size(), r.data(), 8);
-        mutap::levinson(r.data(), size_t{8}, a.data(), scratch.data(), 1e-4);
+        tap::mu::autocorrelation(x.data(), x.size(), r.data(), 8);
+        tap::mu::levinson(r.data(), size_t{8}, a.data(), scratch.data(), 1e-4);
         double dc_gain = 0.0;
         for (size_t j = 0; j <= 8; ++j) {
             ASSERT_TRUE(std::isfinite(a[j])) << "coefficient " << j;
@@ -125,8 +125,8 @@ namespace {
             std::vector<double> r(order + 1);
             std::vector<double> a(order + 1);
             std::vector<double> scratch(order + 1);
-            mutap::autocorrelation(x.data(), x.size(), r.data(), order);
-            mutap::levinson(r.data(), order, a.data(), scratch.data(), 1e-4);
+            tap::mu::autocorrelation(x.data(), x.size(), r.data(), order);
+            tap::mu::levinson(r.data(), order, a.data(), scratch.data(), 1e-4);
 
             std::vector<double> res(x.size(), 0.0);
             for (size_t i = order; i < x.size(); ++i) {
@@ -154,8 +154,8 @@ namespace {
             std::vector<double> r(9);
             std::vector<double> a(9);
             std::vector<double> scratch(9);
-            mutap::autocorrelation(x.data(), x.size(), r.data(), 8);
-            mutap::levinson(r.data(), size_t{8}, a.data(), scratch.data(), ridge);
+            tap::mu::autocorrelation(x.data(), x.size(), r.data(), 8);
+            tap::mu::levinson(r.data(), size_t{8}, a.data(), scratch.data(), ridge);
             std::vector<double> res(x.size(), 0.0);
             for (size_t i = 8; i < x.size(); ++i) {
                 double acc = 0.0;
@@ -177,7 +177,7 @@ namespace {
         for (size_t i = 1; i < x.size(); ++i) {
             x[i] += 0.8 * x[i - 1]; // color it so coefficients are nontrivial
         }
-        mutap::lpc_predictor<double> lp({16, 1e-4});
+        tap::mu::lpc_predictor<double> lp({16, 1e-4});
         lp.analyze(x.data(), x.size());
 
         auto                one_state = lp.make_state();
@@ -197,8 +197,8 @@ namespace {
     }
 
     TEST(LpcPredictor, ResetStateClearsHistory) {
-        auto                         x = white_noise<double>(256, 6);
-        mutap::lpc_predictor<double> lp({8, 1e-4});
+        auto                           x = white_noise<double>(256, 6);
+        tap::mu::lpc_predictor<double> lp({8, 1e-4});
         lp.analyze(x.data(), x.size());
 
         auto                s = lp.make_state();
@@ -217,15 +217,15 @@ namespace {
     }
 
     TEST(SpeechPredictor, FindsPitchOnVoicedMaterial) {
-        const auto                      v = mutap_test::voiced_near_end<double>(4096, 7, 160);
-        mutap::speech_predictor<double> sp({});
+        const auto                        v = mutap_test::voiced_near_end<double>(4096, 7, 160);
+        tap::mu::speech_predictor<double> sp({});
         sp.analyze(&v[2048], 1024);
         EXPECT_EQ(sp.pitch_lag(), 160u);
         EXPECT_NEAR(static_cast<double>(sp.pitch_gain()), 0.9, 1e-6); // clamped at max_gain
     }
 
     TEST(SpeechPredictor, PitchStaysOffOnUnvoicedMaterial) {
-        mutap::speech_predictor<double> sp({});
+        tap::mu::speech_predictor<double> sp({});
 
         const auto t = mutap_test::tonal_near_end<double>(4096, 7);
         sp.analyze(&t[2048], 1024); // short-term LP whitens tones; residual is noise
@@ -242,13 +242,13 @@ namespace {
     TEST(SpeechPredictor, CascadeBeatsShortTermAloneOnVoiced) {
         const auto v = mutap_test::voiced_near_end<double>(4096, 7, 160);
 
-        mutap::speech_predictor<double> sp({});
+        tap::mu::speech_predictor<double> sp({});
         sp.analyze(&v[2048], 1024);
         auto                sp_state = sp.make_state();
         std::vector<double> cascade(1024);
         sp.apply(sp_state, &v[3072], cascade.data(), 1024);
 
-        mutap::lpc_predictor<double> lp({16, 1e-4});
+        tap::mu::lpc_predictor<double> lp({16, 1e-4});
         lp.analyze(&v[2048], 1024);
         auto                lp_state = lp.make_state();
         std::vector<double> short_term(1024);
@@ -262,8 +262,8 @@ namespace {
     }
 
     TEST(SpeechPredictor, BlockwiseApplyMatchesOneShot) {
-        const auto                      v = mutap_test::voiced_near_end<double>(2048, 9, 160);
-        mutap::speech_predictor<double> sp({});
+        const auto                        v = mutap_test::voiced_near_end<double>(2048, 9, 160);
+        tap::mu::speech_predictor<double> sp({});
         sp.analyze(v.data(), 1024);
 
         auto                one_state = sp.make_state();
@@ -293,13 +293,13 @@ namespace {
     TEST(WarpedLpcPredictor, LambdaZeroMatchesPlain) {
         const auto v = mutap_test::music_near_end<double>(4096, 7);
 
-        mutap::lpc_predictor<double> plain({16, 1e-4});
+        tap::mu::lpc_predictor<double> plain({16, 1e-4});
         plain.analyze(&v[2048], 1024);
 
-        mutap::warped_lpc_predictor<double>::config wc;
+        tap::mu::warped_lpc_predictor<double>::config wc;
         wc.order  = 16;
         wc.lambda = 0.0;
-        mutap::warped_lpc_predictor<double> warped(wc);
+        tap::mu::warped_lpc_predictor<double> warped(wc);
         warped.analyze(&v[2048], 1024);
 
         for (size_t j = 0; j <= 16; ++j) {
@@ -318,8 +318,8 @@ namespace {
     }
 
     TEST(WarpedLpcPredictor, BlockwiseApplyMatchesOneShot) {
-        const auto                          v = mutap_test::music_near_end<double>(2048, 9);
-        mutap::warped_lpc_predictor<double> wp({});
+        const auto                            v = mutap_test::music_near_end<double>(2048, 9);
+        tap::mu::warped_lpc_predictor<double> wp({});
         wp.analyze(v.data(), 1024);
 
         auto                one_state = wp.make_state();
@@ -339,8 +339,8 @@ namespace {
     }
 
     TEST(WarpedLpcPredictor, ResetStateClearsHistory) {
-        const auto                          v = mutap_test::music_near_end<double>(1024, 6);
-        mutap::warped_lpc_predictor<double> wp({});
+        const auto                            v = mutap_test::music_near_end<double>(1024, 6);
+        tap::mu::warped_lpc_predictor<double> wp({});
         wp.analyze(v.data(), v.size());
 
         auto                s = wp.make_state();
@@ -362,7 +362,7 @@ namespace {
     // frames must yield the identity filter, and applying the identity must
     // pass the signal through untouched (the allpass taps all weigh zero).
     TEST(WarpedLpcPredictor, DegenerateFramesGiveIdentity) {
-        mutap::warped_lpc_predictor<double> wp({});
+        tap::mu::warped_lpc_predictor<double> wp({});
 
         std::vector<double> silence(1024, 0.0);
         wp.analyze(silence.data(), silence.size());
@@ -395,8 +395,8 @@ namespace {
         const auto         vd = mutap_test::music_near_end<double>(4096, 7);
         std::vector<float> vf(vd.begin(), vd.end());
 
-        mutap::warped_lpc_predictor<double> wd({});
-        mutap::warped_lpc_predictor<float>  wf({});
+        tap::mu::warped_lpc_predictor<double> wd({});
+        tap::mu::warped_lpc_predictor<float>  wf({});
         wd.analyze(&vd[2048], 1024);
         wf.analyze(&vf[2048], 1024);
         for (size_t j = 0; j <= wd.order(); ++j) {
@@ -405,11 +405,11 @@ namespace {
     }
 
     TEST(PredictorConfigValidation, RejectsBadConfigs) {
-        using lpc = mutap::lpc_predictor<float>;
+        using lpc = tap::mu::lpc_predictor<float>;
         EXPECT_THROW(lpc({0, 1e-4F}), std::invalid_argument);
         EXPECT_THROW(lpc({8, 0.0F}), std::invalid_argument);
 
-        using speech = mutap::speech_predictor<float>;
+        using speech = tap::mu::speech_predictor<float>;
         speech::config c;
         c.min_lag = 0;
         EXPECT_THROW(speech{c}, std::invalid_argument);
@@ -423,7 +423,7 @@ namespace {
         c.max_gain = 1.0F;
         EXPECT_THROW(speech{c}, std::invalid_argument);
 
-        using warped = mutap::warped_lpc_predictor<float>;
+        using warped = tap::mu::warped_lpc_predictor<float>;
         warped::config w;
         w.order = 0;
         EXPECT_THROW(warped{w}, std::invalid_argument);

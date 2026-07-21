@@ -15,7 +15,7 @@
 #include "mutap/fft.h"
 #include "mutap/lpc.h"
 
-namespace mutap {
+namespace tap::mu {
 
     /// Acoustic feedback canceller with PEM decorrelation (the FDAF-PEM-AFROW
     /// structure; Gil-Cacho et al. 2014, Rombouts et al. 2007).
@@ -44,7 +44,7 @@ namespace mutap {
     /// The adaptive core is pluggable too: any type with partitioned_fdaf's
     /// interface surface (config with block_size/partitions, process_block,
     /// partition_spectrum, ...). Default is the NLMS core; pass
-    /// mutap::partitioned_fdkf<Sample> for the frequency-domain Kalman
+    /// tap::mu::partitioned_fdkf<Sample> for the frequency-domain Kalman
     /// update (fd_kalman.h) — the FDAF-PEM-AFROW structure is identical,
     /// only the update rule changes. The config field keeps the name `fdaf`
     /// across cores.
@@ -213,4 +213,4 @@ namespace mutap {
         size_t                    m_head = 0;
     };
 
-} // namespace mutap
+} // namespace tap::mu

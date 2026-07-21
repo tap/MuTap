@@ -59,10 +59,10 @@ namespace {
     /// boundary (input quantization to float32 is benign next to
     /// internal state precision).
     struct f32_chain {
-        mutap::aec_chain<float> chain;
-        std::vector<float>      xb, yb, eb;
+        tap::mu::aec_chain<float> chain;
+        std::vector<float>        xb, yb, eb;
         explicit f32_chain(const rate_setup& rs)
-            : chain(mutap::aec_chain_preset<float>(rs.block, rs.taps / rs.block, rs.fs))
+            : chain(tap::mu::aec_chain_preset<float>(rs.block, rs.taps / rs.block, rs.fs))
             , xb(rs.block)
             , yb(rs.block)
             , eb(rs.block) {}
@@ -187,12 +187,12 @@ namespace {
     // Preset policy: the guard is a float32 deployment decision — the
     // certified double preset stays guard-off (bit-identical battery).
     TEST(Float32Parity, NarrowbandGuardPolicy) {
-        const auto f = mutap::aec_chain_preset<float>(256, 4, 16000.0).canceller;
+        const auto f = tap::mu::aec_chain_preset<float>(256, 4, 16000.0).canceller;
         EXPECT_GT(f.narrowband_guard, 0.0F);
         EXPECT_GE(f.narrowband_hold_blocks, size_t{8});
-        const auto d48 = mutap::aec_chain_preset<double>(256, 8, 48000.0).canceller;
+        const auto d48 = tap::mu::aec_chain_preset<double>(256, 8, 48000.0).canceller;
         EXPECT_EQ(d48.narrowband_guard, 0.0);
-        const auto d16 = mutap::aec_chain_preset<double>(256, 4, 16000.0).canceller;
+        const auto d16 = tap::mu::aec_chain_preset<double>(256, 4, 16000.0).canceller;
         EXPECT_EQ(d16.narrowband_guard, 0.0);
 
         // The guard engages on a sustained tone and reports it.
@@ -206,9 +206,9 @@ namespace {
             }
             set_level_dbm0(x, -16.0);
             struct raw_f32 {
-                mutap::partitioned_fdkf<float> core;
-                std::vector<float>             xb, yb, eb;
-                explicit raw_f32(const mutap::partitioned_fdkf<float>::config& c)
+                tap::mu::partitioned_fdkf<float> core;
+                std::vector<float>               xb, yb, eb;
+                explicit raw_f32(const tap::mu::partitioned_fdkf<float>::config& c)
                     : core(c)
                     , xb(c.block_size)
                     , yb(c.block_size)
@@ -224,14 +224,14 @@ namespace {
                     }
                 }
             };
-            raw_f32 b(mutap::aec_chain_preset<float>(rs.block, rs.taps / rs.block, rs.fs).canceller);
+            raw_f32 b(tap::mu::aec_chain_preset<float>(rs.block, rs.taps / rs.block, rs.fs).canceller);
             EXPECT_FALSE(b.core.narrowband_frozen());
             (void)run_chain(b, path, rs.block, x);
             EXPECT_TRUE(b.core.narrowband_frozen());
         }
 
         // knob validation
-        using fdkf = mutap::partitioned_fdkf<float>;
+        using fdkf = tap::mu::partitioned_fdkf<float>;
         fdkf::config good;
         {
             auto c             = good;

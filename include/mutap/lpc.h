@@ -38,7 +38,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace mutap {
+namespace tap::mu {
 
     /// r[k] = sum_n x[n] x[n-k] for k = 0..max_lag (biased estimate; the
     /// common scale cancels inside Levinson-Durbin).
@@ -452,4 +452,4 @@ namespace mutap {
         Sample                m_beta = Sample(0);
     };
 
-} // namespace mutap
+} // namespace tap::mu

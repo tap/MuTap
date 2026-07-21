@@ -117,7 +117,7 @@ namespace {
     // canceller holds the same large broadband gains the synthetic rooms
     // showed (measured +17.8..+19.1 dB across the three rooms).
     TEST(RirFixtures, KalmanPemAddsStableGainOnModeledRooms) {
-        using pem = mutap::pem_afc<double, mutap::speech_predictor<double>, mutap::partitioned_fdkf<double>>;
+        using pem = tap::mu::pem_afc<double, tap::mu::speech_predictor<double>, tap::mu::partitioned_fdkf<double>>;
         for (const auto& r : k_rooms) {
             EXPECT_GT(converge_and_measure_asg<pem>(truncated_path(r)), 10.0) << r.name << " (measured >= +17.8 dB)";
         }
@@ -127,7 +127,7 @@ namespace {
     // +9.4 dB) — the gap between these two tests is the v2 story told on
     // realistic acoustics.
     TEST(RirFixtures, NlmsPemAddsStableGainOnStudio) {
-        EXPECT_GT(converge_and_measure_asg<mutap::pem_afc<double>>(truncated_path(k_rooms[0])), 4.0)
+        EXPECT_GT(converge_and_measure_asg<tap::mu::pem_afc<double>>(truncated_path(k_rooms[0])), 4.0)
             << "measured +9.4 dB";
     }
 

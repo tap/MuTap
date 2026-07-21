@@ -13,7 +13,7 @@
 
 #include "mutap/fft.h"
 
-namespace mutap {
+namespace tap::mu {
 
     namespace detail {
         /// Packed-spectrum multiply-accumulate: y += a * b, in the Ooura real-FFT
@@ -448,4 +448,4 @@ namespace mutap {
         Sample                 m_ee_weight = Sample(0); ///< 1 - a^n debiasing weight for m_s_ee
     };
 
-} // namespace mutap
+} // namespace tap::mu

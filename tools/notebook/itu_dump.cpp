@@ -108,7 +108,7 @@ namespace {
     // truth; keep any change here in lockstep.
 
     struct raw_kalman {
-        mutap::partitioned_fdkf<double> core;
+        tap::mu::partitioned_fdkf<double> core;
         explicit raw_kalman(const compliance_chain::config& c)
             : core(c.canceller) {}
         void process_block(const double* x, const double* y, double* e) noexcept { core.process_block(x, y, e); }

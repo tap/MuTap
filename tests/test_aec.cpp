@@ -103,11 +103,11 @@ namespace {
         return out;
     }
 
-    using naive_t  = mutap::partitioned_fdaf<double>;
-    using pem_t    = mutap::pem_afc<double>;
-    using kalman_t = mutap::pem_afc<double, mutap::speech_predictor<double>, mutap::partitioned_fdkf<double>>;
+    using naive_t  = tap::mu::partitioned_fdaf<double>;
+    using pem_t    = tap::mu::pem_afc<double>;
+    using kalman_t = tap::mu::pem_afc<double, tap::mu::speech_predictor<double>, tap::mu::partitioned_fdkf<double>>;
     using warped_kalman_t =
-        mutap::pem_afc<double, mutap::warped_lpc_predictor<double>, mutap::partitioned_fdkf<double>>;
+        tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>, tap::mu::partitioned_fdkf<double>>;
 
     template <typename Core>
     typename Core::config core_config() {
@@ -193,7 +193,7 @@ namespace {
         scfg.block_size = k_block;
         echo_sim<TypeParam> sim(scfg);
 
-        auto       afc = make_pem<mutap::pem_afc<TypeParam>>();
+        auto       afc = make_pem<tap::mu::pem_afc<TypeParam>>();
         const auto x   = mutap_test::white_near_end<TypeParam>(1500 * k_block, 2);
         const auto r   = run_aec(sim, x, nullptr, &afc, 1100);
 
@@ -210,7 +210,8 @@ namespace {
         scfg.block_size = k_block;
         echo_sim<TypeParam> sim(scfg);
 
-        using afc_t = mutap::pem_afc<TypeParam, mutap::speech_predictor<TypeParam>, mutap::partitioned_fdkf<TypeParam>>;
+        using afc_t =
+            tap::mu::pem_afc<TypeParam, tap::mu::speech_predictor<TypeParam>, tap::mu::partitioned_fdkf<TypeParam>>;
         auto       afc = make_pem<afc_t>();
         const auto x   = mutap_test::white_near_end<TypeParam>(1500 * k_block, 2);
         const auto r   = run_aec(sim, x, nullptr, &afc, 1100);

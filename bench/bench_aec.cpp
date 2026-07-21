@@ -69,8 +69,8 @@ namespace {
     };
 
     template <typename S>
-    typename mutap::aec_chain<S>::config preset_of(const geometry& g) {
-        return mutap::aec_chain_preset<S>(g.block, g.partitions, g.fs);
+    typename tap::mu::aec_chain<S>::config preset_of(const geometry& g) {
+        return tap::mu::aec_chain_preset<S>(g.block, g.partitions, g.fs);
     }
 
     template <typename Proc, typename S>
@@ -82,9 +82,9 @@ namespace {
 
     template <typename S>
     void bench_fdkf(benchmark::State& state, geometry g) {
-        mutap::partitioned_fdkf<S> core(preset_of<S>(g).canceller);
-        corpus<S>                  c(g);
-        std::vector<S>             e(g.block);
+        tap::mu::partitioned_fdkf<S> core(preset_of<S>(g).canceller);
+        corpus<S>                    c(g);
+        std::vector<S>               e(g.block);
         warm(core, c, e);
         size_t i = 2000;
         for (auto _ : state) {
@@ -99,9 +99,9 @@ namespace {
     void bench_suppressor(benchmark::State& state, geometry g) {
         auto pf       = preset_of<S>(g).postfilter;
         pf.block_size = g.block;
-        mutap::residual_suppressor<S> sup(pf);
-        corpus<S>                     c(g);
-        std::vector<S>                e(g.block);
+        tap::mu::residual_suppressor<S> sup(pf);
+        corpus<S>                       c(g);
+        std::vector<S>                  e(g.block);
         // mid = the corpus mic, yhat = the corpus echo estimate stand-in
         for (size_t i = 0; i < 2000; ++i) {
             sup.process_block(c.yb(i), c.xb(i), e.data());
@@ -121,9 +121,9 @@ namespace {
         auto sc       = cfg.canceller;
         sc.partitions = cfg.shadow_partitions;
         sc.transition = cfg.shadow_transition;
-        mutap::partitioned_fdkf<S> shadow(sc);
-        corpus<S>                  c(g);
-        std::vector<S>             e(g.block);
+        tap::mu::partitioned_fdkf<S> shadow(sc);
+        corpus<S>                    c(g);
+        std::vector<S>               e(g.block);
         warm(shadow, c, e);
         size_t i = 2000;
         for (auto _ : state) {
@@ -136,9 +136,9 @@ namespace {
 
     template <typename S>
     void bench_chain(benchmark::State& state, geometry g) {
-        mutap::aec_chain<S> chain(preset_of<S>(g));
-        corpus<S>           c(g);
-        std::vector<S>      e(g.block);
+        tap::mu::aec_chain<S> chain(preset_of<S>(g));
+        corpus<S>             c(g);
+        std::vector<S>        e(g.block);
         warm(chain, c, e);
         size_t i = 2000;
         for (auto _ : state) {

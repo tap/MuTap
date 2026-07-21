@@ -334,7 +334,7 @@ code(r'''STAGES = [(MSG - 6, 1000), (MSG, 1000), (MSG + 6, 1000)]
 BLOCKS_ID = sum(nb for _, nb in STAGES)
 v = tonal(BLOCKS_ID * BLOCK, seed=2)
 results = {}
-for name, factory, col in (("PEM (mutap::pem_afc)", pem, C_PEM),
+for name, factory, col in (("PEM (tap::mu::pem_afc)", pem, C_PEM),
                            ("naive FDAF", lambda: naive(rel_reg=0.0), C_NAIVE)):
     c = factory()
     loop = ClosedLoop(F, STAGES[0][0])
@@ -424,7 +424,7 @@ too finely spaced for a moderate-order plain LP, whose resolution is spent
 uniformly over frequency (its poles crowd $z=1$, exactly where the
 ridge-guarded analysis is stiffest).
 
-`mutap::warped_lpc_predictor` replaces every unit delay in the predictor
+`tap::mu::warped_lpc_predictor` replaces every unit delay in the predictor
 with a first-order allpass, warping the frequency axis so the same order
 concentrates its resolution in the bass ($\lambda = 0.766$ approximates
 the Bark scale at 48 kHz; the room-robust default is $\lambda = 0.5$,
@@ -781,9 +781,9 @@ md("""## Where this goes next
   [`tests/`](../tests): the closed-loop harness, the M2 naive-bias baseline,
   the M3 PEM pass criteria, and the M4 adaptation-control behavior.
 - The Kalman core is selectable wherever the NLMS core is:
-  `mutap::pem_afc<Sample, Predictor, mutap::partitioned_fdkf<Sample>>`.
+  `tap::mu::pem_afc<Sample, Predictor, tap::mu::partitioned_fdkf<Sample>>`.
 - The Max/MSP externals (in [MuTap-Max](https://github.com/tap/MuTap-Max))
-  wrap `mutap::pem_afc` exactly as driven here: `mutap.afc~` closes the
+  wrap `tap::mu::pem_afc` exactly as driven here: `mutap.afc~` closes the
   feedback loop of sections 1-7, `mutap.aec~` is the open-loop echo
   canceller of section 8. `@warp` selects the frequency-warped near-end
   model demonstrated above (and, on the classic engine, enables the IPC

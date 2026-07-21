@@ -84,7 +84,7 @@ namespace {
 
     // Drive an identification run: desired = truth * input, block by block.
     template <typename Sample>
-    id_result run_identification(mutap::partitioned_fdaf<Sample>& fdaf, const std::vector<Sample>& input,
+    id_result run_identification(tap::mu::partitioned_fdaf<Sample>& fdaf, const std::vector<Sample>& input,
                                  const std::vector<Sample>& truth) {
         const size_t b       = fdaf.block_size();
         const size_t blocks  = input.size() / b;
@@ -124,10 +124,10 @@ namespace {
     // Noiseless white-noise identification: misalignment must fall fast and
     // deep — this is the best-conditioned case the FDAF ever sees.
     TYPED_TEST(fdaf_test, WhiteNoiseIdentificationConverges) {
-        typename mutap::partitioned_fdaf<TypeParam>::config cfg;
+        typename tap::mu::partitioned_fdaf<TypeParam>::config cfg;
         cfg.block_size = 64;
         cfg.partitions = 4;
-        mutap::partitioned_fdaf<TypeParam> fdaf(cfg);
+        tap::mu::partitioned_fdaf<TypeParam> fdaf(cfg);
 
         const auto truth  = random_decaying_fir<TypeParam>(fdaf.filter_length(), 11);
         const auto input  = white_noise<TypeParam>(400 * fdaf.block_size(), 22);
@@ -141,10 +141,10 @@ namespace {
     // Colored input (deep one-pole lowpass): per-bin normalization is what
     // keeps the frequency-domain NLMS converging here.
     TYPED_TEST(fdaf_test, ColoredNoiseIdentificationConverges) {
-        typename mutap::partitioned_fdaf<TypeParam>::config cfg;
+        typename tap::mu::partitioned_fdaf<TypeParam>::config cfg;
         cfg.block_size = 64;
         cfg.partitions = 4;
-        mutap::partitioned_fdaf<TypeParam> fdaf(cfg);
+        tap::mu::partitioned_fdaf<TypeParam> fdaf(cfg);
 
         auto input = white_noise<TypeParam>(1200 * fdaf.block_size(), 33);
         for (size_t i = 1; i < input.size(); ++i) {
@@ -159,10 +159,10 @@ namespace {
     // A pure delay-and-scale path: the recovered impulse response must have
     // the tap where the delay is and (near) nothing anywhere else.
     TYPED_TEST(fdaf_test, DelayedImpulsePathIsRecovered) {
-        typename mutap::partitioned_fdaf<TypeParam>::config cfg;
+        typename tap::mu::partitioned_fdaf<TypeParam>::config cfg;
         cfg.block_size = 64;
         cfg.partitions = 4;
-        mutap::partitioned_fdaf<TypeParam> fdaf(cfg);
+        tap::mu::partitioned_fdaf<TypeParam> fdaf(cfg);
 
         std::vector<TypeParam> truth(fdaf.filter_length(), TypeParam(0));
         truth[100]       = TypeParam(0.8);
@@ -187,11 +187,11 @@ namespace {
     // 400 blocks where the constrained variant is below -100 dB; it does keep
     // improving with more data (~-34 dB at 3000 blocks). It must converge.
     TYPED_TEST(fdaf_test, UnconstrainedVariantConverges) {
-        typename mutap::partitioned_fdaf<TypeParam>::config cfg;
+        typename tap::mu::partitioned_fdaf<TypeParam>::config cfg;
         cfg.block_size  = 64;
         cfg.partitions  = 4;
         cfg.constrained = false;
-        mutap::partitioned_fdaf<TypeParam> fdaf(cfg);
+        tap::mu::partitioned_fdaf<TypeParam> fdaf(cfg);
 
         const auto truth  = random_decaying_fir<TypeParam>(fdaf.filter_length(), 66);
         const auto input  = white_noise<TypeParam>(400 * fdaf.block_size(), 77);
@@ -202,10 +202,10 @@ namespace {
     }
 
     TYPED_TEST(fdaf_test, FrozenFilterDoesNotAdapt) {
-        typename mutap::partitioned_fdaf<TypeParam>::config cfg;
+        typename tap::mu::partitioned_fdaf<TypeParam>::config cfg;
         cfg.block_size = 64;
         cfg.partitions = 2;
-        mutap::partitioned_fdaf<TypeParam> fdaf(cfg);
+        tap::mu::partitioned_fdaf<TypeParam> fdaf(cfg);
 
         const auto truth = random_decaying_fir<TypeParam>(fdaf.filter_length(), 88);
         const auto input = white_noise<TypeParam>(60 * fdaf.block_size(), 99);
@@ -230,10 +230,10 @@ namespace {
     }
 
     TYPED_TEST(fdaf_test, ResetRestoresInitialState) {
-        typename mutap::partitioned_fdaf<TypeParam>::config cfg;
+        typename tap::mu::partitioned_fdaf<TypeParam>::config cfg;
         cfg.block_size = 64;
         cfg.partitions = 2;
-        mutap::partitioned_fdaf<TypeParam> fdaf(cfg);
+        tap::mu::partitioned_fdaf<TypeParam> fdaf(cfg);
 
         const auto truth = random_decaying_fir<TypeParam>(fdaf.filter_length(), 13);
         const auto input = white_noise<TypeParam>(40 * fdaf.block_size(), 14);
@@ -251,15 +251,15 @@ namespace {
     // adaptive blocks — the whole one-core/three-targets strategy rests on
     // these two staying this close.
     TEST(FdafCrossPrecision, FloatTracksDouble) {
-        mutap::partitioned_fdaf<double>::config cfg64;
+        tap::mu::partitioned_fdaf<double>::config cfg64;
         cfg64.block_size = 64;
         cfg64.partitions = 4;
-        mutap::partitioned_fdaf<float>::config cfg32;
+        tap::mu::partitioned_fdaf<float>::config cfg32;
         cfg32.block_size = 64;
         cfg32.partitions = 4;
 
-        mutap::partitioned_fdaf<double> fdaf64(cfg64);
-        mutap::partitioned_fdaf<float>  fdaf32(cfg32);
+        tap::mu::partitioned_fdaf<double> fdaf64(cfg64);
+        tap::mu::partitioned_fdaf<float>  fdaf32(cfg32);
 
         const auto         truth64 = random_decaying_fir<double>(fdaf64.filter_length(), 17);
         const auto         input64 = white_noise<double>(300 * fdaf64.block_size(), 18);
@@ -295,7 +295,7 @@ namespace {
     }
 
     TEST(FdafConfigValidation, RejectsBadConfigs) {
-        using fdaf = mutap::partitioned_fdaf<float>;
+        using fdaf = tap::mu::partitioned_fdaf<float>;
 
         fdaf::config cfg;
         cfg.block_size = 100; // not a power of 2
@@ -325,7 +325,7 @@ namespace {
     // The real-time contract is part of the API: everything after
     // construction is noexcept.
     TEST(FdafRtContract, PostConstructionEntryPointsAreNoexcept) {
-        using fdaf = mutap::partitioned_fdaf<float>;
+        using fdaf = tap::mu::partitioned_fdaf<float>;
         static_assert(noexcept(std::declval<fdaf&>().process_block(nullptr, nullptr, nullptr, nullptr)));
         static_assert(noexcept(std::declval<fdaf&>().copy_impulse_response(nullptr)));
         static_assert(noexcept(std::declval<fdaf&>().reset()));

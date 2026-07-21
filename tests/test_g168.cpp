@@ -105,7 +105,7 @@ namespace {
     }
 
     template <typename TypeParam = double>
-    typename mutap::aec_chain<TypeParam>::config nlp_on_cfg(const rate_setup& rs) {
+    typename tap::mu::aec_chain<TypeParam>::config nlp_on_cfg(const rate_setup& rs) {
         auto cfg                     = chain_config<TypeParam>(rs);
         cfg.postfilter.comfort_noise = false; // Figure 9's instruction
         return cfg;

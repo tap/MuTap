@@ -87,10 +87,10 @@ namespace {
     TEST(AdaptationControl, IpcTracksEchoVsDoubleTalk) {
         const auto path = random_decaying_rir<double>(k_taps, 5);
 
-        mutap::partitioned_fdaf<double>::config cfg;
+        tap::mu::partitioned_fdaf<double>::config cfg;
         cfg.block_size = k_block;
         cfg.partitions = k_taps / k_block;
-        mutap::partitioned_fdaf<double> fdaf(cfg);
+        tap::mu::partitioned_fdaf<double> fdaf(cfg);
 
         const auto          u = mutap_test::white_near_end<double>(480 * k_block, 1);
         const auto          d = echo_of(u, path);
@@ -148,12 +148,12 @@ namespace {
         double ipc_naive = 0.0;
         int    n         = 0;
         {
-            mutap::partitioned_fdaf<double>::config fc;
+            tap::mu::partitioned_fdaf<double>::config fc;
             fc.block_size              = k_block;
             fc.partitions              = k_taps / k_block;
             fc.relative_regularization = 0.0; // M1-era naive, as in the M2 baseline
-            mutap::partitioned_fdaf<double> naive(fc);
-            closed_loop_sim<double>         sim(lc);
+            tap::mu::partitioned_fdaf<double> naive(fc);
+            closed_loop_sim<double>           sim(lc);
             for (size_t blk = 0; blk < 600; ++blk) {
                 sim.step(&v[blk * k_block], &naive);
                 if (blk >= 100) {
@@ -167,11 +167,11 @@ namespace {
         double ipc_pem = 0.0;
         n              = 0;
         {
-            mutap::pem_afc<double>::config pc;
+            tap::mu::pem_afc<double>::config pc;
             pc.fdaf.block_size = k_block;
             pc.fdaf.partitions = k_taps / k_block;
-            mutap::pem_afc<double>  pem(pc);
-            closed_loop_sim<double> sim(lc);
+            tap::mu::pem_afc<double> pem(pc);
+            closed_loop_sim<double>  sim(lc);
             for (size_t blk = 0; blk < 600; ++blk) {
                 sim.step(&v[blk * k_block], &pem);
                 if (blk >= 100) {
@@ -208,16 +208,16 @@ namespace {
         lc.forward_gain_db = open_msg - 6.0;
 
         auto run = [&](bool gated) {
-            typename mutap::pem_afc<TypeParam>::config pc;
+            typename tap::mu::pem_afc<TypeParam>::config pc;
             pc.fdaf.block_size = k_block;
             pc.fdaf.partitions = k_taps / k_block;
             if (gated) {
                 pc.fdaf.ipc_step_scaling       = true;
                 pc.fdaf.transient_freeze_ratio = TypeParam(4);
             }
-            mutap::pem_afc<TypeParam>  pem(pc);
-            closed_loop_sim<TypeParam> sim(lc);
-            const auto                 v = mutap_test::tonal_near_end<TypeParam>(1700 * k_block, 2);
+            tap::mu::pem_afc<TypeParam> pem(pc);
+            closed_loop_sim<TypeParam>  sim(lc);
+            const auto                  v = mutap_test::tonal_near_end<TypeParam>(1700 * k_block, 2);
 
             double                 worst_rms = 0.0;
             double                 before    = 0.0;
@@ -257,11 +257,11 @@ namespace {
     TEST(AdaptationControl, TransientGateHoldsSpikedBlocks) {
         const auto path = random_decaying_rir<double>(k_taps, 5);
 
-        mutap::partitioned_fdaf<double>::config cfg;
+        tap::mu::partitioned_fdaf<double>::config cfg;
         cfg.block_size             = k_block;
         cfg.partitions             = k_taps / k_block;
         cfg.transient_freeze_ratio = 4.0;
-        mutap::partitioned_fdaf<double> fdaf(cfg);
+        tap::mu::partitioned_fdaf<double> fdaf(cfg);
 
         const auto          u = mutap_test::white_near_end<double>(120 * k_block, 1);
         const auto          d = echo_of(u, path);
@@ -300,11 +300,11 @@ namespace {
     // with the threshold off, the same data lets the filter drift.
     TEST(AdaptationControl, FreezeThresholdHoldsFilter) {
         auto tap_energy = [&](double threshold) {
-            mutap::partitioned_fdaf<double>::config cfg;
+            tap::mu::partitioned_fdaf<double>::config cfg;
             cfg.block_size           = k_block;
             cfg.partitions           = k_taps / k_block;
             cfg.ipc_freeze_threshold = threshold;
-            mutap::partitioned_fdaf<double> fdaf(cfg);
+            tap::mu::partitioned_fdaf<double> fdaf(cfg);
 
             const auto          u = mutap_test::white_near_end<double>(100 * k_block, 1);
             const auto          d = mutap_test::white_near_end<double>(100 * k_block, 2); // independent: no echo
@@ -331,12 +331,12 @@ namespace {
         const auto path = random_decaying_rir<double>(k_taps, 5);
 
         auto identify = [&](double scale, double relative, double absolute) {
-            mutap::partitioned_fdaf<double>::config cfg;
+            tap::mu::partitioned_fdaf<double>::config cfg;
             cfg.block_size              = k_block;
             cfg.partitions              = k_taps / k_block;
             cfg.relative_regularization = relative;
             cfg.regularization          = absolute;
-            mutap::partitioned_fdaf<double> fdaf(cfg);
+            tap::mu::partitioned_fdaf<double> fdaf(cfg);
 
             auto u = mutap_test::white_near_end<double>(300 * k_block, 1);
             for (auto& x : u) {
@@ -362,7 +362,7 @@ namespace {
     }
 
     TEST(AdaptationControlConfigValidation, RejectsBadConfigs) {
-        using fdaf = mutap::partitioned_fdaf<float>;
+        using fdaf = tap::mu::partitioned_fdaf<float>;
 
         fdaf::config cfg;
         cfg.relative_regularization = -1.0F;
