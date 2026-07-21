@@ -235,10 +235,10 @@ jobs:
         run: |
           set -e
           # Ooura is C: compile with gcc so g++ does not name-mangle rdft/rdft_f.
-          gcc -O2 -c third_party/ooura/fftsg.c -o /tmp/fftsg.o
-          gcc -O2 -c third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
+          gcc -O2 -c submodules/dsptap/third_party/ooura/fftsg.c -o /tmp/fftsg.o
+          gcc -O2 -c submodules/dsptap/third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
           for bl in 0 1; do
-            g++ -std=c++20 -O2 -DMUTAP_SUPPRESSOR_BRANCHLESS=$bl -Iinclude \
+            g++ -std=c++20 -O2 -DMUTAP_SUPPRESSOR_BRANCHLESS=$bl -Iinclude -Isubmodules/dsptap/include \
               tests/branchless_parity_check.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/parity_$bl
             /tmp/parity_$bl | tee /tmp/out_$bl
           done
