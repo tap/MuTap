@@ -87,7 +87,7 @@ namespace {
     };
 
     auto preset() {
-        return mutap::aec_chain_preset<float>(k_geo.block, k_geo.partitions, k_geo.fs);
+        return tap::mu::aec_chain_preset<float>(k_geo.block, k_geo.partitions, k_geo.fs);
     }
 
     // Accumulate a checksum over the timed output so nothing is dead code.
@@ -105,7 +105,7 @@ namespace {
         double             sink = 0.0;
 
 #if MUTAP_SC_LAYER == 0
-        mutap::partitioned_fdkf<float> core(preset().canceller);
+        tap::mu::partitioned_fdkf<float> core(preset().canceller);
         for (std::size_t i = 0; i < k_warm; ++i) {
             core.process_block(c.xb(i), c.yb(i), e.data());
         }
@@ -116,7 +116,7 @@ namespace {
 #elif MUTAP_SC_LAYER == 1
         auto pf       = preset().postfilter;
         pf.block_size = k_geo.block;
-        mutap::residual_suppressor<float> sup(pf);
+        tap::mu::residual_suppressor<float> sup(pf);
         for (std::size_t i = 0; i < k_warm; ++i) {
             sup.process_block(c.yb(i), c.xb(i), e.data());
         }
@@ -129,7 +129,7 @@ namespace {
         auto sc       = cfg.canceller;
         sc.partitions = cfg.shadow_partitions;
         sc.transition = cfg.shadow_transition;
-        mutap::partitioned_fdkf<float> shadow(sc);
+        tap::mu::partitioned_fdkf<float> shadow(sc);
         for (std::size_t i = 0; i < k_warm; ++i) {
             shadow.process_block(c.xb(i), c.yb(i), e.data());
         }
@@ -138,7 +138,7 @@ namespace {
             sink += sum_out(e);
         }
 #else
-        mutap::aec_chain<float> chain(preset());
+        tap::mu::aec_chain<float> chain(preset());
         for (std::size_t i = 0; i < k_warm; ++i) {
             chain.process_block(c.xb(i), c.yb(i), e.data());
         }

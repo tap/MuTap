@@ -75,8 +75,8 @@ namespace {
     }
 
     template <typename Sample>
-    typename mutap::pem_afc<Sample>::config pem_config() {
-        typename mutap::pem_afc<Sample>::config cfg;
+    typename tap::mu::pem_afc<Sample>::config pem_config() {
+        typename tap::mu::pem_afc<Sample>::config cfg;
         cfg.fdaf.block_size = k_block;
         cfg.fdaf.partitions = k_taps / k_block;
         return cfg;
@@ -84,10 +84,10 @@ namespace {
 
     // Converge a PEM canceller inside the closed loop at a safe gain.
     template <typename Sample>
-    mutap::pem_afc<Sample> converge_pem(const std::vector<Sample>& path, double gain_db, const std::vector<Sample>& v,
-                                        double* misalignment = nullptr) {
-        mutap::pem_afc<Sample>  afc(pem_config<Sample>());
-        closed_loop_sim<Sample> sim(loop_config(path, gain_db));
+    tap::mu::pem_afc<Sample> converge_pem(const std::vector<Sample>& path, double gain_db, const std::vector<Sample>& v,
+                                          double* misalignment = nullptr) {
+        tap::mu::pem_afc<Sample> afc(pem_config<Sample>());
+        closed_loop_sim<Sample>  sim(loop_config(path, gain_db));
         for (size_t blk = 0; blk < v.size() / k_block; ++blk) {
             sim.step(&v[blk * k_block], &afc);
         }
@@ -100,7 +100,7 @@ namespace {
     }
 
     template <typename Sample>
-    bool howls_with(const std::vector<Sample>& path, const mutap::pem_afc<Sample>& converged, double gain_db,
+    bool howls_with(const std::vector<Sample>& path, const tap::mu::pem_afc<Sample>& converged, double gain_db,
                     const std::vector<Sample>& v) {
         closed_loop_sim<Sample> sim(loop_config(path, gain_db));
         auto                    probe = converged;
@@ -153,16 +153,16 @@ namespace {
             converge_pem<double>(path, open_msg - 6.0, v_pem, &mis);
             pem_mis.push_back(mis);
 
-            mutap::partitioned_fdaf<double>::config naive_cfg;
+            tap::mu::partitioned_fdaf<double>::config naive_cfg;
             naive_cfg.block_size = k_block;
             naive_cfg.partitions = k_taps / k_block;
             // M1-era fixed-epsilon naive, same pinning as the M2 baseline
             // test: M4's variable regularization softens the naive bias on
             // its own — mitigation, not the fix.
             naive_cfg.relative_regularization = 0.0;
-            mutap::partitioned_fdaf<double> naive(naive_cfg);
-            closed_loop_sim<double>         sim(loop_config(path, open_msg - 6.0));
-            const auto                      v_naive = mutap_test::tonal_near_end<double>(600 * k_block, seed);
+            tap::mu::partitioned_fdaf<double> naive(naive_cfg);
+            closed_loop_sim<double>           sim(loop_config(path, open_msg - 6.0));
+            const auto                        v_naive = mutap_test::tonal_near_end<double>(600 * k_block, seed);
             for (size_t blk = 0; blk < v_naive.size() / k_block; ++blk) {
                 sim.step(&v_naive[blk * k_block], &naive);
             }
@@ -246,11 +246,11 @@ namespace {
             const auto   path     = random_decaying_rir<double>(k_taps, room);
             const double open_msg = mutap_test::theoretical_msg_db(path);
 
-            mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>::config wc;
+            tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>>::config wc;
             wc.fdaf.block_size       = k_block;
             wc.fdaf.partitions       = k_taps / k_block;
             wc.fdaf.ipc_step_scaling = true;
-            mutap::pem_afc<double, mutap::warped_lpc_predictor<double>> warped(wc);
+            tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>> warped(wc);
 
             const double asg = converge_and_measure(warped, path, open_msg);
             EXPECT_GT(asg, 4.0) << "room " << room << " (measured >= +7.2 dB)";
@@ -262,10 +262,10 @@ namespace {
         // Room 9 is where the speech cascade destabilizes on this material
         // (measured -2.2 dB vs warped+IPC +7.2 — a 9 dB gap; asserted with
         // nearly half of it as chaotic-trajectory margin).
-        const auto             path     = random_decaying_rir<double>(k_taps, 9);
-        const double           open_msg = mutap_test::theoretical_msg_db(path);
-        mutap::pem_afc<double> speech(pem_config<double>());
-        const double           speech_room9 = converge_and_measure(speech, path, open_msg);
+        const auto               path     = random_decaying_rir<double>(k_taps, 9);
+        const double             open_msg = mutap_test::theoretical_msg_db(path);
+        tap::mu::pem_afc<double> speech(pem_config<double>());
+        const double             speech_room9 = converge_and_measure(speech, path, open_msg);
         EXPECT_GT(warped_room9, speech_room9 + 4.0) << "warped+IPC should rescue the room where the cascade collapses";
     }
 
@@ -280,11 +280,11 @@ namespace {
         const auto v_converge = mutap_test::ar_near_end<double>(1500 * k_block, 2);
         const auto v_probe    = mutap_test::ar_near_end<double>(600 * k_block, 12);
 
-        mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>::config wc;
+        tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>>::config wc;
         wc.fdaf.block_size       = k_block;
         wc.fdaf.partitions       = k_taps / k_block;
         wc.fdaf.ipc_step_scaling = true;
-        mutap::pem_afc<double, mutap::warped_lpc_predictor<double>> warped(wc);
+        tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>> warped(wc);
 
         closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
         for (size_t blk = 0; blk < 1500; ++blk) {
@@ -311,7 +311,7 @@ namespace {
     }
 
     TEST(PemAfcConfigValidation, RejectsBadConfigs) {
-        using afc = mutap::pem_afc<float>;
+        using afc = tap::mu::pem_afc<float>;
 
         afc::config cfg     = pem_config<float>();
         cfg.analysis_window = k_block; // < 2 * block_size
@@ -329,10 +329,10 @@ namespace {
     // The real-time contract carries through the PEM wrapper: everything
     // after construction is noexcept — for the warped instantiation too.
     TEST(PemAfcRtContract, PostConstructionEntryPointsAreNoexcept) {
-        using wafc = mutap::pem_afc<float, mutap::warped_lpc_predictor<float>>;
+        using wafc = tap::mu::pem_afc<float, tap::mu::warped_lpc_predictor<float>>;
         static_assert(noexcept(std::declval<wafc&>().process_block(nullptr, nullptr, nullptr)));
         static_assert(noexcept(std::declval<wafc&>().reset()));
-        using afc = mutap::pem_afc<float>;
+        using afc = tap::mu::pem_afc<float>;
         static_assert(noexcept(std::declval<afc&>().process_block(nullptr, nullptr, nullptr)));
         static_assert(noexcept(std::declval<afc&>().copy_impulse_response(nullptr)));
         static_assert(noexcept(std::declval<afc&>().reset()));

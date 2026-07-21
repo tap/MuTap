@@ -30,20 +30,22 @@ namespace {
 extern "C" {
 
 struct MutapFdaf {
-    mutap::partitioned_fdaf<double> impl;
+    tap::mu::partitioned_fdaf<double> impl;
 };
 
-using speech_afc        = mutap::pem_afc<double>;
-using warped_afc        = mutap::pem_afc<double, mutap::warped_lpc_predictor<double>>;
-using kalman_speech_afc = mutap::pem_afc<double, mutap::speech_predictor<double>, mutap::partitioned_fdkf<double>>;
-using kalman_warped_afc = mutap::pem_afc<double, mutap::warped_lpc_predictor<double>, mutap::partitioned_fdkf<double>>;
+using speech_afc = tap::mu::pem_afc<double>;
+using warped_afc = tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>>;
+using kalman_speech_afc =
+    tap::mu::pem_afc<double, tap::mu::speech_predictor<double>, tap::mu::partitioned_fdkf<double>>;
+using kalman_warped_afc =
+    tap::mu::pem_afc<double, tap::mu::warped_lpc_predictor<double>, tap::mu::partitioned_fdkf<double>>;
 
 struct MutapAfc {
     std::variant<speech_afc, warped_afc, kalman_speech_afc, kalman_warped_afc> impl;
 };
 
 struct MutapAec {
-    mutap::aec_chain<double> impl;
+    tap::mu::aec_chain<double> impl;
 };
 
 unsigned mutap_version(void) {
@@ -53,10 +55,10 @@ unsigned mutap_version(void) {
 MutapFdaf* mutap_fdaf_create(size_t block_size, size_t partitions, double step_size, double relative_regularization,
                              int ipc_step_scaling, double transient_freeze_ratio) {
     try {
-        mutap::partitioned_fdaf<double>::config cfg;
+        tap::mu::partitioned_fdaf<double>::config cfg;
         apply_shared_knobs(cfg, block_size, partitions, step_size, relative_regularization, ipc_step_scaling,
                            transient_freeze_ratio);
-        return new MutapFdaf{mutap::partitioned_fdaf<double>(cfg)};
+        return new MutapFdaf{tap::mu::partitioned_fdaf<double>(cfg)};
     }
     catch (...) {
         return nullptr;
@@ -246,12 +248,12 @@ MutapAec* mutap_aec_create(size_t block_size, size_t partitions, double sample_r
         if (sample_rate <= 0.0) {
             return nullptr;
         }
-        auto cfg                     = mutap::aec_chain_preset<double>(block_size, partitions, sample_rate);
+        auto cfg                     = tap::mu::aec_chain_preset<double>(block_size, partitions, sample_rate);
         cfg.postfilter.comfort_noise = comfort_noise != 0;
         if (receive_guard == 0) {
             cfg.guard_attenuation_db = 0.0;
         }
-        return new MutapAec{mutap::aec_chain<double>(cfg)};
+        return new MutapAec{tap::mu::aec_chain<double>(cfg)};
     }
     catch (...) {
         return nullptr;

@@ -58,7 +58,7 @@ namespace mutap_test {
 
         /// Advance the loop by one block of near-end input v. `canceller` is
         /// any type with process_block(u, y, e) over block_size samples
-        /// (mutap::partitioned_fdaf, mutap::pem_afc, ...) and may be null
+        /// (tap::mu::partitioned_fdaf, tap::mu::pem_afc, ...) and may be null
         /// (open loop). Returns the RMS of the error/output block e (+inf if
         /// the loop has produced non-finite samples).
         template <typename Canceller>
@@ -289,7 +289,7 @@ namespace mutap_test {
     template <typename Sample>
     bool loop_howls(closed_loop_sim<Sample>& sim, std::nullptr_t, const std::vector<Sample>& v,
                     double howl_rms = 100.0) {
-        return loop_howls(sim, static_cast<mutap::partitioned_fdaf<Sample>*>(nullptr), v, howl_rms);
+        return loop_howls(sim, static_cast<tap::mu::partitioned_fdaf<Sample>*>(nullptr), v, howl_rms);
     }
 
     /// MSG upper bound from the loop-magnitude condition: the broadband gain
@@ -299,7 +299,7 @@ namespace mutap_test {
     template <typename Sample>
     double theoretical_msg_db(const std::vector<Sample>& feedback_path) {
         constexpr size_t    k_fft = 8192;
-        mutap::real_fft     fft(k_fft);
+        tap::mu::real_fft   fft(k_fft);
         std::vector<double> buf(k_fft, 0.0);
         for (size_t i = 0; i < feedback_path.size(); ++i) {
             buf[i] = static_cast<double>(feedback_path[i]);
@@ -352,8 +352,8 @@ namespace mutap_test {
     template <typename Sample>
     double measured_msg_db(const typename closed_loop_sim<Sample>::config& loop_cfg, std::nullptr_t,
                            const std::vector<Sample>& v, double lo_db, double hi_db, double tol_db = 0.5) {
-        return measured_msg_db(loop_cfg, static_cast<const mutap::partitioned_fdaf<Sample>*>(nullptr), v, lo_db, hi_db,
-                               tol_db);
+        return measured_msg_db(loop_cfg, static_cast<const tap::mu::partitioned_fdaf<Sample>*>(nullptr), v, lo_db,
+                               hi_db, tol_db);
     }
 
 } // namespace mutap_test

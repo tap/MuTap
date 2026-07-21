@@ -41,7 +41,7 @@
 #endif
 #endif
 
-namespace mutap {
+namespace tap::mu {
 
     /// Residual-echo suppressor with matched comfort noise
     /// (docs/itu-compliance.md, Stage 2).
@@ -1159,4 +1159,4 @@ namespace mutap {
         return cfg;
     }
 
-} // namespace mutap
+} // namespace tap::mu

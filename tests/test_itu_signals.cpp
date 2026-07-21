@@ -66,7 +66,7 @@ namespace {
 
         // Flat magnitude by construction: every FFT bin of the 8192-point
         // block has identical power (measured stddev 0.000 dB).
-        mutap::real_fft     fft(8192);
+        tap::mu::real_fft   fft(8192);
         std::vector<double> b(css.begin() + 2144, css.begin() + 2144 + 8192);
         fft.forward_inplace(b.data());
         double sum  = 0.0;
@@ -146,7 +146,7 @@ namespace {
     TEST(ItuSignals, NoiseFieldsHaveTheirSpectra) {
         auto octave_db = [&](const std::vector<double>& x, double f0, double f1) {
             constexpr size_t    n_fft = 65536;
-            mutap::real_fft     fft(n_fft);
+            tap::mu::real_fft   fft(n_fft);
             std::vector<double> b(x.begin(), x.begin() + n_fft);
             fft.forward_inplace(b.data());
             double acc = 0.0;

@@ -129,7 +129,7 @@ namespace mutap_test::itu {
         };
         // Zero-phase magnitude sampling, then a real IFFT and circular
         // shift to make it causal linear-phase.
-        mutap::real_fft     fft(fft_size);
+        tap::mu::real_fft   fft(fft_size);
         std::vector<double> spec(fft_size, 0.0);
         const double        df = fs / static_cast<double>(fft_size);
         spec[0]                = std::pow(10.0, gain_at(1e-3) / 20.0);
@@ -282,7 +282,7 @@ namespace mutap_test::itu {
         std::mt19937        gen(cfg.seed);
         if (st) {
             constexpr size_t            n_fft = 8192;
-            mutap::real_fft             fft(n_fft);
+            tap::mu::real_fft           fft(n_fft);
             std::vector<double>         spec(n_fft, 0.0);
             std::bernoulli_distribution bit(0.5);
             spec[0] = 0.0;
@@ -457,7 +457,7 @@ namespace mutap_test::itu {
         while (n_fft < x.size()) {
             n_fft *= 2;
         }
-        mutap::real_fft     fft(n_fft);
+        tap::mu::real_fft   fft(n_fft);
         std::vector<double> buf(n_fft, 0.0);
         // Hann window: the components are not FFT-periodic, and the comb
         // separation the double-talk analysis needs lives or dies on

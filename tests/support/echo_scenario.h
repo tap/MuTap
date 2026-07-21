@@ -77,7 +77,7 @@ namespace mutap_test {
         /// Advance the scenario by one block: x is the far-end reference,
         /// v the near-end source (nullptr = silent, far-end single talk).
         /// `canceller` is any type with process_block(x, y, e) over
-        /// block_size samples (mutap::partitioned_fdaf, mutap::pem_afc, ...)
+        /// block_size samples (tap::mu::partitioned_fdaf, tap::mu::pem_afc, ...)
         /// and may be null (e = y, the uncancelled mic).
         template <typename Canceller>
         block_energies step(const Sample* x, const Sample* v, Canceller* canceller) {
@@ -125,7 +125,7 @@ namespace mutap_test {
 
         /// Open-loop overload: a literal `nullptr` cannot deduce Canceller.
         block_energies step(const Sample* x, const Sample* v, std::nullptr_t) {
-            return step(x, v, static_cast<mutap::partitioned_fdaf<Sample>*>(nullptr));
+            return step(x, v, static_cast<tap::mu::partitioned_fdaf<Sample>*>(nullptr));
         }
 
         const std::vector<Sample>& error_block() const { return m_e; }
@@ -203,7 +203,7 @@ namespace mutap_test {
     aec_run_result run_aec(echo_sim<Sample>& sim, const std::vector<Sample>& x,
                            const std::vector<std::type_identity_t<Sample>>* v, std::nullptr_t,
                            size_t                                           measure_from_block = 0) {
-        return run_aec(sim, x, v, static_cast<mutap::partitioned_fdaf<Sample>*>(nullptr), measure_from_block);
+        return run_aec(sim, x, v, static_cast<tap::mu::partitioned_fdaf<Sample>*>(nullptr), measure_from_block);
     }
 
 } // namespace mutap_test

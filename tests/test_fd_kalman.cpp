@@ -99,8 +99,8 @@ namespace {
     }
 
     template <typename Sample>
-    typename mutap::partitioned_fdkf<Sample>::config kalman_config() {
-        typename mutap::partitioned_fdkf<Sample>::config cfg;
+    typename tap::mu::partitioned_fdkf<Sample>::config kalman_config() {
+        typename tap::mu::partitioned_fdkf<Sample>::config cfg;
         cfg.block_size = k_block;
         cfg.partitions = k_taps / k_block;
         return cfg;
@@ -117,10 +117,10 @@ namespace {
     }
 
     template <typename Sample>
-    using kalman_pem = mutap::pem_afc<Sample, mutap::speech_predictor<Sample>, mutap::partitioned_fdkf<Sample>>;
+    using kalman_pem = tap::mu::pem_afc<Sample, tap::mu::speech_predictor<Sample>, tap::mu::partitioned_fdkf<Sample>>;
     template <typename Sample>
     using kalman_pem_warped =
-        mutap::pem_afc<Sample, mutap::warped_lpc_predictor<Sample>, mutap::partitioned_fdkf<Sample>>;
+        tap::mu::pem_afc<Sample, tap::mu::warped_lpc_predictor<Sample>, tap::mu::partitioned_fdkf<Sample>>;
 
     template <typename Sample>
     typename kalman_pem<Sample>::config kalman_pem_config() {
@@ -147,10 +147,10 @@ namespace {
         const auto   input  = white_noise<TypeParam>(blocks * k_block, 2);
         const auto   d      = convolve(input, truth);
 
-        mutap::partitioned_fdkf<TypeParam> kalman(kalman_config<TypeParam>());
-        std::vector<TypeParam>             error(k_block);
-        std::vector<TypeParam>             ir(kalman.filter_length());
-        double                             early = 0.0;
+        tap::mu::partitioned_fdkf<TypeParam> kalman(kalman_config<TypeParam>());
+        std::vector<TypeParam>               error(k_block);
+        std::vector<TypeParam>               ir(kalman.filter_length());
+        double                               early = 0.0;
         for (size_t blk = 0; blk < blocks; ++blk) {
             kalman.process_block(&input[blk * k_block], &d[blk * k_block], error.data());
             if (blk == 50) {
@@ -177,11 +177,11 @@ namespace {
             d[i] += noise[i]; // 0 dB SNR vs the unit-energy echo path
         }
 
-        mutap::partitioned_fdaf<double>::config nc;
+        tap::mu::partitioned_fdaf<double>::config nc;
         nc.block_size = k_block;
         nc.partitions = k_taps / k_block;
-        mutap::partitioned_fdaf<double> nlms(nc);
-        mutap::partitioned_fdkf<double> kalman(kalman_config<double>());
+        tap::mu::partitioned_fdaf<double> nlms(nc);
+        tap::mu::partitioned_fdkf<double> kalman(kalman_config<double>());
 
         std::vector<double> error(k_block);
         for (size_t blk = 0; blk < blocks; ++blk) {
@@ -219,8 +219,8 @@ namespace {
             d[i] = ((i < swap * k_block) ? d_a[i] : d_b[i]) + 0.1 * noise[i]; // 20 dB SNR
         }
 
-        mutap::partitioned_fdkf<double> kalman(kalman_config<double>());
-        std::vector<double>             error(k_block);
+        tap::mu::partitioned_fdkf<double> kalman(kalman_config<double>());
+        std::vector<double>               error(k_block);
         for (size_t blk = 0; blk < blocks; ++blk) {
             kalman.process_block(&input[blk * k_block], &d[blk * k_block], error.data());
         }
@@ -365,7 +365,7 @@ namespace {
     }
 
     TEST(FdKalmanConfigValidation, RejectsBadConfigs) {
-        using kf = mutap::partitioned_fdkf<float>;
+        using kf = tap::mu::partitioned_fdkf<float>;
 
         kf::config cfg = kalman_config<float>();
         cfg.block_size = 100; // not a power of 2
@@ -397,7 +397,7 @@ namespace {
     }
 
     TEST(FdKalmanRtContract, PostConstructionEntryPointsAreNoexcept) {
-        using kf = mutap::partitioned_fdkf<float>;
+        using kf = tap::mu::partitioned_fdkf<float>;
         static_assert(noexcept(std::declval<kf&>().process_block(nullptr, nullptr, nullptr)));
         static_assert(noexcept(std::declval<kf&>().copy_impulse_response(nullptr)));
         static_assert(noexcept(std::declval<kf&>().reset()));

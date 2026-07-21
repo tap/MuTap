@@ -5,17 +5,17 @@
  * prototypes); it must stay in sync with mutap_capi.cpp.
  *
  * Three families, mirroring the C++ API:
- *   mutap_fdaf_*  — the naive partitioned-block FDAF (mutap::partitioned_fdaf<double>);
+ *   mutap_fdaf_*  — the naive partitioned-block FDAF (tap::mu::partitioned_fdaf<double>);
  *                   an open-loop echo canceller, and the biased-baseline
  *                   comparator for closed-loop feedback demos.
  *   mutap_afc_*   — the PEM-prewhitened feedback canceller
- *                   (mutap::pem_afc<double> with the speech-cascade
+ *                   (tap::mu::pem_afc<double> with the speech-cascade
  *                   near-end model).
  *   mutap_aec_*   — the full acoustic-echo-cancellation chain
- *                   (mutap::aec_chain<double>): raw FD-Kalman canceller +
+ *                   (tap::mu::aec_chain<double>): raw FD-Kalman canceller +
  *                   residual suppressor + comfort noise + initial receive
  *                   guard, built from the ITU compliance preset
- *                   (mutap::aec_chain_preset).
+ *                   (tap::mu::aec_chain_preset).
  *
  * All process calls handle EXACTLY the configured block size per call.
  * Errors: create returns NULL on invalid configuration. Every function
@@ -105,8 +105,8 @@ void   mutap_afc_reset(MutapAfc* h);
 /* Deep copy, as mutap_fdaf_clone. */
 MutapAfc* mutap_afc_clone(const MutapAfc* h);
 
-/* The measured AEC chain (mutap::aec_chain<double>), configured by the
- * ITU compliance preset (mutap::aec_chain_preset): the raw FD-Kalman
+/* The measured AEC chain (tap::mu::aec_chain<double>), configured by the
+ * ITU compliance preset (tap::mu::aec_chain_preset): the raw FD-Kalman
  * canceller — deliberately NOT PEM; open-loop AEC has an exogenous far
  * end and the predictor refit measurably floors the misalignment — plus
  * the coherence-driven residual suppressor, comfort noise matched to the

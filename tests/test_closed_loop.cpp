@@ -77,9 +77,9 @@ namespace {
     // Converge a fresh naive FDAF inside the closed loop at a safe gain and
     // return it (plus the achieved misalignment) for stability probing.
     template <typename Sample>
-    mutap::partitioned_fdaf<Sample> converge_naive_canceller(const std::vector<Sample>& path, double gain_db,
-                                                             const std::vector<Sample>& v, double* misalignment) {
-        typename mutap::partitioned_fdaf<Sample>::config cfg;
+    tap::mu::partitioned_fdaf<Sample> converge_naive_canceller(const std::vector<Sample>& path, double gain_db,
+                                                               const std::vector<Sample>& v, double* misalignment) {
+        typename tap::mu::partitioned_fdaf<Sample>::config cfg;
         cfg.block_size = k_block;
         cfg.partitions = k_taps / k_block;
         // Pin the M1-era fixed-epsilon normalizer: this baseline documents
@@ -89,7 +89,7 @@ namespace {
         // destabilizing, but enough to make the howl-below-MSG assertion
         // precision-dependent.
         cfg.relative_regularization = Sample(0);
-        mutap::partitioned_fdaf<Sample> fdaf(cfg);
+        tap::mu::partitioned_fdaf<Sample> fdaf(cfg);
 
         closed_loop_sim<Sample> sim(loop_config(path, gain_db));
         for (size_t blk = 0; blk < v.size() / k_block; ++blk) {

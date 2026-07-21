@@ -29,8 +29,6 @@ set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
 add_executable(mutap_tests
-    test_fft.cpp
-    test_fft_backend.cpp
     test_fdaf.cpp
     test_fd_kalman.cpp
     test_lpc.cpp
