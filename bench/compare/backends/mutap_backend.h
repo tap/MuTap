@@ -27,10 +27,9 @@
 #include <string>
 #include <vector>
 
+#include "../aec_backend.h"
 #include "mutap/fd_kalman.h"
 #include "mutap/postfilter.h"
-
-#include "../aec_backend.h"
 
 namespace mutap_compare {
 
@@ -39,10 +38,10 @@ namespace mutap_compare {
         // 48 kHz (2048), 64 ms at 16 kHz (1024) — the two shapes the
         // compliance suite pins; other rates hold ~43 ms.
         inline std::size_t certified_taps(double fs, std::size_t block) {
-            const double ms      = (fs <= 24000.0) ? 64.0 : 43.0;
-            std::size_t  taps    = static_cast<std::size_t>(fs * ms / 1000.0 + 0.5);
+            const double ms   = (fs <= 24000.0) ? 64.0 : 43.0;
+            std::size_t  taps = static_cast<std::size_t>(fs * ms / 1000.0 + 0.5);
             // round up to a whole number of blocks, >= 1 partition
-            std::size_t  parts   = (taps + block - 1) / block;
+            std::size_t parts = (taps + block - 1) / block;
             return parts < 1 ? block : parts * block;
         }
     } // namespace detail
@@ -60,9 +59,7 @@ namespace mutap_compare {
             , m_y(block)
             , m_e(block) {}
 
-        std::string name() const override {
-            return std::is_same_v<Sample, double> ? "mutap" : "mutap-f32";
-        }
+        std::string name() const override { return std::is_same_v<Sample, double> ? "mutap" : "mutap-f32"; }
         std::size_t frame() const override { return m_block; }
         // One block of send-path hop, plus one more for the suppressor's
         // constrained causal gain filter (documented in the C ABI header).
@@ -86,11 +83,11 @@ namespace mutap_compare {
             return mutap::aec_chain<Sample>(cfg);
         }
 
-        double                    m_fs;
-        std::size_t               m_block;
-        std::size_t               m_partitions;
-        mutap::aec_chain<Sample>  m_chain;
-        std::vector<Sample>       m_x, m_y, m_e;
+        double                   m_fs;
+        std::size_t              m_block;
+        std::size_t              m_partitions;
+        mutap::aec_chain<Sample> m_chain;
+        std::vector<Sample>      m_x, m_y, m_e;
     };
 
     // The raw FD-Kalman canceller alone — the linear stage, no post.

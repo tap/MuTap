@@ -51,21 +51,22 @@ namespace mutap_compare {
         std::mt19937                    rng(seed);
         std::normal_distribution<float> g(0.0f, 1.0f);
         // 2nd-order resonator near 300 Hz, r = 0.95.
-        const double f0 = 320.0, r = 0.95;
-        const double a1 = -2.0 * r * std::cos(2.0 * M_PI * f0 / fs);
-        const double a2 = r * r;
+        const double       f0 = 320.0, r = 0.95;
+        const double       a1 = -2.0 * r * std::cos(2.0 * M_PI * f0 / fs);
+        const double       a2 = r * r;
         std::vector<float> x(n);
         double             y1 = 0.0, y2 = 0.0;
         const double       env_hz = 3.3; // syllabic rate
         for (size_t i = 0; i < n; ++i) {
-            const double in  = g(rng);
-            const double y0  = in - a1 * y1 - a2 * y2;
-            y2               = y1;
-            y1               = y0;
+            const double in = g(rng);
+            const double y0 = in - a1 * y1 - a2 * y2;
+            y2              = y1;
+            y1              = y0;
             // syllabic envelope in [0.15, 1], plus occasional pauses.
             const double t   = static_cast<double>(i) / fs;
             double       env = 0.575 + 0.425 * std::sin(2.0 * M_PI * env_hz * t);
-            if (std::sin(2.0 * M_PI * 0.31 * t) > 0.7) env *= 0.15; // pauses
+            if (std::sin(2.0 * M_PI * 0.31 * t) > 0.7)
+                env *= 0.15; // pauses
             x[i] = static_cast<float>(env * y0);
         }
         // Normalize to a realistic active-speech level: RMS -24 dBFS with a
@@ -73,10 +74,12 @@ namespace mutap_compare {
         // clips — clipping would unfairly cripple it and is not the echo
         // behavior under test.
         double e = 0.0;
-        for (float v : x) e += double(v) * v;
+        for (float v : x)
+            e += double(v) * v;
         const double rms   = std::sqrt(e / std::max<size_t>(1, x.size()));
         const double scale = rms > 0.0 ? 0.06 / rms : 0.0;
-        for (float& v : x) v = static_cast<float>(v * scale);
+        for (float& v : x)
+            v = static_cast<float>(v * scale);
         return x;
     }
 
@@ -84,7 +87,8 @@ namespace mutap_compare {
         std::mt19937                    rng(seed);
         std::normal_distribution<float> g(0.0f, amp);
         std::vector<float>              x(n);
-        for (auto& v : x) v = g(rng);
+        for (auto& v : x)
+            v = g(rng);
         return x;
     }
 
@@ -96,24 +100,27 @@ namespace mutap_compare {
     // ~200 ms, hall ~500 ms); unit-energy normalized, coupling loss set
     // by an overall gain.
     // ------------------------------------------------------------------
-    inline std::vector<float> make_rir(double fs, double delay_ms, double rt60_ms, double len_ms,
-                                       double coupling_db, uint32_t seed) {
-        const size_t                    n    = static_cast<size_t>(fs * len_ms / 1000.0);
-        const size_t                    d0   = static_cast<size_t>(fs * delay_ms / 1000.0);
+    inline std::vector<float> make_rir(double fs, double delay_ms, double rt60_ms, double len_ms, double coupling_db,
+                                       uint32_t seed) {
+        const size_t                    n  = static_cast<size_t>(fs * len_ms / 1000.0);
+        const size_t                    d0 = static_cast<size_t>(fs * delay_ms / 1000.0);
         std::mt19937                    rng(seed);
         std::normal_distribution<float> g(0.0f, 1.0f);
         std::vector<float>              h(n, 0.0f);
-        const double tau = rt60_ms / 1000.0 / 6.9078; // RT60 -> e-fold: 60 dB = 6.9078 nepers
+        const double                    tau = rt60_ms / 1000.0 / 6.9078; // RT60 -> e-fold: 60 dB = 6.9078 nepers
         for (size_t i = d0; i < n; ++i) {
             const double t = static_cast<double>(i - d0) / fs;
             h[i]           = static_cast<float>(g(rng) * std::exp(-t / tau));
         }
-        if (d0 < n) h[d0] += 1.5f; // a stronger direct arrival
+        if (d0 < n)
+            h[d0] += 1.5f; // a stronger direct arrival
         // Unit-energy, then apply coupling loss (echo path gain).
         double e = 0.0;
-        for (float v : h) e += double(v) * v;
+        for (float v : h)
+            e += double(v) * v;
         const double norm = (e > 0.0) ? std::pow(10.0, -coupling_db / 20.0) / std::sqrt(e) : 0.0;
-        for (float& v : h) v = static_cast<float>(v * norm);
+        for (float& v : h)
+            v = static_cast<float>(v * norm);
         return h;
     }
 
@@ -138,9 +145,11 @@ namespace mutap_compare {
     // ------------------------------------------------------------------
     inline std::vector<float> loudspeaker(const std::vector<float>& x, double eta) {
         double e = 0.0;
-        for (float v : x) e += double(v) * v;
+        for (float v : x)
+            e += double(v) * v;
         const double sigma = std::sqrt(e / std::max<size_t>(1, x.size()));
-        if (sigma <= 0.0 || eta >= 100.0) return x; // linear regime
+        if (sigma <= 0.0 || eta >= 100.0)
+            return x; // linear regime
         std::vector<float> y(x.size());
         const double       k = std::sqrt(M_PI / 2.0) * eta;
         for (size_t i = 0; i < x.size(); ++i) {
@@ -148,10 +157,12 @@ namespace mutap_compare {
             y[i]           = static_cast<float>(k * std::erf(u / (std::sqrt(2.0) * eta)));
         }
         double eo = 0.0;
-        for (float v : y) eo += double(v) * v;
-        const double sy = std::sqrt(eo / std::max<size_t>(1, y.size()));
+        for (float v : y)
+            eo += double(v) * v;
+        const double sy    = std::sqrt(eo / std::max<size_t>(1, y.size()));
         const double ggain = sy > 0.0 ? sigma / sy : 0.0; // restore level
-        for (auto& v : y) v = static_cast<float>(v * ggain);
+        for (auto& v : y)
+            v = static_cast<float>(v * ggain);
         return y;
     }
 
@@ -160,17 +171,25 @@ namespace mutap_compare {
     inline double loudspeaker_thd_pct(double fs, double eta) {
         const auto tone = [&](size_t n) {
             std::vector<float> s(n);
-            for (size_t i = 0; i < n; ++i) s[i] = 0.2f * std::sin(2.0 * M_PI * 997.0 * i / fs);
+            for (size_t i = 0; i < n; ++i)
+                s[i] = 0.2f * std::sin(2.0 * M_PI * 997.0 * i / fs);
             return s;
         };
         const auto x = tone(static_cast<size_t>(fs));
         const auto y = loudspeaker(x, eta);
         // residual after removing the best-fit linear component of the tone
         double sxy = 0.0, sxx = 0.0, syy = 0.0;
-        for (size_t i = 0; i < x.size(); ++i) { sxy += double(x[i]) * y[i]; sxx += double(x[i]) * x[i]; syy += double(y[i]) * y[i]; }
-        const double a = sxy / (sxx + 1e-30);
-        double resid = 0.0;
-        for (size_t i = 0; i < x.size(); ++i) { const double d = y[i] - a * x[i]; resid += d * d; }
+        for (size_t i = 0; i < x.size(); ++i) {
+            sxy += double(x[i]) * y[i];
+            sxx += double(x[i]) * x[i];
+            syy += double(y[i]) * y[i];
+        }
+        const double a     = sxy / (sxx + 1e-30);
+        double       resid = 0.0;
+        for (size_t i = 0; i < x.size(); ++i) {
+            const double d = y[i] - a * x[i];
+            resid += d * d;
+        }
         return 100.0 * std::sqrt(resid / (a * a * sxx + 1e-30));
     }
 
@@ -195,9 +214,10 @@ namespace mutap_compare {
         std::vector<float> d(x.size(), 0.0f);
         const size_t       lh = h.size();
         for (size_t i = 0; i < x.size(); ++i) {
-            double acc = 0.0;
+            double       acc  = 0.0;
             const size_t kmax = std::min(lh, i + 1);
-            for (size_t k = 0; k < kmax; ++k) acc += double(h[k]) * double(x[i - k]);
+            for (size_t k = 0; k < kmax; ++k)
+                acc += double(h[k]) * double(x[i - k]);
             d[i] = static_cast<float>(acc);
         }
         return d;
@@ -206,8 +226,8 @@ namespace mutap_compare {
     // Stream (far, mic) through the backend in native frames; return the
     // cleaned output, shifted back by the backend's declared latency so
     // it is sample-aligned with far/mic (zeros pad the tail).
-    inline std::vector<float> run_stream(aec_backend& be, const std::vector<float>& far,
-                                         const std::vector<float>& mic, double fs) {
+    inline std::vector<float> run_stream(aec_backend& be, const std::vector<float>& far, const std::vector<float>& mic,
+                                         double fs) {
         const size_t       fr = be.frame();
         const size_t       n  = (far.size() / fr) * fr;
         std::vector<float> out(far.size(), 0.0f);
@@ -219,7 +239,8 @@ namespace mutap_compare {
             std::copy_n(ef.begin(), fr, &out[i]);
         }
         const size_t shift = static_cast<size_t>(be.latency_ms() * fs / 1000.0 + 0.5);
-        if (shift == 0 || shift >= out.size()) return out;
+        if (shift == 0 || shift >= out.size())
+            return out;
         std::vector<float> aligned(out.size(), 0.0f);
         std::copy(out.begin() + shift, out.end(), aligned.begin());
         return aligned;
@@ -230,7 +251,8 @@ namespace mutap_compare {
     // ------------------------------------------------------------------
     inline double energy(const float* a, size_t n) {
         double s = 0.0;
-        for (size_t i = 0; i < n; ++i) s += double(a[i]) * a[i];
+        for (size_t i = 0; i < n; ++i)
+            s += double(a[i]) * a[i];
         return s;
     }
     // 10log10(sum num^2 / sum den^2) over [lo, hi). A pure energy ratio:
@@ -246,15 +268,15 @@ namespace mutap_compare {
             sn += double(num[i]) * num[i];
             sd += double(den[i]) * den[i];
         }
-        if (sd <= 0.0) return sn <= 0.0 ? 0.0 : 200.0;
+        if (sd <= 0.0)
+            return sn <= 0.0 ? 0.0 : 200.0;
         return 10.0 * std::log10(sn / sd);
     }
 
     // Time-to-ERLE-threshold, in ms: earliest window (win samples) whose
     // ERLE(mic vs out) exceeds `thr` dB and stays above it. Returns +inf
     // (1e9) if never reached.
-    inline double convergence_ms(const std::vector<float>& mic, const std::vector<float>& out, double fs,
-                                 double thr) {
+    inline double convergence_ms(const std::vector<float>& mic, const std::vector<float>& out, double fs, double thr) {
         const size_t win = static_cast<size_t>(0.04 * fs); // 40 ms
         for (size_t i = 0; i + win <= mic.size(); i += win) {
             const double em = energy(&mic[i], win);
@@ -271,23 +293,23 @@ namespace mutap_compare {
     // ------------------------------------------------------------------
     struct metrics {
         std::string subject;
-        double      fs = 0.0;
+        double      fs         = 0.0;
         double      latency_ms = 0.0;
         // Far-end single talk (per room, then reported as the worst/median):
-        double erle_db = 0.0;          // steady-state, mic vs out
-        double converge_ms = 0.0;      // to 20 dB ERLE
-        double reconverge_ms = 0.0;    // to 20 dB after a path swap
+        double erle_db       = 0.0; // steady-state, mic vs out
+        double converge_ms   = 0.0; // to 20 dB ERLE
+        double reconverge_ms = 0.0; // to 20 dB after a path swap
         // Near-end single talk: transparency = 10log10(sum out^2/sum near^2)
         // over the near-active region. 0 dB = the near-end passes through
         // untouched; negative = the canceller over-suppresses / ducks it.
         double near_keep_db = 0.0;
         // Double talk (near-end enters after the canceller has converged):
-        double dt_echo_supp_db = 0.0;  // echo depth sustained in the DT window (near muted, same far)
-        double dt_near_keep_db = 0.0;  // 10log10(sum out^2/sum near^2) during DT: near-end ducking check
+        double dt_echo_supp_db = 0.0; // echo depth sustained in the DT window (near muted, same far)
+        double dt_near_keep_db = 0.0; // 10log10(sum out^2/sum near^2) during DT: near-end ducking check
         // Cost:
         double us_per_frame = 0.0;
-        double x_realtime = 0.0;
-        bool   diverged = false;
+        double x_realtime   = 0.0;
+        bool   diverged     = false;
     };
 
 } // namespace mutap_compare

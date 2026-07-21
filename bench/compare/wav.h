@@ -21,23 +21,35 @@ namespace mutap_compare {
         int                fs = 0;
     };
 
-    inline uint32_t rd32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (uint32_t(p[3]) << 24); }
-    inline uint16_t rd16(const uint8_t* p) { return uint16_t(p[0] | (p[1] << 8)); }
+    inline uint32_t rd32(const uint8_t* p) {
+        return p[0] | (p[1] << 8) | (p[2] << 16) | (uint32_t(p[3]) << 24);
+    }
+    inline uint16_t rd16(const uint8_t* p) {
+        return uint16_t(p[0] | (p[1] << 8));
+    }
 
     // Reads the first channel of a PCM16 or float32 WAV. Returns fs==0 on failure.
     inline wav_data wav_read(const std::string& path) {
         wav_data out;
         FILE*    f = std::fopen(path.c_str(), "rb");
-        if (!f) return out;
+        if (!f)
+            return out;
         std::vector<uint8_t> buf;
         std::fseek(f, 0, SEEK_END);
         long n = std::ftell(f);
         std::fseek(f, 0, SEEK_SET);
-        if (n <= 44) { std::fclose(f); return out; }
+        if (n <= 44) {
+            std::fclose(f);
+            return out;
+        }
         buf.resize(static_cast<size_t>(n));
-        if (std::fread(buf.data(), 1, buf.size(), f) != buf.size()) { std::fclose(f); return out; }
+        if (std::fread(buf.data(), 1, buf.size(), f) != buf.size()) {
+            std::fclose(f);
+            return out;
+        }
         std::fclose(f);
-        if (std::memcmp(buf.data(), "RIFF", 4) != 0 || std::memcmp(buf.data() + 8, "WAVE", 4) != 0) return out;
+        if (std::memcmp(buf.data(), "RIFF", 4) != 0 || std::memcmp(buf.data() + 8, "WAVE", 4) != 0)
+            return out;
 
         uint16_t fmt = 1, ch = 1, bits = 16;
         uint32_t rate = 0;
@@ -49,16 +61,18 @@ namespace mutap_compare {
                 ch   = rd16(&buf[pos + 10]);
                 rate = rd32(&buf[pos + 12]);
                 bits = rd16(&buf[pos + 22]);
-            } else if (std::memcmp(&buf[pos], "data", 4) == 0) {
+            }
+            else if (std::memcmp(&buf[pos], "data", 4) == 0) {
                 data_off = pos + 8;
                 data_len = csz;
                 break;
             }
             pos += 8 + csz + (csz & 1);
         }
-        if (!data_off || !rate) return out;
-        out.fs = static_cast<int>(rate);
-        const uint8_t* d = &buf[data_off];
+        if (!data_off || !rate)
+            return out;
+        out.fs               = static_cast<int>(rate);
+        const uint8_t* d     = &buf[data_off];
         const size_t   avail = (data_off + data_len <= buf.size()) ? data_len : buf.size() - data_off;
         if (fmt == 3 && bits == 32) { // float32
             const size_t frames = avail / (4 * ch);
@@ -68,7 +82,8 @@ namespace mutap_compare {
                 std::memcpy(&v, d + (i * ch) * 4, 4);
                 out.samples[i] = v;
             }
-        } else if (bits == 16) { // PCM16
+        }
+        else if (bits == 16) { // PCM16
             const size_t frames = avail / (2 * ch);
             out.samples.resize(frames);
             for (size_t i = 0; i < frames; ++i) {
@@ -80,9 +95,15 @@ namespace mutap_compare {
     }
 
     inline void wr32(std::vector<uint8_t>& b, uint32_t v) {
-        b.push_back(v & 0xff); b.push_back((v >> 8) & 0xff); b.push_back((v >> 16) & 0xff); b.push_back((v >> 24) & 0xff);
+        b.push_back(v & 0xff);
+        b.push_back((v >> 8) & 0xff);
+        b.push_back((v >> 16) & 0xff);
+        b.push_back((v >> 24) & 0xff);
     }
-    inline void wr16(std::vector<uint8_t>& b, uint16_t v) { b.push_back(v & 0xff); b.push_back((v >> 8) & 0xff); }
+    inline void wr16(std::vector<uint8_t>& b, uint16_t v) {
+        b.push_back(v & 0xff);
+        b.push_back((v >> 8) & 0xff);
+    }
 
     inline bool wav_write(const std::string& path, const std::vector<float>& x, int fs) {
         std::vector<uint8_t> b;
@@ -91,12 +112,12 @@ namespace mutap_compare {
         wr32(b, 36 + data_bytes);
         b.insert(b.end(), {'W', 'A', 'V', 'E', 'f', 'm', 't', ' '});
         wr32(b, 16);
-        wr16(b, 1);                                     // PCM
-        wr16(b, 1);                                     // mono
+        wr16(b, 1); // PCM
+        wr16(b, 1); // mono
         wr32(b, static_cast<uint32_t>(fs));
-        wr32(b, static_cast<uint32_t>(fs) * 2);         // byte rate
-        wr16(b, 2);                                     // block align
-        wr16(b, 16);                                    // bits
+        wr32(b, static_cast<uint32_t>(fs) * 2); // byte rate
+        wr16(b, 2);                             // block align
+        wr16(b, 16);                            // bits
         b.insert(b.end(), {'d', 'a', 't', 'a'});
         wr32(b, data_bytes);
         for (float v : x) {
@@ -105,7 +126,8 @@ namespace mutap_compare {
             wr16(b, static_cast<uint16_t>(s));
         }
         FILE* f = std::fopen(path.c_str(), "wb");
-        if (!f) return false;
+        if (!f)
+            return false;
         const bool ok = std::fwrite(b.data(), 1, b.size(), f) == b.size();
         std::fclose(f);
         return ok;

@@ -5,10 +5,9 @@
 #include <memory>
 #include <vector>
 
+#include "../aec_backend.h"
 #include "api/scoped_refptr.h"
 #include "modules/audio_processing/include/audio_processing.h"
-
-#include "../aec_backend.h"
 
 namespace mutap_compare {
 
@@ -42,11 +41,11 @@ namespace mutap_compare {
             void process(const float* far, const float* mic, float* out) override {
                 std::copy_n(far, m_frame, m_far.begin());
                 std::copy_n(mic, m_frame, m_mic.begin());
-                const float* rin[1] = {m_far.data()};
+                const float* rin[1]  = {m_far.data()};
                 float*       rout[1] = {m_rev.data()};
                 m_apm->ProcessReverseStream(rin, m_sc, m_sc, rout);
                 m_apm->set_stream_delay_ms(0);
-                const float* cin[1] = {m_mic.data()};
+                const float* cin[1]  = {m_mic.data()};
                 float*       cout[1] = {m_out.data()};
                 m_apm->ProcessStream(cin, m_sc, m_sc, cout);
                 std::copy_n(m_out.begin(), m_frame, out);
@@ -62,11 +61,11 @@ namespace mutap_compare {
                 m_apm = webrtc::AudioProcessingBuilder().SetConfig(cfg).Create();
             }
 
-            double                                       m_fs;
-            std::size_t                                  m_frame;
-            webrtc::StreamConfig                         m_sc;
-            std::vector<float>                           m_far, m_mic, m_out, m_rev;
-            rtc::scoped_refptr<webrtc::AudioProcessing>  m_apm;
+            double                                      m_fs;
+            std::size_t                                 m_frame;
+            webrtc::StreamConfig                        m_sc;
+            std::vector<float>                          m_far, m_mic, m_out, m_rev;
+            rtc::scoped_refptr<webrtc::AudioProcessing> m_apm;
         };
 
     } // namespace
@@ -75,7 +74,8 @@ namespace mutap_compare {
         register_subject({"webrtc", "WebRTC AEC3 (webrtc-audio-processing AudioProcessing, echo canceller only)",
                           [](double fs) -> std::unique_ptr<aec_backend> {
                               // AEC3 supports 8/16/32/48 kHz; guard anyway.
-                              if (fs != 8000 && fs != 16000 && fs != 32000 && fs != 48000) return nullptr;
+                              if (fs != 8000 && fs != 16000 && fs != 32000 && fs != 48000)
+                                  return nullptr;
                               return std::make_unique<webrtc_backend>(fs);
                           }});
     }

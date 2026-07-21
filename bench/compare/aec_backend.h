@@ -60,8 +60,8 @@ namespace mutap_compare {
     /// subject cannot run at that rate (e.g. a 16 kHz-only core asked
     /// for 48 kHz) — the driver then skips the row and says so.
     struct subject {
-        std::string                                          key;   ///< CLI name, e.g. "mutap", "webrtc"
-        std::string                                          blurb; ///< one line for the doc
+        std::string                                            key;   ///< CLI name, e.g. "mutap", "webrtc"
+        std::string                                            blurb; ///< one line for the doc
         std::function<std::unique_ptr<aec_backend>(double fs)> make;
     };
 

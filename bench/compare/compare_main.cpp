@@ -44,25 +44,31 @@ namespace {
     // far-end excitation, so the O(n*taps) convolution runs once and is
     // shared by every subject.
     struct scene {
-        std::vector<float> far;   // far-end excitation (speech-like)
-        std::vector<float> near;  // independent near-end (speech-like)
-        std::vector<float> rir;   // echo path at this rate
-        std::vector<float> echo;  // d = rir * far
-        std::vector<float> mic;   // y = d + near  (double-talk); or d alone
+        std::vector<float> far;  // far-end excitation (speech-like)
+        std::vector<float> near; // independent near-end (speech-like)
+        std::vector<float> rir;  // echo path at this rate
+        std::vector<float> echo; // d = rir * far
+        std::vector<float> mic;  // y = d + near  (double-talk); or d alone
     };
 
     double median(std::vector<double> v) {
-        if (v.empty()) return 0.0;
+        if (v.empty()) {
+            return 0.0;
+        }
         std::sort(v.begin(), v.end());
         return v[v.size() / 2];
     }
 
     // Run one subject at one rate across all rooms/scenarios.
     metrics evaluate(const subject& subj, double fs) {
-        auto be = subj.make(fs);
+        auto    be = subj.make(fs);
         metrics m;
         m.fs = fs;
-        if (!be) { m.subject = subj.key; m.diverged = true; return m; }
+        if (!be) {
+            m.subject  = subj.key;
+            m.diverged = true;
+            return m;
+        }
         m.subject    = be->name();
         m.latency_ms = be->latency_ms();
 
@@ -73,13 +79,13 @@ namespace {
         std::vector<double> erle, converge, near_keep, dt_supp, dt_keep, reconv;
 
         for (const auto& r : rooms()) {
-            const std::vector<float> rir = make_rir(fs, r.delay_ms, r.rt60_ms, 1000.0 * cap / fs,
-                                                    r.coupling_db, 0xF17E + static_cast<uint32_t>(r.delay_ms));
-            const std::vector<float> far  = speechlike(n, fs, 0xFA00);
+            const std::vector<float> rir   = make_rir(fs, r.delay_ms, r.rt60_ms, 1000.0 * cap / fs, r.coupling_db,
+                                                      0xF17E + static_cast<uint32_t>(r.delay_ms));
+            const std::vector<float> far   = speechlike(n, fs, 0xFA00);
             const std::vector<float> nearv = speechlike(n, fs, 0xBEEF);
-            const std::vector<float> echo = convolve(far, rir);
+            const std::vector<float> echo  = convolve(far, rir);
 
-            const size_t dt_on = static_cast<size_t>(0.5 * n); // near-end enters at midpoint
+            const size_t dt_on = static_cast<size_t>(0.5 * n);          // near-end enters at midpoint
             const size_t dt_lo = dt_on + static_cast<size_t>(0.05 * n); // let DT settle
 
             // --- Far-end single talk: ERLE + convergence. This far-only
@@ -89,12 +95,14 @@ namespace {
             {
                 be->reset();
                 std::vector<float> mic = echo; // near-end silent
-                fest_out = run_stream(*be, far, mic, fs);
-                const size_t lo = static_cast<size_t>(0.6 * n); // steady tail
-                const double e  = ratio_db(mic, fest_out, lo, n);
+                fest_out               = run_stream(*be, far, mic, fs);
+                const size_t lo        = static_cast<size_t>(0.6 * n); // steady tail
+                const double e         = ratio_db(mic, fest_out, lo, n);
                 erle.push_back(e);
                 converge.push_back(convergence_ms(mic, fest_out, fs, 20.0));
-                if (!std::isfinite(e)) m.diverged = true;
+                if (!std::isfinite(e)) {
+                    m.diverged = true;
+                }
                 // echo depth sustained across the DT time window (near absent):
                 dt_supp.push_back(ratio_db(echo, fest_out, dt_lo, n));
             }
@@ -106,7 +114,7 @@ namespace {
                 be->reset();
                 std::vector<float> farq(n, 0.0f);
                 std::vector<float> out = run_stream(*be, farq, nearv, fs);
-                const size_t lo = static_cast<size_t>(0.2 * n);
+                const size_t       lo  = static_cast<size_t>(0.2 * n);
                 near_keep.push_back(ratio_db(out, nearv, lo, n));
             }
 
@@ -116,7 +124,9 @@ namespace {
             {
                 be->reset();
                 std::vector<float> mic(n);
-                for (size_t i = 0; i < n; ++i) mic[i] = echo[i] + (i >= dt_on ? nearv[i] : 0.0f);
+                for (size_t i = 0; i < n; ++i) {
+                    mic[i] = echo[i] + (i >= dt_on ? nearv[i] : 0.0f);
+                }
                 std::vector<float> out = run_stream(*be, far, mic, fs);
                 std::vector<float> vseg(nearv);
                 dt_keep.push_back(ratio_db(out, vseg, dt_lo, n));
@@ -125,16 +135,18 @@ namespace {
 
         // --- Path swap: converge on room 0, swap to room 1 at midpoint ---
         {
-            const auto& r0 = rooms()[0];
-            const auto& r1 = rooms()[1];
+            const auto&              r0   = rooms()[0];
+            const auto&              r1   = rooms()[1];
             const std::vector<float> rir0 = make_rir(fs, r0.delay_ms, r0.rt60_ms, 1000.0 * cap / fs, r0.coupling_db, 1);
             const std::vector<float> rir1 = make_rir(fs, r1.delay_ms, r1.rt60_ms, 1000.0 * cap / fs, r1.coupling_db, 2);
             const std::vector<float> far  = speechlike(n, fs, 0xFA00);
             const std::vector<float> e0   = convolve(far, rir0);
             const std::vector<float> e1   = convolve(far, rir1);
-            const size_t swap = n / 2;
-            std::vector<float> mic(n);
-            for (size_t i = 0; i < n; ++i) mic[i] = (i < swap ? e0[i] : e1[i]);
+            const size_t             swap = n / 2;
+            std::vector<float>       mic(n);
+            for (size_t i = 0; i < n; ++i) {
+                mic[i] = (i < swap ? e0[i] : e1[i]);
+            }
             be->reset();
             std::vector<float> out = run_stream(*be, far, mic, fs);
             // Re-convergence: time from swap to 20 dB, measured on the tail.
@@ -143,12 +155,12 @@ namespace {
             reconv.push_back(convergence_ms(mic_tail, out_tail, fs, 20.0));
         }
 
-        m.erle_db          = median(erle);
-        m.converge_ms      = median(converge);
-        m.reconverge_ms    = median(reconv);
-        m.near_keep_db     = median(near_keep);
-        m.dt_echo_supp_db  = median(dt_supp);
-        m.dt_near_keep_db  = median(dt_keep);
+        m.erle_db         = median(erle);
+        m.converge_ms     = median(converge);
+        m.reconverge_ms   = median(reconv);
+        m.near_keep_db    = median(near_keep);
+        m.dt_echo_supp_db = median(dt_supp);
+        m.dt_near_keep_db = median(dt_keep);
 
         // --- Cost: time a far-only steady run, us/frame + x-realtime ---
         {
@@ -156,22 +168,22 @@ namespace {
             const std::vector<float> far = white(n, 0xC057);
             const std::vector<float> mic = convolve(far, rir);
             be->reset();
-            const auto t0 = std::chrono::steady_clock::now();
-            std::vector<float> out = run_stream(*be, far, mic, fs);
-            const auto t1 = std::chrono::steady_clock::now();
-            const double us = std::chrono::duration<double, std::micro>(t1 - t0).count();
-            const size_t frames = n / be->frame();
-            m.us_per_frame = frames ? us / frames : 0.0;
-            const double audio_us = 1e6 * n / fs;
-            m.x_realtime   = us > 0.0 ? audio_us / us : 0.0;
+            const auto         t0     = std::chrono::steady_clock::now();
+            std::vector<float> out    = run_stream(*be, far, mic, fs);
+            const auto         t1     = std::chrono::steady_clock::now();
+            const double       us     = std::chrono::duration<double, std::micro>(t1 - t0).count();
+            const size_t       frames = n / be->frame();
+            m.us_per_frame            = frames ? us / frames : 0.0;
+            const double audio_us     = 1e6 * n / fs;
+            m.x_realtime              = us > 0.0 ? audio_us / us : 0.0;
         }
         return m;
     }
 
     void print_row(const metrics& m) {
-        std::printf("  %-14s %6.0f  %5.1f  %7.1f  %7.0f  %8.0f  %7.1f  %7.1f  %7.1f  %6.1f  %7.0f\n",
-                    m.subject.c_str(), m.fs, m.latency_ms, m.erle_db, m.converge_ms, m.reconverge_ms,
-                    m.near_keep_db, m.dt_echo_supp_db, m.dt_near_keep_db, m.us_per_frame, m.x_realtime);
+        std::printf("  %-14s %6.0f  %5.1f  %7.1f  %7.0f  %8.0f  %7.1f  %7.1f  %7.1f  %6.1f  %7.0f\n", m.subject.c_str(),
+                    m.fs, m.latency_ms, m.erle_db, m.converge_ms, m.reconverge_ms, m.near_keep_db, m.dt_echo_supp_db,
+                    m.dt_near_keep_db, m.us_per_frame, m.x_realtime);
     }
 
     std::string json_row(const metrics& m) {
@@ -181,8 +193,8 @@ namespace {
                       "\"converge_ms\":%.1f,\"reconverge_ms\":%.1f,\"near_keep_db\":%.2f,"
                       "\"dt_echo_supp_db\":%.2f,\"dt_near_keep_db\":%.2f,\"us_per_frame\":%.3f,"
                       "\"x_realtime\":%.1f,\"diverged\":%s}",
-                      m.subject.c_str(), m.fs, m.latency_ms, m.erle_db, m.converge_ms, m.reconverge_ms,
-                      m.near_keep_db, m.dt_echo_supp_db, m.dt_near_keep_db, m.us_per_frame, m.x_realtime,
+                      m.subject.c_str(), m.fs, m.latency_ms, m.erle_db, m.converge_ms, m.reconverge_ms, m.near_keep_db,
+                      m.dt_echo_supp_db, m.dt_near_keep_db, m.us_per_frame, m.x_realtime,
                       m.diverged ? "true" : "false");
         return buf;
     }
@@ -206,7 +218,10 @@ int main(int argc, char** argv) {
     // the "our algorithm through their tests" direction.
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--wav") {
-            if (i + 4 >= argc) { std::fprintf(stderr, "usage: --wav <subject> <far.wav> <mic.wav> <out.wav>\n"); return 2; }
+            if (i + 4 >= argc) {
+                std::fprintf(stderr, "usage: --wav <subject> <far.wav> <mic.wav> <out.wav>\n");
+                return 2;
+            }
             const std::string key = argv[i + 1];
             const auto        far = wav_read(argv[i + 2]);
             const auto        mic = wav_read(argv[i + 3]);
@@ -215,11 +230,21 @@ int main(int argc, char** argv) {
                 return 2;
             }
             const subject* s = nullptr;
-            for (auto& c : registry()) if (c.key == key) s = &c;
-            if (!s) { std::fprintf(stderr, "unknown subject: %s\n", key.c_str()); return 2; }
+            for (auto& c : registry()) {
+                if (c.key == key) {
+                    s = &c;
+                }
+            }
+            if (!s) {
+                std::fprintf(stderr, "unknown subject: %s\n", key.c_str());
+                return 2;
+            }
             auto be = s->make(static_cast<double>(far.fs));
-            if (!be) { std::fprintf(stderr, "%s cannot run at %d Hz\n", key.c_str(), far.fs); return 2; }
-            const size_t n = std::min(far.samples.size(), mic.samples.size());
+            if (!be) {
+                std::fprintf(stderr, "%s cannot run at %d Hz\n", key.c_str(), far.fs);
+                return 2;
+            }
+            const size_t       n = std::min(far.samples.size(), mic.samples.size());
             std::vector<float> f(far.samples.begin(), far.samples.begin() + n);
             std::vector<float> m(mic.samples.begin(), mic.samples.begin() + n);
             std::vector<float> e = run_stream(*be, f, m, static_cast<double>(far.fs));
@@ -234,15 +259,18 @@ int main(int argc, char** argv) {
     // model while AEC3's nonlinear-aware suppressor holds up. JSON out.
     for (int i = 1; i < argc; ++i) {
         if (std::string(argv[i]) == "--nl-sweep") {
-            const double fs   = (i + 1 < argc && argv[i + 1][0] != '-') ? std::stod(argv[i + 1]) : 16000.0;
-            const size_t n    = static_cast<size_t>(8.0 * fs);
-            const size_t cap  = static_cast<size_t>((fs <= 24000.0 ? 64.0 : 43.0) * fs / 1000.0);
-            const auto   rir  = make_rir(fs, 3.0, 45.0, 1000.0 * cap / fs, 12.0, 0xF17E);
-            const auto   far  = speechlike(n, fs, 0xFA00);
+            const double              fs   = (i + 1 < argc && argv[i + 1][0] != '-') ? std::stod(argv[i + 1]) : 16000.0;
+            const size_t              n    = static_cast<size_t>(8.0 * fs);
+            const size_t              cap  = static_cast<size_t>((fs <= 24000.0 ? 64.0 : 43.0) * fs / 1000.0);
+            const auto                rir  = make_rir(fs, 3.0, 45.0, 1000.0 * cap / fs, 12.0, 0xF17E);
+            const auto                far  = speechlike(n, fs, 0xFA00);
             const std::vector<double> etas = {100.0, 3.0, 1.5, 0.8, 0.4}; // 100 = linear
             std::vector<std::string>  keys;
-            for (auto& s : registry())
-                if (s.key == "mutap" || s.key == "speex" || s.key == "webrtc") keys.push_back(s.key);
+            for (auto& s : registry()) {
+                if (s.key == "mutap" || s.key == "speex" || s.key == "webrtc") {
+                    keys.push_back(s.key);
+                }
+            }
 
             std::printf("{\"fs\":%.0f,\"sweep\":[", fs);
             for (size_t e = 0; e < etas.size(); ++e) {
@@ -252,8 +280,14 @@ int main(int argc, char** argv) {
                 bool first = true;
                 for (auto& key : keys) {
                     std::unique_ptr<aec_backend> be;
-                    for (auto& s : registry()) if (s.key == key) be = s.make(fs);
-                    if (!be) continue;
+                    for (auto& s : registry()) {
+                        if (s.key == key) {
+                            be = s.make(fs);
+                        }
+                    }
+                    if (!be) {
+                        continue;
+                    }
                     const auto   out = run_stream(*be, far, echo, fs);
                     const size_t lo  = static_cast<size_t>(0.6 * n);
                     std::printf("%s\"%s\":%.2f", first ? "" : ",", key.c_str(), ratio_db(echo, out, lo, n));
@@ -273,21 +307,38 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--list") {
-            for (auto& s : registry()) std::printf("%-14s %s\n", s.key.c_str(), s.blurb.c_str());
+            for (auto& s : registry()) {
+                std::printf("%-14s %s\n", s.key.c_str(), s.blurb.c_str());
+            }
             return 0;
-        } else if (a == "--json-only") {
+        }
+        else if (a == "--json-only") {
             json_only = true;
-        } else if (a == "--rate" && i + 1 < argc) {
+        }
+        else if (a == "--rate" && i + 1 < argc) {
             rates = {std::stod(argv[++i])};
-        } else if (a == "--subject" && i + 1 < argc) {
+        }
+        else if (a == "--subject" && i + 1 < argc) {
             std::string s = argv[++i], cur;
-            for (char c : s) { if (c == ',') { want.push_back(cur); cur.clear(); } else cur += c; }
-            if (!cur.empty()) want.push_back(cur);
+            for (char c : s) {
+                if (c == ',') {
+                    want.push_back(cur);
+                    cur.clear();
+                }
+                else {
+                    cur += c;
+                }
+            }
+            if (!cur.empty()) {
+                want.push_back(cur);
+            }
         }
     }
 
     auto wanted = [&](const std::string& key) {
-        if (want.empty()) return true;
+        if (want.empty()) {
+            return true;
+        }
         return std::find(want.begin(), want.end(), key) != want.end();
     };
 
@@ -298,16 +349,22 @@ int main(int argc, char** argv) {
                     "cvg_ms", "recvg_ms", "nearKp", "DTsupp", "DTnrKp", "us/fr", "xRT");
     }
     for (auto& s : registry()) {
-        if (!wanted(s.key)) continue;
+        if (!wanted(s.key)) {
+            continue;
+        }
         for (double fs : rates) {
             metrics m = evaluate(s, fs);
             all.push_back(m);
-            if (!json_only) print_row(m);
+            if (!json_only) {
+                print_row(m);
+            }
         }
     }
 
     std::printf("%s{\"results\":[", json_only ? "" : "\nJSON:\n");
-    for (size_t i = 0; i < all.size(); ++i) std::printf("%s%s", i ? "," : "", json_row(all[i]).c_str());
+    for (size_t i = 0; i < all.size(); ++i) {
+        std::printf("%s%s", i ? "," : "", json_row(all[i]).c_str());
+    }
     std::printf("]}\n");
     return 0;
 }

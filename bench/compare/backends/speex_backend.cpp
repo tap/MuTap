@@ -8,9 +8,8 @@
 #include <memory>
 #include <vector>
 
-#include "speex/speex_echo.h"
-
 #include "../aec_backend.h"
+#include "speex/speex_echo.h"
 
 namespace mutap_compare {
 
@@ -60,19 +59,18 @@ namespace mutap_compare {
                 return static_cast<std::int16_t>(std::lround(s));
             }
 
-            double                     m_fs;
-            std::size_t                m_frame, m_taps;
-            SpeexEchoState*            m_st;
-            std::vector<std::int16_t>  m_rec, m_play, m_out;
+            double                    m_fs;
+            std::size_t               m_frame, m_taps;
+            SpeexEchoState*           m_st;
+            std::vector<std::int16_t> m_rec, m_play, m_out;
         };
 
     } // namespace
 
     void register_speex_backend() {
-        register_subject({"speex", "Speex MDF echo canceller (speexdsp, float/KISS build, int16 I/O)",
-                          [](double fs) -> std::unique_ptr<aec_backend> {
-                              return std::make_unique<speex_backend>(fs);
-                          }});
+        register_subject(
+            {"speex", "Speex MDF echo canceller (speexdsp, float/KISS build, int16 I/O)",
+             [](double fs) -> std::unique_ptr<aec_backend> { return std::make_unique<speex_backend>(fs); }});
     }
 
 } // namespace mutap_compare
