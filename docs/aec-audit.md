@@ -219,3 +219,53 @@ g++ -O2 -std=c++20 -I include -I tests -I submodules/dsptap/include \
 44.1 kHz ERL trajectory with and without the notch countermeasures
 forced on, against the 48 kHz control.
 
+## F2 follow-up: SampleRateTap closes most of the clock-skew gap
+
+`tools/audit/probe_drift_asrc.cpp` (add
+`-I <SampleRateTap>/include` to the build line) routes the drifted
+reference through `tap::samplerate::async_sample_rate_converter` — the
+sibling repo's near-unity ASRC — before the chain, modeling the real
+split-clock deployment (push at the render clock, pull at the capture
+clock). Measured, cabin path with 5 ms of playout delay, CSS −16 dBm0,
+31.5 s:
+
+| Skew | Naive (audit F2) | Via ASRC |
+|---|---|---|
+| 0 ppm (transparency control) | −85.8 dBm0(A) / 70.7 dB ERLE | **−91.8 / 75.5** |
+| 50 ppm | −36.8 / 19.9 | **−55.9 / 36.1** |
+| 100 ppm | −29.4 / 14.6 | **−58.7 / 35.7** |
+| 300 ppm | −19.8 / 1.6 | **−58.9 / 37.0** |
+
+The servo locks exactly (reported ppm 49.97/99.99/300.00, zero
+underruns/overruns/resyncs) and the outcome is **drift-independent**:
+catastrophic collapse becomes a stable ~36 dB ERLE operating point at
+the −58 requirement wire (not the certified −76 margin). Two findings
+that must travel with any integration:
+
+1. **The ASRC's ~1.5 ms designed latency must be hidden inside the
+   playout delay.** With the audit fixtures' zero-delay paths the
+   recovered reference *lags* the echo, the direct sound goes
+   non-causal, and cancellation collapses to ~12 dB ERLE **even at
+   0 ppm**. Real render stacks always buffer more than 1.5 ms, but the
+   simulation must model it, and the external's docs should say "tap
+   the reference before the ASRC, at the point it is handed to the
+   render device."
+2. The residual ~36 dB ERLE ceiling under drift is a **lower bound** —
+   this rig's render-clock stream is synthesized with a linear
+   interpolator (its own distortion floor), where a real device stream
+   is native. Re-measure with a high-quality synthesis resampler before
+   attributing the ceiling to the ASRC's phase breathing. Transfer
+   granularity here is 4-frame chunks (the servo's QUIET-capable
+   regime); coarse-callback transfer (TRACK-mode "latency breathing")
+   should be measured at the deployment's real callback size.
+
+The other SampleRateTap pieces map onto the remaining drift roadmap:
+`fractional_resampler::process()` takes the rate deviation as an
+external per-call input, so it is the steerable engine for the
+no-second-clock case (drift baked into pre-merged streams), needing
+only a MuTap-side lag-drift estimator to steer it; and `pi_servo`'s
+plant model (occupancy as a pure integrator of rate error) is formally
+identical to inter-stream lag drift, so its three-stage
+gain-scheduled loop, lock/unlock discipline and rate-scaling carry
+over to that estimator unchanged.
+
