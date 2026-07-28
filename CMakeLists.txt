@@ -18,6 +18,11 @@ add_subdirectory(submodules/dsptap)
 
 add_library(mutap INTERFACE)
 add_library(MuTap::MuTap ALIAS mutap)
+# The family-wide alias, per the namespace convention in taphouse's README: one
+# `tap::<library>` sub-namespace per repo, and the CMake alias matches it. The
+# older spelling above stays so existing consumers keep working; prefer
+# `tap::mu` in new code.
+add_library(tap::mu ALIAS mutap)
 target_include_directories(mutap INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
