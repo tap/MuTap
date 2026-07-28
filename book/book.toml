@@ -11,4 +11,4 @@ create-missing = false
 [output.html]
 default-theme = "rust"
 git-repository-url = "https://github.com/tap/MuTap"
-site-url = "/MuTap/book/"
+site-url = "/MuTap/"

@@ -1,0 +1,78 @@
+name: Docs
+
+# Build the mdBook ("Quieting the Loop", book/) and publish it to GitHub Pages
+# on every push to main. On pull requests, build only (no deploy) so breakage is
+# caught in review without touching the live site — this is also the repo's only
+# gate on the book, since ci.yml does not build it.
+#
+# TapTools' docs.yml pattern (itself AmbiTap's), minus the Doxygen site: this
+# repo has no Doxyfile, so the book is the whole site and is published at the
+# root. book.toml's site-url is /MuTap/ to match that; if a Doxygen site is ever
+# added under /api/, assemble a site/ directory the way AmbiTap does rather than
+# moving the book into a subdirectory, so site-url stays correct.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; a newer push supersedes an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+env:
+  MDBOOK_URL: https://github.com/rust-lang/mdBook/releases/download/v0.4.40/mdbook-v0.4.40-x86_64-unknown-linux-gnu.tar.gz
+  MDBOOK_SHA256: "9ef07fd288ba58ff3b99d1c94e6d414d431c9a61fdb20348e5beb74b823d546b"
+
+jobs:
+  build:
+    name: build book
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install mdBook (pinned)
+        run: |
+          curl -sSL "$MDBOOK_URL" -o mdbook.tar.gz
+          echo "$MDBOOK_SHA256  mdbook.tar.gz" | sha256sum -c -
+          tar -xzf mdbook.tar.gz mdbook
+          ./mdbook --version
+
+      # book.toml sets create-missing = false, so a SUMMARY.md entry without a
+      # matching file fails the build rather than silently generating a stub.
+      - name: Build the book
+        run: ./mdbook build book
+
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: book/book
+
+  deploy:
+    name: deploy to Pages
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Creates/enables the Pages site (Source: GitHub Actions) if the repo
+      # doesn't have one yet — deploy-pages 404s otherwise.
+      - name: Enable Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
