@@ -29,12 +29,33 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
 
 
+def load_munn(path: str) -> dict[str, np.ndarray]:
+    """Read the MUNN0001 flat binary (export_weights.py) back into the
+    npz-style dict this module consumes — so the committed
+    tools/ml/pretrained/*.munn weights run without the training artifacts."""
+    shapes = [
+        ("dense_in.weight", (64, 44)), ("dense_in.bias", (64,)),
+        ("gru.weight_ih_l0", (288, 64)), ("gru.weight_hh_l0", (288, 96)),
+        ("gru.bias_ih_l0", (288,)), ("gru.bias_hh_l0", (288,)),
+        ("dense_out.weight", (22, 96)), ("dense_out.bias", (22,)),
+    ]
+    with open(path, "rb") as f:
+        if f.read(8) != b"MUNN0001":
+            raise ValueError(f"{path}: bad magic")
+        out = {}
+        for name, shape in shapes:
+            n = int(np.prod(shape))
+            out[name] = np.frombuffer(f.read(4 * n), dtype="<f4").reshape(shape)
+    return out
+
+
 class SuppressorNet:
     """Stateful numpy inference over per-frame feature vectors."""
 
     def __init__(self, weights_file: str):
-        w = np.load(weights_file)
-        self.w = {k: w[k].astype(np.float64) for k in w.files}
+        w = load_munn(weights_file) if str(weights_file).endswith(".munn") else np.load(weights_file)
+        keys = w.files if hasattr(w, "files") else w.keys()
+        self.w = {k: np.asarray(w[k], dtype=np.float64) for k in keys}
         self.h = np.zeros(GRU_DIM)
 
     def reset(self) -> None:
