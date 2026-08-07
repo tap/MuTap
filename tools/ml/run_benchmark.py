@@ -71,6 +71,9 @@ def main() -> int:
     ap.add_argument("--scenario-dir", default=None,
                     help="run on pre-made scenario folders (make_dataset.py "
                          "--scenarios) instead of dumping the rig's grid")
+    ap.add_argument("--nn-weights", default=None,
+                    help="weights .npz (train_suppressor.py): adds the "
+                         "mutap-kalman+nn hybrid to the system list")
     ap.add_argument("--json", default=None, help="write full results as JSON")
     args = ap.parse_args()
 
@@ -85,6 +88,10 @@ def main() -> int:
                lambda: mutap_ffi.KalmanCanceller(lib, BLOCK, PARTITIONS))
         yield ("mutap-chain",
                lambda: mutap_ffi.AecChain(lib, BLOCK, PARTITIONS, SAMPLE_RATE))
+        if args.nn_weights:
+            import nn
+            yield ("mutap-kalman+nn",
+                   lambda: nn.KalmanNnSystem(lib, BLOCK, PARTITIONS, args.nn_weights))
         if args.dtln_dir:
             import dtln_aec
             for size in args.dtln_sizes.split(","):
