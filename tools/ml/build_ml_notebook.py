@@ -195,7 +195,68 @@ else:
 code(r'''if HAVE_SPEECH:
     table(res_speech)''')
 
-md("""In domain, every learner earns its keep: the hybrid's residual
+md("""## Coupling-loss timeline (TCLw-style)
+
+The industry way to draw this same experiment — e.g. in vendor AEC
+shoot-outs — is a **terminal-coupling-loss** trace: the send-path level
+relative to the far-end receive level, over time, with a pass line
+(commonly −30 dB) the canceller must sit below once it has recovered
+from double-talk. It reads differently from the residual traces above in
+one important way: the meter is *deployable* (it never needs the
+simulator's ground truth), so during double-talk the near-end talker's
+own speech counts against the "loss" — those bursts to −10 dB are mostly
+the talker, not leaked echo. That blindness is exactly why the tables
+above also report true suppression and near-end SDR; but on this chart's
+own terms — converge fast, stay low, *return* below the line after
+double-talk — the comparison is fair and familiar.
+
+x is silent in the `near_only` segment (coupling loss is undefined
+there), so the timeline ends after `recovery`.""")
+
+code(r'''def plot_tclw(scn, results, title, target_db=-30.0, smooth_blocks=25, fs=16000):
+    n_active = scn.bounds["recovery"][1]            # x silent after this
+    k = np.ones(smooth_blocks) / smooth_blocks
+    def block_power(sig):
+        p = np.sum(sig[: n_active - n_active % scn.block].reshape(-1, scn.block) ** 2,
+                   axis=1) / scn.block
+        return np.convolve(p, k, mode="same")
+    # Local far-end reference with an activity gate: real speech pauses
+    # would otherwise read as (meaningless) infinite coupling loss; the
+    # reference charts avoid this by using continuous test signals.
+    p_x = block_power(scn.x)
+    active = p_x > 0.05 * np.mean(p_x)
+    fig, ax = plt.subplots(figsize=(11, 4.2))
+    for name, (e, _) in results.items():
+        trace = 10 * np.log10(block_power(e) / (p_x + 1e-12) + 1e-12)
+        trace[~active] = np.nan
+        t = (np.arange(len(trace)) * scn.block + scn.block / 2) / fs
+        ax.plot(t, trace, label=name, lw=1.1)
+    for segname in ("converge", "double_talk", "recovery"):
+        lo, hi = scn.bounds[segname]
+        if lo:
+            ax.axvline(lo / fs, color="k", lw=0.6, alpha=0.4)
+        ax.text((lo + hi) / 2 / fs, ax.get_ylim()[1], segname,
+                ha="center", va="bottom", fontsize=8, alpha=0.7)
+    ax.axhline(target_db, color="k", ls="--", lw=1,
+               label=f"target (< {target_db:.0f} dB after recovery)")
+    ax.set(xlabel="seconds", ylabel="send level re far end (dB)", title=title)
+    ax.legend(loc="lower left", fontsize=8)
+    fig.tight_layout()
+
+plot_tclw(scn_music, res_music, "TCLw-style coupling loss — music near end (synthetic)")
+if HAVE_SPEECH:
+    plot_tclw(scn_speech, res_speech, "TCLw-style coupling loss — speech near end (LibriSpeech)")''')
+
+md("""What to look for, chart-convention style: how fast each trace
+falls at the start (convergence), how it behaves through the
+double-talk window (bursts are the talker — a trace that stays
+suspiciously flat there is suppressing the *talker*, which is DTLN's
+signature on the synthetic material), and where it settles after
+double-talk relative to the dashed line (a canceller whose estimate
+survived the segment returns below it immediately; one whose filter was
+damaged needs to re-learn).
+
+In domain, every learner earns its keep: the hybrid's residual
 drops *below* the classical chain through the single-talk segments
 (that is the learned suppressor beating the coherence rule at its own
 game, with the same linear canceller underneath), and DTLN posts strong
