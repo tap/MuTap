@@ -84,6 +84,49 @@ suppression and near-end fidelity. DTLN's single-talk ERLE lead
 close while keeping the classical chain's guarantees. That is the
 hybrid this directory trains.
 
+## The trained hybrid (v1)
+
+`pretrained/suppressor_v1.munn`: 51,670 parameters, 12 epochs (~2.5 h
+CPU) on 400 examples (~1.1 h of mixture) from Mini LibriSpeech
+train-clean-5 — deliberately modest, to measure what the architecture
+buys before scaling anything. Same meter, speech scenarios:
+
+| system | stERLE | dtSUP | recERLE | neSDR |
+|---|---|---|---|---|
+| mutap-kalman-linear | 8.0 | 10.9 | 9.6 | 80 |
+| mutap-chain | 30.9 | **17.2** | 34.0 | **38.2** |
+| mutap-kalman+nn (v1) | **36.0** | 11.1 | **36.4** | 37.6 |
+| dtln-aec-512 | 43.4 | 14.2 | 26.3 | 29.3 |
+
+And on the rig's synthetic materials (out of training domain — the
+DTLN-killer test), medians over materials {ar, voiced, music} x seeds:
+
+| system | stERLE | dtSUP | neSDR |
+|---|---|---|---|
+| mutap-chain | 42–46 | 12.2–15.9 | 29–40 |
+| mutap-kalman+nn (v1) | 42.9–43.4 | **≈ 0** | **26–39** |
+| dtln-aec-512 | 37–44 | ≈ 0 | 0–4 |
+
+Reading:
+
+- **In domain, the hybrid already beats the classical chain on ERLE**
+  (+5 dB single-talk, +2 dB recovery) at equal near-end transparency,
+  from a first, small training run.
+- **Out of domain it degrades gracefully where DTLN catastrophically
+  fails**: the near end survives at 26–39 dB SDR (vs DTLN's 0–5 —
+  annihilation), because the linear canceller does the bulk, the network
+  only gains E within [0, 1], and Yhat-referenced features carry real
+  echo evidence. But its *double-talk suppression* contribution
+  evaporates off-domain (≈0 dB vs the coherence rule's 12–16), so the
+  classical suppressor remains the right default engine.
+- Next steps, in expected-value order: (1) add the coherence statistic
+  to the feature set — it is exactly the evidence the classical rule
+  thrives on and the v1 net lacks; (2) train on synthetic/music near
+  ends too — unlike DTLN we own the generator, so off-domain robustness
+  is a data problem we can actually fix; (3) more data/epochs (v1's val
+  loss was still falling); (4) int8 quantization + CMSIS-NN for the M55
+  path.
+
 ## The pipeline
 
 ```
