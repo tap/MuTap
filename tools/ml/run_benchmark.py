@@ -74,6 +74,9 @@ def main() -> int:
     ap.add_argument("--nn-weights", default=None,
                     help="weights .npz (train_suppressor.py): adds the "
                          "mutap-kalman+nn hybrid to the system list")
+    ap.add_argument("--webrtc-aec3-bin", default=None,
+                    help="path to webrtc_aec3_infer: adds WebRTC AEC3 to "
+                         "the system list")
     ap.add_argument("--json", default=None, help="write full results as JSON")
     args = ap.parse_args()
 
@@ -92,6 +95,9 @@ def main() -> int:
             import nn
             yield ("mutap-kalman+nn",
                    lambda: nn.KalmanNnSystem(lib, BLOCK, PARTITIONS, args.nn_weights))
+        if args.webrtc_aec3_bin:
+            import webrtc_aec3
+            yield ("webrtc-aec3", lambda: webrtc_aec3.WebRtcAec3(args.webrtc_aec3_bin))
         if args.dtln_dir:
             import dtln_aec
             for size in args.dtln_sizes.split(","):

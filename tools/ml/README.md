@@ -31,6 +31,7 @@ stage where a data-driven decision rule plausibly beats DSP.
 | DTLN-aec code + weights ([breizhn/DTLN-aec](https://github.com/breizhn/DTLN-aec)) | MIT | benchmark baseline | code yes; **weights benchmark-only** — trained on the mixed-license AEC-Challenge corpus (parts academic-only) |
 | RNNoise architecture ideas ([xiph/rnnoise](https://github.com/xiph/rnnoise)) | BSD-3 | design reference (band gains, tiny GRU) | yes (we reimplement, share no code) |
 | NKF-AEC ([fjiang9/NKF-AEC](https://github.com/fjiang9/NKF-AEC)) | **no license file** | paper-only inspiration | repo code unusable; clean-room from the ICASSP 2023 paper only |
+| WebRTC AEC3 ([webrtc-audio-processing](https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing) >= 1.0) | BSD-3 | benchmark baseline (Chrome's deployed canceller) | yes |
 | LibriSpeech / Mini LibriSpeech ([openslr.org](https://www.openslr.org/31/)) | CC BY 4.0 | training speech | yes, with attribution |
 | Rooms, echo paths, mixtures | synthesized here | training scenarios | yes (ours) |
 | Trained suppressor weights | produced by this pipeline | the deliverable | yes — every input is MIT / CC BY / ours |
@@ -97,6 +98,14 @@ buys before scaling anything. Same meter, speech scenarios:
 | mutap-chain | 30.9 | **17.2** | 34.0 | **38.2** |
 | mutap-kalman+nn (v1) | **36.0** | 11.1 | **36.4** | 37.6 |
 | dtln-aec-512 | 43.4 | 14.2 | 26.3 | 29.3 |
+| webrtc-aec3 | 37.9 | 2.7 | 39.2 | **4.5** |
+
+WebRTC AEC3 (Chrome's deployed canceller, run through the same meter via
+`webrtc_aec3_infer`) is the cautionary classical datapoint: excellent
+ERLE, and the worst near-end transparency of the field by a wide margin —
+its aggressive suppressor clamps the talker (4.5 dB SDR). That is a
+*design choice* for telephony (callers tolerate ducking; they complain
+about echo), and the opposite of the right choice for program material.
 
 And on the rig's synthetic materials (out of training domain — the
 DTLN-killer test), medians over materials {ar, voiced, music} x seeds:
@@ -157,6 +166,20 @@ python3 tools/ml/train_suppressor.py --data shards --out suppressor.npz
 python3 tools/ml/make_dataset.py --corpus <LibriSpeech>/dev-clean-2 \
     --scenarios scen --examples 3 --seed 7
 python3 tools/ml/run_benchmark.py --scenario-dir scen --nn-weights suppressor.npz
+```
+
+WebRTC AEC3 baseline (optional): build freedesktop's
+`webrtc-audio-processing` (>= 1.0 carries AEC3; distro 0.3.x packages are
+the legacy canceller) and point pkg-config at it before configuring:
+
+```sh
+git clone --depth 1 --branch v2.1 \
+    https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing.git
+meson setup webrtc-audio-processing/build webrtc-audio-processing \
+    --buildtype=release -Dprefix=$PWD/wap-install
+ninja -C webrtc-audio-processing/build install
+PKG_CONFIG_PATH=$PWD/wap-install/lib/*/pkgconfig cmake -B build-ml ... # as above
+python3 tools/ml/run_benchmark.py --webrtc-aec3-bin build-ml/tools/ml/webrtc_aec3_infer ...
 ```
 
 `features.py` is the single source of truth for the analysis geometry
