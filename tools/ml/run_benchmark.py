@@ -68,6 +68,9 @@ def main() -> int:
     ap.add_argument("--materials", default="ar,music")
     ap.add_argument("--seeds", default="2,12,22")
     ap.add_argument("--room", default="studio")
+    ap.add_argument("--scenario-dir", default=None,
+                    help="run on pre-made scenario folders (make_dataset.py "
+                         "--scenarios) instead of dumping the rig's grid")
     ap.add_argument("--json", default=None, help="write full results as JSON")
     args = ap.parse_args()
 
@@ -88,20 +91,28 @@ def main() -> int:
                 prefix = str(pathlib.Path(args.dtln_dir) / f"dtln_aec_{size.strip()}")
                 yield (f"dtln-aec-{size.strip()}", lambda p=prefix: dtln_aec.DtlnAec(p))
 
+    if args.scenario_dir:
+        folders = sorted(p.parent for p in pathlib.Path(args.scenario_dir).glob("*/manifest.json"))
+        grid = [(f.name, 0, f) for f in folders]
+    else:
+        grid = [(m.strip(), s, None)
+                for m in args.materials.split(",") for s in (int(t) for t in args.seeds.split(","))]
+
     results: list[dict] = []
-    for material in args.materials.split(","):
-        for seed in (int(s) for s in args.seeds.split(",")):
-            folder = dump_scenario(build_dir, workdir, material.strip(), seed, args.room)
-            scn = metrics.Scenario.load(folder)
-            for name, make in systems():
-                e = make().process(scn.x, scn.y)
-                m = metrics.measure(scn, e)
-                results.append({"material": material.strip(), "seed": seed,
-                                "room": args.room, "system": name, **m.as_dict()})
-                print(f"  {material:>6} seed {seed:2d} {name:>20}: "
-                      f"stERLE {m.st_erle_db:6.1f}  dtSUP {m.dt_suppression_db:6.1f}  "
-                      f"recERLE {m.rec_erle_db:6.1f}  neSDR {m.ne_sdr_db:6.1f}  "
-                      f"(delay {m.delay_samples})", flush=True)
+    for material, seed, folder in grid:
+        if folder is None:
+            folder = dump_scenario(build_dir, workdir, material, seed, args.room)
+        scn = metrics.Scenario.load(folder)
+        material, seed = scn.meta["material"], scn.meta["seed"]
+        for name, make in systems():
+            e = make().process(scn.x, scn.y)
+            m = metrics.measure(scn, e)
+            results.append({"material": material, "seed": seed,
+                            "room": scn.meta["room"], "system": name, **m.as_dict()})
+            print(f"  {material:>6} seed {seed:2d} {name:>20}: "
+                  f"stERLE {m.st_erle_db:6.1f}  dtSUP {m.dt_suppression_db:6.1f}  "
+                  f"recERLE {m.rec_erle_db:6.1f}  neSDR {m.ne_sdr_db:6.1f}  "
+                  f"(delay {m.delay_samples})", flush=True)
 
     # Median-over-seeds summary table per (material, system).
     import statistics
