@@ -7,3 +7,5 @@ target_link_libraries(aec_scenario_dump PRIVATE MuTap::MuTap mutap_warnings)
 # (tests/support/*.h, tests/fixtures/*.h) so benchmark signals are the test
 # suite's signals.
 target_include_directories(aec_scenario_dump PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+add_executable(nn_infer nn_infer.cpp)
+target_link_libraries(nn_infer PRIVATE MuTap::MuTap mutap_warnings)
