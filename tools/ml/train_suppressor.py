@@ -96,7 +96,7 @@ def main() -> int:
             loss = (wb * (pred - gb) ** 2).mean()
             loss.backward()
             opt.step()
-            total += float(loss) * len(xb)
+            total += float(loss.detach()) * len(xb)
         model.eval()
         with torch.no_grad():
             xv, gv, wv = tensors(val_idx)
@@ -105,10 +105,10 @@ def main() -> int:
         if val < best_val:
             best_val = val
             state = {k: v.detach().numpy().copy() for k, v in model.state_dict().items()}
+            np.savez(args.out, **state)  # checkpoint: best-so-far survives an interrupted run
             marker = "  *"
         print(f"epoch {epoch + 1:3d}: train {total / len(tr_idx):.5f}  val {val:.5f}{marker}", flush=True)
 
-    np.savez(args.out, **state)
     n_params = sum(v.size for v in state.values())
     print(f"wrote {args.out} ({n_params} parameters, best val {best_val:.5f})")
     return 0
