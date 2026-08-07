@@ -41,6 +41,9 @@ signals, through one meter**:
 - **DTLN-aec** — a published *end-to-end* neural AEC (Westhausen & Meyer,
   ICASSP 2021, MIT), 10.4M parameters, as the "replace everything with a
   network" reference point.
+- **WebRTC AEC3** — the classical canceller + aggressive suppressor that
+  ships in Chrome (BSD-3, via freedesktop's `webrtc-audio-processing`),
+  as the industry-deployed classical reference point.
 
 The scenario is the test rig's double-talk protocol
 ([`test_aec.cpp`](../tests/test_aec.cpp)) plus a near-end-only segment:
@@ -80,8 +83,12 @@ HAVE_DTLN = pathlib.Path(DTLN_DIR, "dtln_aec_512_1.tflite").exists()
 LIBRI = os.environ.get("MUTAP_LIBRISPEECH",
                        "/tmp/claude-0/-home-user/425f09f3-c52d-5603-aaf0-eebeab94b576/scratchpad/speech/LibriSpeech/dev-clean-2")
 HAVE_SPEECH = pathlib.Path(LIBRI).exists()
+AEC3_BIN = pathlib.Path(os.environ.get("MUTAP_WEBRTC_AEC3_BIN",
+                                       BUILD / "tools/ml/webrtc_aec3_infer"))
+HAVE_AEC3 = AEC3_BIN.exists()
 print(f"DTLN models: {'found' if HAVE_DTLN else 'ABSENT (sections skipped)'};",
-      f"speech corpus: {'found' if HAVE_SPEECH else 'ABSENT (sections skipped)'}")''')
+      f"speech corpus: {'found' if HAVE_SPEECH else 'ABSENT (sections skipped)'};",
+      f"WebRTC AEC3: {'found' if HAVE_AEC3 else 'ABSENT (rows skipped)'}")''')
 
 md("""## The systems
 
@@ -101,6 +108,9 @@ if HAVE_DTLN:
     import dtln_aec
     SYSTEMS.append(("DTLN-aec 512 (end-to-end)",
                     lambda: dtln_aec.DtlnAec(str(pathlib.Path(DTLN_DIR) / "dtln_aec_512"))))
+if HAVE_AEC3:
+    import webrtc_aec3
+    SYSTEMS.append(("WebRTC AEC3", lambda: webrtc_aec3.WebRtcAec3(AEC3_BIN)))
 
 def run_all(scn):
     out = {}
