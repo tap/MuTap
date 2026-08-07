@@ -70,6 +70,13 @@ if(MUTAP_BUILD_ITU_DUMP)
     add_subdirectory(tools/notebook)
 endif()
 
+# Scenario dump for the ML echo-cancellation benchmark harness
+# (tools/ml/run_benchmark.py; see tools/ml/README.md).
+option(MUTAP_BUILD_ML_TOOLS "Build the ML benchmark scenario dump" OFF)
+if(MUTAP_BUILD_ML_TOOLS)
+    add_subdirectory(tools/ml)
+endif()
+
 # Host-only performance baselines (Google Benchmark needs threads);
 # see bench/README.md for the workflow. Never a CI performance gate.
 option(MUTAP_BUILD_BENCHMARKS "Build MuTap benchmarks" OFF)
