@@ -67,23 +67,31 @@ def band_matrix(num_bands: int = NUM_BANDS, bins: int = BINS) -> np.ndarray:
 
 def stft(x: np.ndarray) -> np.ndarray:
     """(frames, BINS) complex spectra; sqrt-Hann window, hop HOP.
-    Frame t covers samples [t*HOP, t*HOP + FRAME): one frame of lookahead
-    relative to the canceller's block clock, i.e. the same one-extra-block
-    latency the classical suppressor's causal gain filter costs."""
+
+    STREAMING-consistent framing: a HOP of zero prehistory is prepended,
+    so frame t is [block t-1, block t] — exactly the frame the C++
+    suppressor assembles on its t-th process_block call (block -1 = the
+    zeros its buffers start from). Parity of the GRU state trajectory
+    depends on this warm-up frame existing in both implementations."""
     win = np.sqrt(np.hanning(FRAME + 1)[:FRAME])
-    n_frames = max(0, (len(x) - FRAME) // HOP + 1)
+    xp = np.concatenate([np.zeros(HOP), x])
+    n_frames = max(0, (len(xp) - FRAME) // HOP + 1)
     out = np.empty((n_frames, BINS), dtype=np.complex128)
     for t in range(n_frames):
-        out[t] = np.fft.rfft(x[t * HOP : t * HOP + FRAME] * win)
+        out[t] = np.fft.rfft(xp[t * HOP : t * HOP + FRAME] * win)
     return out
 
 
 def istft(spec: np.ndarray, n: int) -> np.ndarray:
+    """Inverse of stft (drops the zero-prehistory pad): time-aligned with
+    the analyzed signal. The C++ stream instead EMITS one block late (its
+    t-th call returns the sample span ending at block t-1); the offline
+    meters delay-compensate, so both conventions measure identically."""
     win = np.sqrt(np.hanning(FRAME + 1)[:FRAME])
-    out = np.zeros(n + FRAME)
+    out = np.zeros(n + HOP + FRAME)
     for t in range(spec.shape[0]):
         out[t * HOP : t * HOP + FRAME] += np.fft.irfft(spec[t]) * win
-    return out[:n]
+    return out[HOP : HOP + n]
 
 
 def band_energies(spec: np.ndarray, bmat: np.ndarray | None = None) -> np.ndarray:
