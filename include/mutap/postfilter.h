@@ -769,14 +769,29 @@ namespace tap::mu {
     /// double-talk defense). Any type with the 4-argument raw-core
     /// surface process_block(x, y, e, yhat) works, as does pem_afc's
     /// 3-argument surface with echo_estimate_block().
-    template <typename Sample, typename Canceller = partitioned_fdkf<Sample>>
+    ///
+    /// The POST stage is pluggable the same way: any type with the
+    /// suppressor contract — config-only construction, a `block_size`
+    /// config field, process_block(e, yhat, out) at the canceller's block
+    /// size with the one-extra-block latency, reset(), noexcept/
+    /// allocation-free after construction — slots in as `Post`
+    /// (residual_suppressor, the certified default; nn_suppressor, the
+    /// learned engine). If the post also exposes echo_explained(), the
+    /// initial receive guard and the re-convergence rescue key on it
+    /// exactly as before; a post without the statistic disables both
+    /// (the guard certifies immediately — there is nothing to certify
+    /// on), detected per-capability with `if constexpr (requires ...)`
+    /// like the canceller's own optional surface.
+    template <typename Sample, typename Canceller = partitioned_fdkf<Sample>,
+              typename Post = residual_suppressor<Sample>>
     class aec_chain {
       public:
         using canceller_type = Canceller;
+        using post_type      = Post;
 
         struct config {
-            typename Canceller::config                   canceller;
-            typename residual_suppressor<Sample>::config postfilter;
+            typename Canceller::config canceller;
+            typename Post::config      postfilter;
             /// INITIAL RECEIVE GUARD: switched send attenuation while the
             /// far end is active and the canceller has not yet certified
             /// convergence, latched OFF permanently once it has. An
@@ -890,10 +905,10 @@ namespace tap::mu {
 
         size_t block_size() const noexcept { return m_afc.block_size(); }
 
-        Canceller&                         canceller() noexcept { return m_afc; }
-        const Canceller&                   canceller() const noexcept { return m_afc; }
-        residual_suppressor<Sample>&       postfilter() noexcept { return m_post; }
-        const residual_suppressor<Sample>& postfilter() const noexcept { return m_post; }
+        Canceller&       canceller() noexcept { return m_afc; }
+        const Canceller& canceller() const noexcept { return m_afc; }
+        Post&            postfilter() noexcept { return m_post; }
+        const Post&      postfilter() const noexcept { return m_post; }
 
         void reset() noexcept {
             m_afc.reset();
@@ -934,10 +949,22 @@ namespace tap::mu {
         }
 
       private:
-        static typename residual_suppressor<Sample>::config matched(typename residual_suppressor<Sample>::config pf,
-                                                                    size_t block_size) {
+        static typename Post::config matched(typename Post::config pf, size_t block_size) {
             pf.block_size = block_size; // one block size for the chain
             return pf;
+        }
+
+        /// The guard/rescue convergence statistic, when the post engine
+        /// provides one. Posts without echo_explained() return 1 ("all
+        /// explained"): the guard certifies immediately and the rescue
+        /// never fires — the capability degrades, the chain still runs.
+        Sample post_echo_explained() const noexcept {
+            if constexpr (requires(const Post& p) { p.echo_explained(); }) {
+                return m_post.echo_explained();
+            }
+            else {
+                return Sample(1);
+            }
         }
 
         /// Shared receive-activity detector (asymmetric x-power floor:
@@ -959,7 +986,7 @@ namespace tap::mu {
                 return;
             }
             const size_t b = block_size();
-            if (m_post.echo_explained() > m_cfg.guard_converge_ratio) {
+            if (post_echo_explained() > m_cfg.guard_converge_ratio) {
                 if (++m_conv_count >= m_cfg.guard_hold_blocks) {
                     m_converged = true; // latch: the guard never re-engages
                     return;
@@ -993,7 +1020,7 @@ namespace tap::mu {
                 if (!receive_active) {
                     return;
                 }
-                if (m_post.echo_explained() <= Sample(1) / m_cfg.rescue_drop_ratio) {
+                if (post_echo_explained() <= Sample(1) / m_cfg.rescue_drop_ratio) {
                     // Decay, not reset: the smoothed ratio grazes the band
                     // edge inside CSS bursts (measured), and a hard reset
                     // never accumulates across the grazes.
@@ -1050,23 +1077,23 @@ namespace tap::mu {
             }
         }
 
-        config                      m_cfg;
-        Canceller                   m_afc;
-        residual_suppressor<Sample> m_post;
-        std::vector<Sample>         m_mid;
-        std::vector<Sample>         m_yhat;
-        Sample                      m_guard_gain;
-        Sample                      m_x_floor         = Sample(0);
-        size_t                      m_conv_count      = 0;
-        bool                        m_converged       = false;
-        Sample                      m_guard           = Sample(1);
-        size_t                      m_drop_count      = 0;
-        size_t                      m_rescue_cooldown = 0;
-        std::optional<Canceller>    m_shadow;
-        std::vector<Sample>         m_shadow_e;
-        Sample                      m_pm           = Sample(0); ///< smoothed main residual power
-        Sample                      m_ps           = Sample(0); ///< smoothed shadow residual power
-        size_t                      m_shadow_count = 0;
+        config                   m_cfg;
+        Canceller                m_afc;
+        Post                     m_post;
+        std::vector<Sample>      m_mid;
+        std::vector<Sample>      m_yhat;
+        Sample                   m_guard_gain;
+        Sample                   m_x_floor         = Sample(0);
+        size_t                   m_conv_count      = 0;
+        bool                     m_converged       = false;
+        Sample                   m_guard           = Sample(1);
+        size_t                   m_drop_count      = 0;
+        size_t                   m_rescue_cooldown = 0;
+        std::optional<Canceller> m_shadow;
+        std::vector<Sample>      m_shadow_e;
+        Sample                   m_pm           = Sample(0); ///< smoothed main residual power
+        Sample                   m_ps           = Sample(0); ///< smoothed shadow residual power
+        size_t                   m_shadow_count = 0;
     };
 
     /// THE COMPLIANCE PRESET: the aec_chain configuration MuTap's ITU-T
