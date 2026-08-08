@@ -269,6 +269,67 @@ for gname, runs in GROUPS:
         print(f"{name:>14} | {m['st_erle_db']:7.1f} | {m['dt_suppression_db']:6.1f} | "
               f"{m['rec_erle_db']:7.1f} | {m['ne_sdr_db']:6.1f}")''')
 
+
+md("""## The shipping geometry: 48 kHz, block 256
+
+Everything above ran at the benchmark geometry (16 kHz). `mutap.aec~`
+ships at 48 kHz / block 256, and the learned engine that ships with it
+(`@postfilter 2`) is the **v2 model**: trained at that native geometry,
+on a mixture whose near ends include the rig's synthetic families —
+the fix for the off-domain double-talk gap measured above. Same meter,
+48 kHz speech scenarios, the MuTap engines running exactly what the
+external runs (the C ABI chain). DTLN-aec is absent here — its models
+are inherently 16 kHz.""")
+
+code(r'''import statistics as _st
+V2 = REPO / "tools/ml/pretrained/suppressor_v2_48k.munn"
+SY48 = [("WebRTC AEC3", "#2a78d6",
+         lambda: webrtc_aec3.WebRtcAec3(AEC3_BIN, rate=48000)),
+        ("MuTap chain", "#eb6834",
+         lambda: mutap_ffi.AecChain(lib, 256, 8, 48000.0)),
+        ("MuTap learned (v2)", "#1baf7a",
+         lambda: mutap_ffi.AecChain(lib, 256, 8, 48000.0, nn_weights=str(V2)))]
+if not HAVE_AEC3:
+    SY48 = SY48[1:]
+
+if HAVE_SPEECH:
+    scen48 = SCEN / "speech48"
+    if len(list(scen48.glob("*/manifest.json"))) < 3:
+        _run([sys.executable, REPO / "tools/ml/make_dataset.py", "--corpus", LIBRI,
+              "--scenarios", scen48, "--examples", "3", "--seed", "7",
+              "--rate", "48000", "--build-dir", BUILD])
+    scns48 = [metrics.Scenario.load(q.parent) for q in sorted(scen48.glob("*/manifest.json"))]
+    res48 = []
+    for scn in scns48:
+        row = {}
+        for name, color, make in SY48:
+            e = make().process(scn.x, scn.y)
+            row[name] = (e, metrics.measure(scn, e), color)
+        res48.append(row)
+    plot_tclw(scns48[0], res48[0],
+              "coupling loss — 48 kHz speech, shipping geometry", fs=48000)
+
+    hdr = f"{'system':>20} | {'stERLE':>7} | {'dtSUP':>6} | {'recERLE':>7} | {'neSDR':>6}"
+    print("48 kHz speech (medians over 3):"); print(hdr); print("-" * len(hdr))
+    for name, _, _ in SY48:
+        med = {k: _st.median(r[name][1].as_dict()[k] for r in res48)
+               for k in ("st_erle_db", "dt_suppression_db", "rec_erle_db", "ne_sdr_db")}
+        print(f"{name:>20} | {med['st_erle_db']:7.1f} | {med['dt_suppression_db']:6.1f} | "
+              f"{med['rec_erle_db']:7.1f} | {med['ne_sdr_db']:6.1f}")
+else:
+    print("speech corpus absent — 48 kHz section skipped")''')
+
+md("""At its native geometry with the v2 model, the learned engine's
+case sharpens: roughly +19 dB single-talk ERLE over the classical
+chain at better near-end transparency, with double-talk suppression
+within ~1.5 dB of classical on speech. Off-domain (measured separately:
+tools/ml/README.md), the mixed-material training repaired most of v1's
+collapse — 4 dB of music double-talk suppression at better-than-
+classical transparency, vs classical's 9 dB. The classical engine
+remains `mutap.aec~`'s certified default; `@postfilter 2` is the
+option for speech-dominant material where single-talk residual is the
+complaint.""")
+
 md("""## Verdict
 
 - **Echo removal (single talk):** all three are within a few dB of each
