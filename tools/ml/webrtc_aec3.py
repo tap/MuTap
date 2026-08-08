@@ -16,8 +16,9 @@ import numpy as np
 class WebRtcAec3:
     name = "webrtc-aec3"
 
-    def __init__(self, binary: str | pathlib.Path):
+    def __init__(self, binary: str | pathlib.Path, rate: int = 16000):
         self._bin = pathlib.Path(binary)
+        self._rate = rate
         if not self._bin.exists():
             raise FileNotFoundError(f"{binary}: build with -DMUTAP_BUILD_ML_TOOLS=ON "
                                     "and webrtc-audio-processing >= 1 on PKG_CONFIG_PATH")
@@ -28,5 +29,5 @@ class WebRtcAec3:
             np.asarray(x, dtype="<f8").tofile(td / "x.f64")
             np.asarray(y, dtype="<f8").tofile(td / "y.f64")
             subprocess.run([str(self._bin), str(td / "x.f64"), str(td / "y.f64"),
-                            str(td / "e.f64")], check=True)
+                            str(td / "e.f64"), "0.05", str(self._rate)], check=True)
             return np.fromfile(td / "e.f64", dtype="<f8")

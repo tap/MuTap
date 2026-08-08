@@ -227,6 +227,44 @@ leave it off: measurement and monitoring patches where you want the
 linear path untouched, or any time you need the bare canceller's output
 to study what it learned.
 
+## The learned engine: `@postfilter 2`
+
+The post-filter is the one stage of the chain whose classical
+implementation is a *heuristic* — a coherence gate and a learned
+leakage, tuned against the compliance battery. That makes it the one
+stage where a data-driven rule can plausibly do better, and
+`@postfilter 2` is that experiment shipped as an option: the same raw
+Kalman canceller and receive guard, with the coherence suppressor
+replaced by a small trained network (52k parameters — RNNoise-sized,
+not DTLN-sized) predicting a gain per auditory band from the canceller's
+own signals. The network only ever *gains* the canceller output between
+0 and 1; the echo estimate feeds its features, never the signal path.
+Structurally, the worst a bad prediction can do is mis-gain a band for a
+few milliseconds — it cannot synthesize signal, and the linear canceller
+underneath it is untouched.
+
+The measured trade, from the same open-loop rig (medians, 48 kHz
+speech scenarios; the full tables and the training pipeline live in
+MuTap's `tools/ml/`): the learned engine takes single-talk echo removal
+from the classical chain's ~35 dB to **~53 dB** at slightly *better*
+near-end transparency, and matches it through recovery. The classical
+engine keeps the double-talk crown — on program material unlike the
+network's training data (a sustained chord where the training mix had
+speech and the rig's synthetic families) its suppression contribution
+drops to a few dB where the coherence rule holds ~9–15. Hence the
+default: `@postfilter 1` is the certified, material-agnostic engine;
+`2` is the one to A/B when the far end is speech and single-talk
+residual is the complaint.
+
+Two practicalities. The network is trained at one analysis geometry, so
+`@block` follows the model (the built-in model: block 256 at 48 kHz —
+the external coerces the block and says so in the console). And
+`@model <path>` loads a different trained model: MuTap's `tools/ml`
+pipeline trains and exports these from any speech corpus you have the
+rights to — the built-in weights were trained end-to-end on
+clean-licensed material (LibriSpeech CC BY 4.0 plus synthesized
+scenarios), so the package ships nothing it cannot license.
+
 ## The knobs, revisited
 
 Every attribute from chapter 1 exists here with the same mechanics;
@@ -274,10 +312,14 @@ what changes is the advice.
   engine for the same reason as chapter 1: seniority, and one
   default-engine decision for the package, made once, after real-room
   listening.)
-- **`@postfilter`.** The residual-echo suppressor + comfort noise +
-  receive guard of the previous section — the ITU-certified chain. On
-  for conversation, off for measurement. Ignores `@mu`/`@warp`/`@kalman`
-  while on; `@gate` becomes the receive guard; +1 block of latency.
+- **`@postfilter`.** The post-filter engine: `0` off, `1` the
+  ITU-certified chain of the previous section, `2` the learned engine.
+  `1` for conversation, `0` for measurement, `2` to A/B on speech
+  material. Ignores `@mu`/`@warp`/`@kalman` while nonzero; `@gate`
+  becomes the receive guard; +1 block of latency.
+- **`@model`.** With `@postfilter 2`: a trained model file, or empty
+  for the built-in 48 kHz model. `@block` follows the model's trained
+  block size.
 - **`@comfort`.** With `@postfilter` on: fill suppressed bands to the
   room's tracked noise floor (default on). Off = suppressed bands go
   silent — useful when metering how much the suppressor is doing.
