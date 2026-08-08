@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "mutap/mutap.h"
+#include "mutap/nn_chain.h"
 
 namespace {
 
@@ -44,8 +45,11 @@ struct MutapAfc {
     std::variant<speech_afc, warped_afc, kalman_speech_afc, kalman_warped_afc> impl;
 };
 
+using classic_aec_chain = tap::mu::aec_chain<double>;
+using nn_aec_chain      = tap::mu::aec_chain_nn<double>;
+
 struct MutapAec {
-    tap::mu::aec_chain<double> impl;
+    std::variant<classic_aec_chain, nn_aec_chain> impl;
 };
 
 unsigned mutap_version(void) {
@@ -260,37 +264,57 @@ MutapAec* mutap_aec_create(size_t block_size, size_t partitions, double sample_r
     }
 }
 
+MutapAec* mutap_aec_create_nn(size_t block_size, size_t partitions, double sample_rate, int comfort_noise,
+                              int receive_guard, const char* weights_path) {
+    try {
+        if (sample_rate <= 0.0 || weights_path == nullptr) {
+            return nullptr;
+        }
+        auto cfg                     = tap::mu::aec_chain_nn_preset<double>(block_size, partitions, sample_rate,
+                                                                            tap::mu::load_nn_suppressor_weights(weights_path));
+        cfg.postfilter.comfort_noise = comfort_noise != 0;
+        if (receive_guard == 0) {
+            cfg.guard_attenuation_db = 0.0;
+        }
+        return new MutapAec{nn_aec_chain(cfg)};
+    }
+    catch (...) {
+        return nullptr;
+    }
+}
+
 void mutap_aec_destroy(MutapAec* h) {
     delete h;
 }
 
 void mutap_aec_process(MutapAec* h, const double* x, const double* y, double* e) {
     if (h != nullptr) {
-        h->impl.process_block(x, y, e);
+        std::visit([&](auto& chain) { chain.process_block(x, y, e); }, h->impl);
     }
 }
 
 size_t mutap_aec_block_size(const MutapAec* h) {
-    return h != nullptr ? h->impl.block_size() : 0;
+    return h != nullptr ? std::visit([](const auto& chain) { return chain.block_size(); }, h->impl) : 0;
 }
 
 double mutap_aec_echo_explained(const MutapAec* h) {
-    return h != nullptr ? h->impl.postfilter().echo_explained() : 0.0;
+    return h != nullptr ? std::visit([](const auto& chain) { return chain.postfilter().echo_explained(); }, h->impl)
+                        : 0.0;
 }
 
 int mutap_aec_converged(const MutapAec* h) {
-    return (h != nullptr && h->impl.converged()) ? 1 : 0;
+    return (h != nullptr && std::visit([](const auto& chain) { return chain.converged(); }, h->impl)) ? 1 : 0;
 }
 
 void mutap_aec_set_adaptation(MutapAec* h, int enabled) {
     if (h != nullptr) {
-        h->impl.set_adaptation(enabled != 0);
+        std::visit([&](auto& chain) { chain.set_adaptation(enabled != 0); }, h->impl);
     }
 }
 
 void mutap_aec_reset(MutapAec* h) {
     if (h != nullptr) {
-        h->impl.reset();
+        std::visit([](auto& chain) { chain.reset(); }, h->impl);
     }
 }
 

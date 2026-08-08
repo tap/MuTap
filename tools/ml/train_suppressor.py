@@ -27,11 +27,12 @@ import nn as ref_nn  # noqa: E402
 
 
 class SuppressorNet(tnn.Module):
-    def __init__(self):
+    def __init__(self, n_features=ref_nn.INPUT_DIM, n_dense=ref_nn.DENSE_DIM,
+                 n_gru=ref_nn.GRU_DIM, n_bands=ref_nn.OUTPUT_DIM):
         super().__init__()
-        self.dense_in = tnn.Linear(ref_nn.INPUT_DIM, ref_nn.DENSE_DIM)
-        self.gru = tnn.GRU(ref_nn.DENSE_DIM, ref_nn.GRU_DIM, batch_first=True)
-        self.dense_out = tnn.Linear(ref_nn.GRU_DIM, ref_nn.OUTPUT_DIM)
+        self.dense_in = tnn.Linear(n_features, n_dense)
+        self.gru = tnn.GRU(n_dense, n_gru, batch_first=True)
+        self.dense_out = tnn.Linear(n_gru, n_bands)
 
     def forward(self, x):
         d = torch.tanh(self.dense_in(x))
@@ -40,13 +41,16 @@ class SuppressorNet(tnn.Module):
 
 
 def load_shards(folder: pathlib.Path):
-    feats, gains, weights = [], [], []
+    feats, gains, weights, geometry = [], [], [], None
     for f in sorted(folder.glob("shard-*.npz")):
         z = np.load(f)
         feats.append(z["features"])
         gains.append(z["gains"])
         weights.append(z["weights"])
-    return (np.concatenate(feats), np.concatenate(gains), np.concatenate(weights))
+        g = tuple(int(v) for v in z["geometry"]) if "geometry" in z else (16000, 64, 22, 64, 96)
+        assert geometry in (None, g), f"mixed geometries: {geometry} vs {g} in {f}"
+        geometry = g
+    return (np.concatenate(feats), np.concatenate(gains), np.concatenate(weights), geometry)
 
 
 def to_sequences(a: np.ndarray, seq: int) -> np.ndarray:
@@ -67,7 +71,9 @@ def main() -> int:
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
-    feats, gains, weights = load_shards(pathlib.Path(args.data))
+    feats, gains, weights, geometry = load_shards(pathlib.Path(args.data))
+    rate, hop, bands, dense, gru = geometry
+    print(f"geometry: {rate} Hz, hop {hop}, {bands} bands, dense {dense}, gru {gru}")
     x = to_sequences(feats, args.seq)
     g = to_sequences(gains, args.seq)
     w = to_sequences(weights, args.seq)
@@ -81,7 +87,7 @@ def main() -> int:
     def tensors(idx):
         return (torch.from_numpy(x[idx]), torch.from_numpy(np.sqrt(g[idx])), torch.from_numpy(w[idx]))
 
-    model = SuppressorNet()
+    model = SuppressorNet(n_features=2 * bands, n_dense=dense, n_gru=gru, n_bands=bands)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     best_val = float("inf")
 
@@ -105,7 +111,8 @@ def main() -> int:
         if val < best_val:
             best_val = val
             state = {k: v.detach().numpy().copy() for k, v in model.state_dict().items()}
-            np.savez(args.out, **state)  # checkpoint: best-so-far survives an interrupted run
+            np.savez(args.out, **state, geometry=np.asarray(geometry, dtype="<u4"))
+            # checkpoint: best-so-far survives an interrupted run
             marker = "  *"
         print(f"epoch {epoch + 1:3d}: train {total / len(tr_idx):.5f}  val {val:.5f}{marker}", flush=True)
 
