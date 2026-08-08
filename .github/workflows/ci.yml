@@ -47,6 +47,20 @@ jobs:
         with:
           submodules: recursive
 
+      # Records which Apple Silicon generation this job landed on. Every
+      # observation of the macOS float32 flake (#31) has come from a distinct
+      # runner VM, so the fleet-heterogeneity hypothesis cannot be tested
+      # without knowing the host — and no past failure can be attributed
+      # retroactively, because nothing in the log identifies the chip.
+      - name: Record host CPU (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          sysctl -n hw.ncpu
+          sw_vers
+          cc --version
+
       - name: Configure
         env:
           CC: ${{ matrix.cc }}
@@ -62,6 +76,22 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+
+      # Diagnostic for #31, deliberately non-gating: re-run the three
+      # implicated float32 rows repeatedly ON THIS HOST. Every failure to date
+      # has come from a different runner VM, so "nondeterministic" has never
+      # been separated from "deterministic per host, varying across the fleet".
+      # A failure here says the nondeterminism is in the program; 20 clean
+      # repeats on a host whose Test step failed says it is host-determined.
+      # until-fail stops at the first failure, so a bad host costs one pass.
+      # Remove this step once #31 is diagnosed.
+      - name: Repeat float32 stability rows (macOS diagnostic, non-gating)
+        if: always() && runner.os == 'macOS'
+        continue-on-error: true
+        run: >
+          ctest --test-dir build -C Release --output-on-failure
+          --repeat until-fail:20
+          -R 'itu_echo\.EchoStability<float>|g168_adapted\.ToneStability<float>|Float32Parity\.ToneRowWithNarrowbandGuard'
 
   sanitizers:
     name: ASan + UBSan
