@@ -30,20 +30,22 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
 
 
 def load_munn(path: str) -> dict[str, np.ndarray]:
-    """Read the MUNN0001 flat binary (export_weights.py) back into the
-    npz-style dict this module consumes — so the committed
-    tools/ml/pretrained/*.munn weights run without the training artifacts."""
-    shapes = [
-        ("dense_in.weight", (64, 44)), ("dense_in.bias", (64,)),
-        ("gru.weight_ih_l0", (288, 64)), ("gru.weight_hh_l0", (288, 96)),
-        ("gru.bias_ih_l0", (288,)), ("gru.bias_hh_l0", (288,)),
-        ("dense_out.weight", (22, 96)), ("dense_out.bias", (22,)),
-    ]
+    """Read a MUNN flat binary (export_weights.py) back into the npz-style
+    dict this module consumes. MUNN0002 carries its geometry (rate, hop,
+    bands, dense, gru as uint32); legacy MUNN0001 implies the original
+    16 kHz / hop-64 geometry. The geometry rides along under 'geometry'."""
+    import export_weights
+
     with open(path, "rb") as f:
-        if f.read(8) != b"MUNN0001":
+        magic = f.read(8)
+        if magic == b"MUNN0002":
+            geometry = tuple(int(v) for v in np.frombuffer(f.read(20), dtype="<u4"))
+        elif magic == b"MUNN0001":
+            geometry = export_weights.DEFAULT_GEOMETRY
+        else:
             raise ValueError(f"{path}: bad magic")
-        out = {}
-        for name, shape in shapes:
+        out = {"geometry": np.asarray(geometry, dtype="<u4")}
+        for name, shape in export_weights.order(geometry):
             n = int(np.prod(shape))
             out[name] = np.frombuffer(f.read(4 * n), dtype="<f4").reshape(shape)
     return out
@@ -56,20 +58,21 @@ class SuppressorNet:
         w = load_munn(weights_file) if str(weights_file).endswith(".munn") else np.load(weights_file)
         keys = w.files if hasattr(w, "files") else w.keys()
         self.w = {k: np.asarray(w[k], dtype=np.float64) for k in keys}
-        self.h = np.zeros(GRU_DIM)
+        self.gru = self.w["gru.weight_hh_l0"].shape[1] if "gru.weight_hh_l0" in self.w else GRU_DIM
+        self.h = np.zeros(self.gru)
 
     def reset(self) -> None:
-        self.h = np.zeros(GRU_DIM)
+        self.h = np.zeros(self.gru)
 
     def step(self, feat: np.ndarray) -> np.ndarray:
-        w = self.w
+        w, g = self.w, self.gru
         d = np.tanh(w["dense_in.weight"] @ feat + w["dense_in.bias"])
         # PyTorch GRU: gates ordered r, z, n in the stacked matrices.
         gi = w["gru.weight_ih_l0"] @ d + w["gru.bias_ih_l0"]
         gh = w["gru.weight_hh_l0"] @ self.h + w["gru.bias_hh_l0"]
-        r = _sigmoid(gi[:GRU_DIM] + gh[:GRU_DIM])
-        z = _sigmoid(gi[GRU_DIM : 2 * GRU_DIM] + gh[GRU_DIM : 2 * GRU_DIM])
-        n = np.tanh(gi[2 * GRU_DIM :] + r * gh[2 * GRU_DIM :])
+        r = _sigmoid(gi[:g] + gh[:g])
+        z = _sigmoid(gi[g : 2 * g] + gh[g : 2 * g])
+        n = np.tanh(gi[2 * g :] + r * gh[2 * g :])
         self.h = (1.0 - z) * n + z * self.h
         return _sigmoid(w["dense_out.weight"] @ self.h + w["dense_out.bias"])
 
