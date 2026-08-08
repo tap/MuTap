@@ -272,10 +272,25 @@ namespace mutap_test::itu {
 
     /// Max of an A-weighted level trace over [from, to) samples, skipping
     /// nothing — callers position the window.
+    ///
+    /// The window is clamped to the buffer. `run_chain` emits whole blocks
+    /// only, so an output is up to block-1 samples shorter than the input it
+    /// was driven with, and a caller positioning the window from *input*
+    /// lengths overshoots it. Because `run_chain` reserves the input length,
+    /// the overshoot lands inside reserved-but-unconstructed capacity: an
+    /// instrumented build reports it (ASan container-overflow, macOS
+    /// sanitizer job), and an uninstrumented one silently folds whatever
+    /// the allocator left there into the measurement.
     inline double max_level_dbm0a(const std::vector<double>& x, double fs, size_t from, size_t to) {
+        to      = std::min(to, x.size());
+        from    = std::min(from, to);
         auto tr = level_trace_dbm0a(
             std::vector<double>(x.begin() + static_cast<long>(from), x.begin() + static_cast<long>(to)), fs);
-        return *std::max_element(tr.begin() + static_cast<long>(0.1 * fs), tr.end());
+        const size_t skip = std::min(static_cast<size_t>(0.1 * fs), tr.size());
+        if (skip == tr.size()) {
+            return -1e9; // degenerate window; sentinel, as in max_in
+        }
+        return *std::max_element(tr.begin() + static_cast<long>(skip), tr.end());
     }
 
     /// ERL(t) between two UNWEIGHTED 35 ms level traces, read as the best
