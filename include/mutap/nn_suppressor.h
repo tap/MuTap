@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <numbers>
 #include <stdexcept>
 #include <string_view>
@@ -460,43 +461,38 @@ namespace tap::mu {
         std::uint32_t          m_rng       = 0x2545F491U;
     };
 
-    /// Load weights from the flat little-endian float32 file written by
-    /// tools/ml/export_weights.py. MUNN0002 carries the geometry (five
-    /// uint32: sample_rate, hop, bands, dense, gru) before the eight arrays
-    /// in declaration order; legacy MUNN0001 files imply the original
-    /// 16 kHz / hop-64 / 22-band / 64-dense / 96-GRU geometry. Host-side
-    /// convenience; embedded targets embed the arrays directly.
-    inline nn_suppressor_weights load_nn_suppressor_weights(const char* path) {
-        std::FILE* f = std::fopen(path, "rb");
-        if (f == nullptr) {
-            throw std::runtime_error("nn_suppressor: cannot open weights file");
-        }
+    /// Parse weights from an in-memory MUNN image (the format
+    /// tools/ml/export_weights.py writes). MUNN0002 carries the geometry
+    /// (five uint32: sample_rate, hop, bands, dense, gru) before the eight
+    /// float32 arrays in declaration order; legacy MUNN0001 images imply
+    /// the original 16 kHz / hop-64 / 22-band / 64-dense / 96-GRU
+    /// geometry. This is the loader an embedded default uses (the package
+    /// ships the image as a byte array).
+    inline nn_suppressor_weights parse_nn_suppressor_weights(const unsigned char* data, size_t size) {
+        size_t     pos  = 0;
+        const auto take = [&](void* dst, size_t n) {
+            if (pos + n > size) {
+                throw std::runtime_error("nn_suppressor: truncated weights image");
+            }
+            std::memcpy(dst, data + pos, n);
+            pos += n;
+        };
         char magic[8];
-        if (std::fread(magic, 1, 8, f) != 8) {
-            std::fclose(f);
-            throw std::runtime_error("nn_suppressor: truncated weights file");
-        }
+        take(magic, 8);
         nn_suppressor_weights  w;
         const std::string_view tag(magic, 8);
         if (tag == "MUNN0002") {
             std::uint32_t g[5];
-            if (std::fread(g, sizeof(std::uint32_t), 5, f) != 5) {
-                std::fclose(f);
-                throw std::runtime_error("nn_suppressor: truncated weights header");
-            }
+            take(g, sizeof g);
             w.geometry = {static_cast<double>(g[0]), g[1], g[2], g[3], g[4]};
         }
         else if (tag != "MUNN0001") {
-            std::fclose(f);
             throw std::runtime_error("nn_suppressor: bad weights magic");
         }
         const nn_geometry& g    = w.geometry;
         const auto         read = [&](std::vector<float>& dst, size_t n) {
             dst.resize(n);
-            if (std::fread(dst.data(), sizeof(float), n, f) != n) {
-                std::fclose(f);
-                throw std::runtime_error("nn_suppressor: truncated weights file");
-            }
+            take(dst.data(), n * sizeof(float));
         };
         read(w.dense_in_w, g.dense * g.features());
         read(w.dense_in_b, g.dense);
@@ -506,11 +502,28 @@ namespace tap::mu {
         read(w.gru_b_hh, 3 * g.gru);
         read(w.dense_out_w, g.bands * g.gru);
         read(w.dense_out_b, g.bands);
-        std::fclose(f);
         if (!w.valid()) {
             throw std::runtime_error("nn_suppressor: weights fail geometry validation");
         }
         return w;
+    }
+
+    /// Load weights from a MUNN file on disk (host-side convenience).
+    inline nn_suppressor_weights load_nn_suppressor_weights(const char* path) {
+        std::FILE* f = std::fopen(path, "rb");
+        if (f == nullptr) {
+            throw std::runtime_error("nn_suppressor: cannot open weights file");
+        }
+        std::fseek(f, 0, SEEK_END);
+        const long bytes = std::ftell(f);
+        std::fseek(f, 0, SEEK_SET);
+        std::vector<unsigned char> image(static_cast<size_t>(bytes > 0 ? bytes : 0));
+        const size_t               got = std::fread(image.data(), 1, image.size(), f);
+        std::fclose(f);
+        if (got != image.size()) {
+            throw std::runtime_error("nn_suppressor: short read on weights file");
+        }
+        return parse_nn_suppressor_weights(image.data(), image.size());
     }
 
 } // namespace tap::mu
