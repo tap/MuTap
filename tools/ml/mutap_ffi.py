@@ -76,19 +76,30 @@ class AecChain:
     """Full AEC chain: FD-Kalman canceller + residual suppressor."""
 
     def __init__(self, lib: ctypes.CDLL, block_size: int, partitions: int, sample_rate: float,
-                 comfort_noise: bool = False, receive_guard: bool = False):
+                 comfort_noise: bool = False, receive_guard: bool = False,
+                 nn_weights: str | None = None):
         self._lib = lib
         lib.mutap_aec_create.restype = ctypes.c_void_p
         lib.mutap_aec_create.argtypes = [
             ctypes.c_size_t, ctypes.c_size_t, ctypes.c_double, ctypes.c_int, ctypes.c_int,
         ]
+        lib.mutap_aec_create_nn.restype = ctypes.c_void_p
+        lib.mutap_aec_create_nn.argtypes = [
+            ctypes.c_size_t, ctypes.c_size_t, ctypes.c_double, ctypes.c_int, ctypes.c_int, ctypes.c_char_p,
+        ]
         lib.mutap_aec_process.argtypes = [ctypes.c_void_p, _F64P, _F64P, _F64P]
         lib.mutap_aec_destroy.argtypes = [ctypes.c_void_p]
-        self._h = lib.mutap_aec_create(block_size, partitions, sample_rate, int(comfort_noise), int(receive_guard))
+        if nn_weights is not None:
+            self._h = lib.mutap_aec_create_nn(block_size, partitions, sample_rate, int(comfort_noise),
+                                              int(receive_guard), str(nn_weights).encode())
+        else:
+            self._h = lib.mutap_aec_create(block_size, partitions, sample_rate, int(comfort_noise),
+                                           int(receive_guard))
         if not self._h:
-            raise RuntimeError("mutap_aec_create failed")
+            raise RuntimeError("mutap_aec_create failed (nn: check weights path / hop == block_size)")
         self._block = block_size
-        self.name = "mutap-chain" + ("+cn" if comfort_noise else "") + ("+guard" if receive_guard else "")
+        self.name = ("mutap-chain" + ("-nn" if nn_weights else "")
+                     + ("+cn" if comfort_noise else "") + ("+guard" if receive_guard else ""))
 
     def process(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         x = np.ascontiguousarray(x, dtype=np.float64)

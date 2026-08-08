@@ -94,12 +94,17 @@ class KalmanNnSystem:
         self._features = _features
         self._canceller = _ffi.KalmanCanceller(lib, block_size, partitions)
         self._net = SuppressorNet(weights_file)
-        self._bmat = _features.band_matrix()
+        geom_arr = self._net.w.get("geometry")
+        self._geom = (_features.Geometry.from_array(geom_arr)
+                      if geom_arr is not None else _features.GEOM16)
+        if self._geom.hop != block_size:
+            raise ValueError(f"model hop {self._geom.hop} != canceller block {block_size}")
+        self._bmat = _features.band_matrix(self._geom)
 
     def process(self, x: np.ndarray, y: np.ndarray) -> np.ndarray:
         e = self._canceller.process(x, y)
         yhat = y - e
-        feats = self._features.features_from(e, yhat, self._bmat)
+        feats = self._features.features_from(e, yhat, self._bmat, self._geom)
         gains = self._net.process(feats)
-        out = self._features.apply_gains(e, gains, self._bmat)
+        out = self._features.apply_gains(e, gains, self._bmat, self._geom)
         return np.concatenate([out, e[len(out):]]) if len(out) < len(e) else out[: len(e)]

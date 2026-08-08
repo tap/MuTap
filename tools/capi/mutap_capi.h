@@ -122,6 +122,14 @@ MutapAfc* mutap_afc_clone(const MutapAfc* h);
  * (the suppressor's constrained causal gain filter). */
 MutapAec* mutap_aec_create(size_t block_size, size_t partitions, double sample_rate, int comfort_noise,
                            int receive_guard);
+/* As mutap_aec_create, with the LEARNED post-filter engine
+ * (tap::mu::nn_suppressor via aec_chain_nn_preset) in place of the
+ * classical coherence suppressor. weights_path names a MUNN weights file
+ * (tools/ml/export_weights.py); its trained hop must equal block_size,
+ * or creation fails and NULL is returned. Handles are interchangeable
+ * with mutap_aec_create's. */
+MutapAec* mutap_aec_create_nn(size_t block_size, size_t partitions, double sample_rate, int comfort_noise,
+                              int receive_guard, const char* weights_path);
 void      mutap_aec_destroy(MutapAec* h);
 
 /* One block: x = far-end reference (to the loudspeaker), y = microphone,
