@@ -93,18 +93,50 @@ jobs:
           --repeat until-fail:20
           -R 'itu_echo\.EchoStability<float>|g168_adapted\.ToneStability<float>|Float32Parity\.ToneRowWithNarrowbandGuard'
 
+  # The macOS entry exists for #31. Every sanitizer and Valgrind result in that
+  # investigation was obtained on Linux, where `accelerate_real_fft_f32` is not
+  # compiled at all — so the vDSP wrapper, the one code path unique to the
+  # failing configuration, has never been instrumented by anything. The per-host
+  # repeat diagnostic showed the three float32 rows passing and then failing on
+  # one machine from one binary, so the fault varies per process (heap layout,
+  # buffer alignment) rather than per chip; out-of-bounds and misaligned access
+  # in that wrapper are exactly what this can catch.
+  #
+  # Honest limit: neither ASan nor UBSan detects uninitialized reads, which
+  # remains a live hypothesis. MSan is not available on macOS/arm64, so this is
+  # the strongest instrumentation the platform offers.
   sanitizers:
-    name: ASan + UBSan
-    runs-on: ubuntu-latest
+    name: ASan + UBSan (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+          - name: macOS
+            os: macos-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           submodules: recursive
 
+      - name: Record host CPU (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          sysctl -n hw.ncpu
+          sw_vers
+          cc --version
+
       - name: Configure
         env:
-          CC: clang
-          CXX: clang++
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
         run: >
           cmake -B build
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
