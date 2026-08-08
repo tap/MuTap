@@ -28,13 +28,14 @@ cells = []
 md = lambda s: cells.append(nbf.v4.new_markdown_cell(s))  # noqa: E731
 code = lambda s: cells.append(nbf.v4.new_code_cell(s))  # noqa: E731
 
-md("""# WebRTC AEC3 vs MuTap — head to head
+md("""# WebRTC AEC3 vs DTLN-aec vs MuTap — head to head
 
-Three complete echo cancellers, identical signals, one meter:
+Four complete echo cancellers, identical signals, one meter:
 
 | system | what it is | license |
 |---|---|---|
 | **WebRTC AEC3** | the canceller deployed in Chrome: linear filter bank + a deliberately aggressive residual suppressor, tuned for telephony | BSD-3 |
+| **DTLN-aec 512** | end-to-end neural AEC (Westhausen & Meyer, ICASSP 2021; 3rd place, Microsoft AEC Challenge), 10.4M parameters | MIT code+weights; weights trained on mixed-license data — benchmark-only |
 | **MuTap chain** | `mutap.aec~` as the ITU battery certifies it: FD-Kalman canceller + coherence-driven residual suppressor ([`postfilter.h`](../include/mutap/postfilter.h)) | MIT |
 | **MuTap hybrid** | the same FD-Kalman-family linear core with the post-filter replaced by a learned 51k-parameter GRU ([`nn_suppressor.h`](../include/mutap/nn_suppressor.h), trained on clean-licensed data by [`tools/ml`](../tools/ml)) | MIT (incl. weights) |
 
@@ -89,6 +90,13 @@ SYSTEMS += [
     ("MuTap hybrid", "#1baf7a",
      lambda: nn.KalmanNnSystem(lib, BLOCK, PARTS, str(WEIGHTS))),
 ]
+DTLN_DIR = os.environ.get("MUTAP_DTLN_DIR", "/workspace/breizhn/dtln-aec/pretrained_models")
+if pathlib.Path(DTLN_DIR, "dtln_aec_512_1.tflite").exists():
+    import dtln_aec
+    SYSTEMS.append(("DTLN-aec 512", "#eda100",
+                    lambda: dtln_aec.DtlnAec(str(pathlib.Path(DTLN_DIR) / "dtln_aec_512"))))
+else:
+    print("DTLN models absent — rows skipped (clone github.com/breizhn/DTLN-aec, set MUTAP_DTLN_DIR)")
 
 def run_all(scn):
     out = {}
@@ -171,13 +179,14 @@ code(r'''scn_music = dump("music", 2)
 res_music = run_all(scn_music)
 plot_tclw(scn_music, res_music, "coupling loss — music near end (synthetic, out of any training domain)")''')
 
-md("""Two shapes to notice. On speech, all three converge inside a
-second and return below target immediately after double-talk — no
-estimate is destroyed. On music, AEC3 and the hybrid ride *through* the
-shaded window at −20…−40 dB: on this meter that looks like winning, but
-the shading means a talker is playing — they are attenuating the
-program material. The chain's trace correctly rises there (the talker
-passes) and needs ~1.5 s to re-deepen afterwards, its one visible cost.
+md("""Two shapes to notice. On speech, every system converges inside a
+second and returns below target immediately after double-talk — no
+estimate is destroyed. On music, the ML systems (DTLN hardest of all)
+ride *through* the shaded window well below the mic level: on this
+meter that looks like winning, but the shading means a talker is
+playing — they are attenuating the program material. The chain's trace
+correctly rises there (the talker passes) and needs ~1.5 s to
+re-deepen afterwards, its one visible cost.
 
 ## The simulator's view: what is actually left
 
@@ -275,6 +284,12 @@ md("""## Verdict
   audible ducking and coloration of whatever shares the room with the
   echo. For telephony that is an accepted trade; for program material
   it is the difference between a canceller and an effect.
+- **DTLN-aec** shows both faces of end-to-end: on speech it is a
+  genuine contender (best-in-field single-talk ERLE, respectable
+  double-talk behavior); on anything it was not trained on it deletes
+  the talker outright (≈0 dB near-end SDR on the synthetic materials) —
+  and 10.4M parameters vs the hybrid's 51k, with weights that cannot be
+  shipped under a clean license.
 - **The hybrid's case:** it matches or beats the chain's echo removal
   in its training domain at equal fidelity, with a 51k-parameter model
   and a training pipeline whose every input is clean-licensed. Its
