@@ -8,7 +8,7 @@
 // AEC3; the CMake target only appears when pkg-config finds it — see
 // tools/ml/README.md for the build recipe).
 //
-// Usage: webrtc_aec3_infer <x.f64> <y.f64> <e.f64> [scale]
+// Usage: webrtc_aec3_infer <x.f64> <y.f64> <e.f64> [scale] [rate]
 //
 // x = far-end reference, y = microphone, mono float64 raw at 16 kHz.
 // AEC3 processes 10 ms frames of float in [-1, 1] and its internal
@@ -46,13 +46,14 @@ namespace {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 4 && argc != 5) {
-        std::fprintf(stderr, "usage: %s <x.f64> <y.f64> <e.f64> [scale]\n", argv[0]);
+    if (argc < 4 || argc > 6) {
+        std::fprintf(stderr, "usage: %s <x.f64> <y.f64> <e.f64> [scale] [rate]\n", argv[0]);
         return 1;
     }
     const auto   x     = read_f64(argv[1]);
     const auto   y     = read_f64(argv[2]);
-    const double scale = (argc == 5) ? std::atof(argv[4]) : 0.05;
+    const double scale = (argc >= 5) ? std::atof(argv[4]) : 0.05;
+    const int    rate  = (argc >= 6) ? std::atoi(argv[5]) : 16000;
     const size_t n     = std::min(x.size(), y.size());
 
     auto                            apm = webrtc::AudioProcessingBuilder().Create();
@@ -61,8 +62,8 @@ int main(int argc, char** argv) {
     cfg.echo_canceller.mobile_mode = false; // AEC3, not AECM
     apm->ApplyConfig(cfg);
 
-    constexpr int              k_rate  = 16000;
-    constexpr size_t           k_frame = k_rate / 100; // 10 ms
+    const int                  k_rate  = rate;
+    const size_t               k_frame = static_cast<size_t>(k_rate / 100); // 10 ms
     const webrtc::StreamConfig sc(k_rate, 1);
 
     std::vector<double> e(n, 0.0);

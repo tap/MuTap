@@ -255,6 +255,25 @@ algorithmically complete. What exists today:
   own scenario machinery and meters — and re-measures everything live
   (~6 minutes, deterministic seeds).
 
+- **The learned residual suppressor** — `mutap::nn_suppressor<Sample>`
+  ([`include/mutap/nn_suppressor.h`](include/mutap/nn_suppressor.h)): a
+  52k-parameter GRU predicting per-band gains on the linear canceller's
+  output, composable as the chain's post stage
+  (`mutap::aec_chain_nn`, [`include/mutap/nn_chain.h`](include/mutap/nn_chain.h))
+  and exposed as `mutap.aec~ @postfilter 2`. Trained end-to-end on
+  clean-licensed material by [`tools/ml/`](tools/ml/) (LibriSpeech
+  CC BY 4.0 + synthesized scenarios through the real canceller), with
+  geometry-parameterized weights (MUNN files) and Python/C++ parity
+  pinned by [`tools/ml/test_parity.py`](tools/ml/test_parity.py).
+  Measured (48 kHz speech, medians): single-talk ERLE 53.4 dB vs the
+  classical chain's 34.5 at better near-end transparency; the classical
+  engine keeps the double-talk lead off-domain and remains the default.
+  The full measured comparison against DTLN-aec and WebRTC AEC3 — and
+  the licensing survey that motivated the hybrid design — lives in
+  [`tools/ml/README.md`](tools/ml/README.md) and the executed notebooks
+  [`notebooks/ml_aec_comparison.ipynb`](notebooks/ml_aec_comparison.ipynb) /
+  [`notebooks/aec_head_to_head.ipynb`](notebooks/aec_head_to_head.ipynb).
+
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
 work (CMSIS-DSP/Helium mapping, instruction-count ratchets) and the

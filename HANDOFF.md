@@ -517,6 +517,33 @@ make_chain_config) must be kept in lockstep until then. Note: Stage 4's
 notebook ended up NOT needing the C ABI (its dump harness includes the
 test machinery directly), so the "C ABI extension" item is now about
 FFI consumers generally — scope it when the MuTap half lands.*
+
+**Stage 6 — The learned post-filter (ML).** Prompted by the question
+"is there an ML approach to echo cancellation that is not encumbered by
+IP licensing?" — answered by measurement, then shipped as an option.
+*DONE — (1) tools/ml: offline benchmark harness (rig-protocol signals,
+one delay-compensated meter) that measured DTLN-aec (MIT, end-to-end
+NN), WebRTC AEC3 (BSD-3), the classical chain and a hybrid; findings:
+end-to-end NNs delete out-of-domain near ends, AEC3 ducks the talker to
+single-digit SDR, the chain holds everywhere — and a small learned
+band-gain post-filter on top of OUR linear canceller wins single-talk
+ERLE at equal transparency. (2) aec_chain grew a pluggable Post
+template parameter (classical path bit-identical, branchless-parity
+fingerprint pinned); nn_suppressor implements the full post contract
+(echo_explained for the guard/rescue, comfort noise, geometry-carrying
+MUNN weights); aec_chain_nn_preset mirrors the compliance preset's
+scaling. (3) Clean-licensed training pipeline (LibriSpeech CC BY 4.0 +
+numpy ports of the rig's synthetic materials, mixed per the measured
+off-domain fix), geometry-parameterized; the shipping model
+pretrained/suppressor_v2_48k.munn trains at mutap.aec~'s native
+geometry. (4) mutap.aec~ @postfilter became the engine enum (0/1/2) with
+@model for user-trained weights and the default model embedded; the
+classical engine remains the certified default. Executed notebooks:
+ml_aec_comparison.ipynb, aec_head_to_head.ipynb. Follow-ups filed:
+coherence feature for the net (its one missing evidence stream), int8 +
+CMSIS-NN for the M55 path, per-rate (44.1 kHz) models via @model, and
+running the ITU battery against the learned engine for a documented
+characterization (not certification).*
 *CORE HALF DONE — `mutap::aec_chain_preset<Sample>(block, partitions,
 fs)` lives in postfilter.h (the follow-up above, resolved: the preset
 generalizes the per-rate floor-bias calibration by interpolating
