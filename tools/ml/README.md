@@ -136,6 +136,29 @@ Reading:
   loss was still falling); (4) int8 quantization + CMSIS-NN for the M55
   path.
 
+## The trained hybrid (v2, 48 kHz — the shipping model)
+
+`pretrained/suppressor_v2_48k.munn`: 52,570 parameters at `mutap.aec~`'s
+native geometry (48 kHz, block 256, 26 bands), trained on 400 mixtures
+whose near ends mix speech with the rig's synthetic families — the
+measured fix for v1's off-domain gap. Measured through the C ABI chain
+(`mutap_aec_create_nn`) with the same meter:
+
+| scenario | system | stERLE | dtSUP | recERLE | neSDR |
+|---|---|---|---|---|---|
+| speech (3, medians) | classic chain | 34.5 | **12.6** | 31.2 | 30.3 |
+| | nn v2 | **53.4** | 11.2 | **51.9** | **34.3** |
+| music double-talk | classic chain | 42.8 | **9.1** | 31.8 | 28.0 |
+| | nn v2 | **50.6** | 4.0 | **46.0** | **30.2** |
+
+The mixed-material training closed most of v1's off-domain collapse
+(≈0 → 4.0 dB music double-talk suppression, with the near end BETTER
+preserved than the classical chain); the classical engine still leads
+double-talk suppression and remains the certified default. The learned
+engine ships in `mutap.aec~` as `@postfilter 2` (embedded default
+weights; `@model` loads alternatives), composed in the library as
+`tap::mu::aec_chain_nn` (`nn_chain.h`).
+
 ## The pipeline
 
 ```
