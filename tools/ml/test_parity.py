@@ -58,6 +58,7 @@ def main() -> int:
 
     net = nn.SuppressorNet.__new__(nn.SuppressorNet)
     net.w = {k: v.astype(np.float64) for k, v in w.items()}
+    net.gru = nn.GRU_DIM
     net.h = np.zeros(nn.GRU_DIM)
     bmat = features.band_matrix()
     feats = features.features_from(e, yhat, bmat).astype(np.float64)

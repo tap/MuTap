@@ -46,7 +46,12 @@ int main(int argc, char** argv) {
     const auto yhat = read_f64(argv[3]);
     const auto n    = std::min(e.size(), yhat.size());
 
-    tap::mu::nn_suppressor<double> sup({}, tap::mu::load_nn_suppressor_weights(argv[1]));
+    tap::mu::nn_suppressor<double>::config cfg;
+    cfg.weights = tap::mu::load_nn_suppressor_weights(argv[1]);
+    // The parity reference (tools/ml/features.py + nn.py) models the gain
+    // path alone; comfort noise would add tracked-floor fill on top.
+    cfg.comfort_noise = false;
+    tap::mu::nn_suppressor<double> sup(std::move(cfg));
     const size_t                   b = sup.block_size();
     std::vector<double>            out(n, 0.0);
     for (size_t i = 0; i + b <= n; i += b) {
