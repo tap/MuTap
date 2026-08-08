@@ -62,11 +62,12 @@ def export_header(munn_path: str, header_path: str, symbol: str = "k_nn_weights_
         "// Copyright 2026 MuTap contributors",
         "#pragma once",
         "",
+        "// clang-format off",
         f"inline constexpr unsigned char {symbol}[{len(data)}] = {{",
     ]
     for i in range(0, len(data), 24):
         lines.append("    " + ",".join(str(b) for b in data[i : i + 24]) + ",")
-    lines += ["};", ""]
+    lines += ["};", "// clang-format on", ""]
     open(header_path, "w").write("\n".join(lines))
 
 
