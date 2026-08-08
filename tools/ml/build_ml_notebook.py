@@ -54,7 +54,9 @@ untouched). Licensing context and the full result tables:
 
 Sections needing external downloads (LibriSpeech speech, DTLN models)
 skip visibly if those are absent; every committed figure was produced by
-a full run.""")
+a full run.
+
+> **Follow-up:** the focused shoot-out this survey motivates — WebRTC AEC3 vs the classical chain vs the learned hybrid, including the **v2 model at the shipping 48 kHz geometry** that now ships in `mutap.aec~` as `@postfilter 2` — lives in [`aec_head_to_head.ipynb`](aec_head_to_head.ipynb), with the result tables in [`tools/ml/README.md`](../tools/ml/README.md).""")
 
 code(r'''import os, pathlib, subprocess, sys
 import numpy as np
