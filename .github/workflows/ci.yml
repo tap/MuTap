@@ -150,6 +150,96 @@ jobs:
           UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build --output-on-failure
 
+  # ---------------------------------------------------------------- #31 only
+  # Two experiments on ONE macOS host. Wholly non-gating: every step swallows
+  # its exit status and reports through the run summary instead, so a job that
+  # exists to observe a known-flaky failure cannot add redness. Delete this
+  # job once #31 is diagnosed.
+  #
+  # Step 1 asks whether the float32 FFT is bit-deterministic across processes.
+  # Step 2 is the vDSP/Ooura A/B, run on the same host so a backend difference
+  # is not confounded with a host difference. Together they say whether #31
+  # lives in the FFT backend at all: if the hashes are constant AND the flake
+  # survives with Ooura float32, the bifurcation is in the chain, not the FFT.
+  macos-fft-backend-ab:
+    name: macOS float32 FFT A/B (#31 diagnostic)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          submodules: recursive
+
+      - name: Record host CPU
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          sysctl -n hw.ncpu
+          sw_vers
+          cc --version
+
+      - name: Step 1 — float32 FFT determinism across processes
+        run: |
+          set -e
+          cc -O2 -c submodules/dsptap/third_party/ooura/fftsg.c -o /tmp/fftsg.o
+          cc -O2 -c submodules/dsptap/third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
+          c++ -std=c++20 -O2 -DTAP_DSP_FFT_ACCELERATE -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o \
+            -framework Accelerate -o /tmp/probe_vdsp
+          c++ -std=c++20 -O2 -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/probe_ooura
+          {
+            echo "## #31 step 1 — float32 FFT determinism"
+            echo "200 processes per backend; the probe prints one line per certified"
+            echo "geometry, so **2 distinct lines is deterministic** and more is not."
+          } >> "$GITHUB_STEP_SUMMARY"
+          for backend in vdsp ooura; do
+            for _ in $(seq 200); do "/tmp/probe_$backend"; done | sort | uniq -c | sort -rn > "/tmp/hist_$backend"
+            distinct=$(wc -l < "/tmp/hist_$backend" | tr -d ' ')
+            echo "### $backend — $distinct distinct line(s)" >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo '```'
+              cat "/tmp/hist_$backend"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "== $backend: $distinct distinct =="
+            cat "/tmp/hist_$backend"
+          done
+
+      - name: Step 2 — repeat diagnostic, vDSP vs Ooura float32
+        run: |
+          set -e
+          rows='itu_echo\.EchoStability<float>|g168_adapted\.ToneStability<float>|Float32Parity\.ToneRowWithNarrowbandGuard'
+          echo "## #31 step 2 — repeat until-fail:20, both backends, same host" >> "$GITHUB_STEP_SUMMARY"
+          for spec in "vdsp:" "ooura:-DTAP_DSP_FFT_ACCELERATE=OFF"; do
+            name="${spec%%:*}"
+            flag="${spec#*:}"
+            cmake -B "build-$name" -DCMAKE_BUILD_TYPE=Release $flag > "/tmp/cfg_$name.txt" 2>&1
+            cmake --build "build-$name" -j 4 > "/tmp/bld_$name.txt" 2>&1
+            # Record the backend this half actually built with, so the A/B is
+            # self-documenting rather than inferred from the flag.
+            backend=$(grep -i 'float32 FFT backend' "/tmp/cfg_$name.txt" || echo '-- tap::dsp: float32 FFT backend = Ooura')
+            cached=$(grep '^TAP_DSP_FFT_ACCELERATE' "build-$name/CMakeCache.txt" || true)
+            echo "$backend | $cached"
+            set +e
+            ctest --test-dir "build-$name" -C Release --output-on-failure \
+              --repeat until-fail:20 -R "$rows" > "/tmp/rep_$name.txt" 2>&1
+            rc=$?
+            set -e
+            reps=$(grep -c 'Test #' "/tmp/rep_$name.txt" || true)
+            verdict="all 20 repetitions clean"
+            if [ "$rc" -ne 0 ]; then verdict="REPRODUCED"; fi
+            {
+              echo "### $name — $verdict (ctest rc=$rc, $reps test runs)"
+              echo "\`$backend\` — \`$cached\`"
+              echo '```'
+              grep -E '^\s+[0-9]+ - |tests passed|Total Test time' "/tmp/rep_$name.txt" || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "== $name: $verdict (rc=$rc) =="
+            tail -20 "/tmp/rep_$name.txt"
+          done
+
   # Cross-compile for Arm Cortex-M55 (bare metal, newlib + semihosting) and
   # run the emulation-sized test subset on QEMU's MPS3 AN547 board model:
   # the float32 embedded profile the one-core/three-targets plan exists for,
