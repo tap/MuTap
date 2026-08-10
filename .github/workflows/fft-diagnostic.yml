@@ -112,6 +112,31 @@ jobs:
               | tee -a "$GITHUB_STEP_SUMMARY"
           fi
 
+      # 1b'. The draw-vs-draw comparison above only exists on a host that
+      # bifurcates. This one always exists, and on Intel it is where the
+      # finding turned out to be: vDSP vs Ooura sits INSIDE the documented
+      # contract measured as peak-normalized absolute error, and PAST the
+      # chain's measured breaking point measured as per-bin relative error.
+      # Same numbers, two metrics, ~1700x apart. Run it at every size so the
+      # metric gap is on the record for whichever geometry a consumer uses.
+      - name: 1b' — vDSP vs Ooura, per size, both metrics
+        run: |
+          set -eu
+          echo "## 1b' — vDSP vs Ooura (same host, same input)" >> "$GITHUB_STEP_SUMMARY"
+          for n in 64 128 256 512 1024 2048 4096 8192; do
+            v=$(ls /tmp/dump_vdsp/N$n-*.bin 2>/dev/null | head -1 || true)
+            o=$(ls /tmp/dump_ooura/N$n-*.bin 2>/dev/null | head -1 || true)
+            if [ -n "$v" ] && [ -n "$o" ]; then
+              echo "### N=$n" >> "$GITHUB_STEP_SUMMARY"
+              {
+                echo '```'
+                /tmp/probe_vdsp diff "$v" "$o"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "== N=$n =="; /tmp/probe_vdsp diff "$v" "$o"
+            fi
+          done
+
       # 1c. Within ONE process: same input, same FFTSetup, buffers moved to
       # deliberate byte offsets. The cross-process sweep cannot separate "the
       # draw is fixed at process start" from "the draw follows the heap

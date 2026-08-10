@@ -176,11 +176,33 @@ namespace {
         std::printf("max rel diff    %.6g   at bin %zu (a=%.9g b=%.9g)\n", max_rel, max_rel_idx, a[max_rel_idx],
                     b[max_rel_idx]);
         std::printf("rel p50/p90/p99 %.6g / %.6g / %.6g\n", pct(0.50), pct(0.90), pct(0.99));
-        // The verdict the Phase 1 decision gate needs.
-        std::printf("\nverdict: max rel %.3g is %s\n", max_rel,
-                    max_rel >= 1e-4    ? "GROSS (>=1e-4): the backend violates its contract outright"
-                    : max_rel >= 1e-6  ? "MODERATE (1e-6..1e-4): between contract and the chain's measured breaking point"
-                                       : "EPSILON (<1e-6): within the documented 4e-7 contract — the chain is knife-edge");
+        // Two metrics, deliberately both reported, because they disagree by
+        // orders of magnitude on this material and the whole argument in #31
+        // turns on which one is meant:
+        //
+        //   max_abs/peak   what fft_backend_parity asserts (5e-6 * peak) and
+        //                  what "agrees to <4e-7 relative" was measured as.
+        //                  Normalizing by the GLOBAL peak makes a small bin's
+        //                  error invisible.
+        //   max per-bin rel  what the chain is actually sensitive to, and what
+        //                  #31's perturbation study injected when it found the
+        //                  failing row survives 1e-5 and breaks at 1e-4.
+        //
+        // A backend can sit comfortably inside the first and far outside the
+        // second. Reporting one number would hide exactly that.
+        const double abs_over_peak = peak > 0.0 ? max_abs / peak : 0.0;
+        std::printf("\nverdict:\n");
+        std::printf("  by peak-normalized abs (%.3g): %s the 4e-7 contract as measured\n", abs_over_peak,
+                    abs_over_peak < 4e-7 ? "WITHIN" : "OUTSIDE");
+        std::printf("  by per-bin relative    (%.3g): %s\n", max_rel,
+                    max_rel >= 1e-4   ? "PAST the chain's measured breaking point (>=1e-4)"
+                    : max_rel >= 1e-6 ? "between the contract and the chain's breaking point (1e-6..1e-4)"
+                                      : "epsilon (<1e-6)");
+        if (abs_over_peak < 4e-7 && max_rel >= 1e-4) {
+            std::printf("  -> the gap is INSIDE the stated contract and OUTSIDE what the chain\n"
+                        "     tolerates. The contract is stated in a metric that does not bound\n"
+                        "     what this consumer needs; neither side is simply 'broken'.\n");
+        }
         return 0;
     }
 
