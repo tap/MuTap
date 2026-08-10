@@ -168,8 +168,8 @@ namespace {
 
         std::printf("bins            %zu\n", a.size());
         std::printf("peak |X|        %.6g\n", peak);
-        std::printf("differing bins  %zu (%.1f%%)\n", differing, 100.0 * static_cast<double>(differing) /
-                                                                     static_cast<double>(a.size()));
+        std::printf("differing bins  %zu (%.1f%%)\n", differing,
+                    100.0 * static_cast<double>(differing) / static_cast<double>(a.size()));
         std::printf("max abs diff    %.6g   at bin %zu (a=%.9g b=%.9g)\n", max_abs, max_abs_idx, a[max_abs_idx],
                     b[max_abs_idx]);
         std::printf("max abs / peak  %.6g\n", peak > 0.0 ? max_abs / peak : 0.0);
@@ -285,7 +285,7 @@ namespace {
         std::uint64_t sf  = 0;
         bool          smv = false;
         for (int i = 0; i < 8; ++i) {
-            FFTSetup s = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
+            FFTSetup   s = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
             const auto h = transform_at(s, n, log2n, x, in, rp, ip);
             vDSP_destroy_fftsetup(s);
             if (i == 0) {
