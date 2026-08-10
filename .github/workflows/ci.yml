@@ -12,6 +12,9 @@ jobs:
   build-and-test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
+    # The vDSP float32 leg is a known-flaky observation post, not a gate — see
+    # the matrix comment below and tap/MuTap#31.
+    continue-on-error: ${{ matrix.nonblocking }}
     strategy:
       fail-fast: false
       matrix:
@@ -22,18 +25,41 @@ jobs:
             cxx: g++
             werror: ON
             capi: ON
+            nonblocking: false
           - name: Linux Clang
             os: ubuntu-latest
             cc: clang
             cxx: clang++
             werror: ON
             capi: ON
-          # Warnings stay non-fatal on MSVC until /W4 output has been triaged
-          # on a Windows runner (same policy as the sibling *Tap repos).
+            nonblocking: false
+          # macOS gates on the OOURA float32 backend. Apple's vDSP is the
+          # platform default and stays exercised by the leg below, but
+          # vDSP_fft_zrip at N=2048 returns one of two bit-exact outputs for
+          # identical input, drawn once per process (tap/MuTap#31), and the
+          # residual suppressor amplifies that into a ~97 dB swing on the
+          # G.168 §7 tone row. A single run of the float32 battery on vDSP is
+          # therefore a ~72/28 coin flip rather than a gate, and it has been
+          # reddening unrelated PRs since 2026-07-27.
+          #
+          # This job deliberately keeps the name "macOS AppleClang" so branch
+          # protection referencing that check keeps working. Restore vDSP as
+          # the gating backend — and delete the leg below — when #31 resolves.
           - name: macOS AppleClang
             os: macos-latest
             werror: ON
             capi: ON
+            nonblocking: false
+            extra_cmake: -DTAP_DSP_FFT_ACCELERATE=OFF
+          # Non-gating: keeps the vDSP float32 draw visible (and measures how
+          # often it bites) without blocking work that has nothing to do with it.
+          - name: macOS AppleClang (vDSP float32, non-gating)
+            os: macos-latest
+            werror: ON
+            capi: ON
+            nonblocking: true
+          # Warnings stay non-fatal on MSVC until /W4 output has been triaged
+          # on a Windows runner (same policy as the sibling *Tap repos).
           # capi stays OFF on Windows: tools/capi carries no __declspec(dllexport)
           # (unlike DspTap's), so an MSVC build would link a DLL exporting nothing
           # — it would pass without gating anything. Turn this ON in the same
@@ -42,10 +68,22 @@ jobs:
             os: windows-latest
             werror: OFF
             capi: OFF
+            nonblocking: false
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           submodules: recursive
+
+      # Chip identity matters on Apple: #31's draw was observed on an M1 VM
+      # and does NOT reproduce on Intel, so a bare "macOS" label is not enough
+      # to attribute a past result.
+      - name: Record host identity (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          sw_vers
+          cc --version | head -2
 
       - name: Configure
         env:
@@ -56,12 +94,30 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DMUTAP_WERROR=${{ matrix.werror }}
           -DMUTAP_BUILD_CAPI=${{ matrix.capi }}
+          ${{ matrix.extra_cmake }}
+
+      # Record the backend actually built, so a log can never be misread about
+      # which float32 configuration produced its numbers.
+      - name: Record float32 FFT backend
+        if: runner.os == 'macOS'
+        run: grep '^TAP_DSP_FFT_ACCELERATE' build/CMakeCache.txt || echo 'TAP_DSP_FFT_ACCELERATE not in cache (default)'
 
       - name: Build
         run: cmake --build build --config Release -j 4
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
+
+      # A single pass cannot certify a per-process bimodal outcome: on vDSP the
+      # float32 rows sample a ~72/28 draw. Repeat the implicated rows on this
+      # host so the log records how often the draw bites, rather than one
+      # sample of it. Non-gating by virtue of the job's continue-on-error.
+      - name: Repeat the float32 rows (vDSP draw rate)
+        if: matrix.nonblocking
+        run: >
+          ctest --test-dir build -C Release --output-on-failure
+          --repeat until-fail:20
+          -R 'itu_echo\.EchoStability<float>|g168_adapted\.ToneStability<float>|Float32Parity\.ToneRowWithNarrowbandGuard'
 
   sanitizers:
     name: ASan + UBSan

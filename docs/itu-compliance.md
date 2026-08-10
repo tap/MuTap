@@ -650,7 +650,44 @@ the four suites above (`test_itu_echo`, `test_itu_doubletalk`,
 `TYPED_TEST` over `<float, double>` — float is the `/0` leg, double the
 `/1` leg — and **the whole battery clears every certified gate at
 float32 with the same margins as double** (64 rows × both precisions,
-all green on the host CI legs).
+all green on the host CI legs) — with one backend carved out below.
+
+### Which FFT backend each float32 number was measured on
+
+Precision is not the only axis the float32 path varies over: the float32
+real FFT has three backends, and "float32" alone does not name a
+configuration. The certified numbers above are measured on **Ooura**
+(Linux GCC, Linux Clang, Windows MSVC) and on **CMSIS Helium** and its
+**Ooura fallback** on the Cortex-M55 leg — which together cover every
+deployment target that ships today. Both are deterministic across
+processes.
+
+**Apple/vDSP float32 is NOT currently certified**, and its rows should be
+read as pending rather than passing. `TAP_DSP_FFT_ACCELERATE` defaults ON
+for Apple, so the macOS host leg runs the battery against Apple's vDSP —
+and `vDSP_fft_zrip` at N=2048 has been measured returning one of two
+bit-exact outputs for identical input, drawn once per process
+(145/55 over 200 processes on macOS 26.5.2 / Xcode 26.6 / Apple M1; not
+reproduced on macOS 15.7.7 / AppleClang 17 / Intel, 200/200 identical at
+every size 64–8192). The residual suppressor's N=2048 analysis geometry
+sits on that draw, and the chain amplifies it into a ~97 dB difference in
+the G.168 §7 tone row. Tracked in
+[tap/MuTap#31](https://github.com/tap/MuTap/issues/31).
+
+Two consequences worth stating plainly, because the battery reported this
+correctly for two weeks while it was read as CI flake:
+
+- A row that is run **once** per leg cannot certify a bimodal outcome. On
+  the vDSP leg the float32 rows sample a ~72/28 draw, so "green" there is
+  a sample, not a gate. Repetition (`--repeat until-fail:N`) is what makes
+  a float32 result evidence, and it is now applied on that leg.
+- The argument this section makes for the precision axis — *if "double
+  passes ⇒ float passes" were sound, the tone row could not exist* —
+  transposes onto backends unchanged. float32-on-Ooura does not certify
+  float32-on-vDSP any more than double certifies float.
+
+The Apple float32 rows return to certified status when #31 resolves and
+the battery clears them under repetition on that backend.
 
 Why both, rather than certify in double and infer float32: the two are
 not related by a uniform noise floor. The G.168 §7 tone row is the
