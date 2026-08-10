@@ -1,0 +1,130 @@
+name: float32 FFT diagnostic (#31)
+
+# Temporary diagnostic for tap/MuTap#31 — DELETE THIS FILE when the issue
+# closes. It answers the three questions the investigation is blocked on, all
+# on the runner where the bifurcation actually occurs (macos-latest is an
+# Apple Silicon VM; the draw does NOT reproduce on Intel, so a local Mac
+# cannot substitute):
+#
+#   1a  Which FFT sizes are affected? Only N=512 and N=2048 have ever been
+#       probed. A consumer whose geometry is elsewhere may be unexposed, and
+#       a consumer whose geometry is 4096 may be exposed and unaware.
+#   1b  How far apart are the two draws? This is the fork in the road. A gap
+#       >= 1e-4 relative means the backend violates its own documented 4e-7
+#       contract outright and this is Apple's bug. A gap at ~1 ULP means the
+#       contract is honoured and OUR chain bifurcates on a legitimate backend
+#       difference — a materially more serious finding, since it would apply
+#       to any future toolchain or platform.
+#   1c  Is the draw selected by buffer address? If it is, over-aligning
+#       m_rp/m_ip in DspTap's wrapper fixes this while keeping vDSP and its
+#       ~3x speedup — the one outcome that costs nothing.
+#
+# Separate workflow rather than a job in ci.yml so it can be dispatched on
+# demand, and so deleting it later is one file rather than a surgical edit.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['diag/**']
+
+jobs:
+  fft-determinism:
+    name: float32 FFT determinism (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          submodules: recursive
+
+      # Every result here is only attributable with the chip and SDK recorded:
+      # the split is observed on M1 + macOS 26.5 + Xcode 26.6 and not on
+      # Intel + macOS 15.7 + AppleClang 17.
+      - name: Record host identity
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          sysctl -n hw.ncpu
+          sw_vers
+          cc --version | head -2
+
+      - name: Build the probe against both float32 backends
+        run: |
+          set -eu
+          cc -O2 -c submodules/dsptap/third_party/ooura/fftsg.c -o /tmp/fftsg.o
+          cc -O2 -c submodules/dsptap/third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
+          c++ -std=c++20 -O2 -DTAP_DSP_FFT_ACCELERATE -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o \
+            -framework Accelerate -o /tmp/probe_vdsp
+          c++ -std=c++20 -O2 -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/probe_ooura
+
+      # 1a. 200 processes per backend across every power of two 64..8192. One
+      # line per size per process, so "1 distinct hash per size" is
+      # deterministic and more is not. Ooura is the control: it must come back
+      # with exactly one hash per size, or the experiment proves nothing.
+      - name: 1a — size sweep, 200 processes per backend
+        run: |
+          set -eu
+          echo "## 1a — float32 FFT determinism by size (200 processes/backend)" >> "$GITHUB_STEP_SUMMARY"
+          for backend in vdsp ooura; do
+            rm -rf "/tmp/dump_$backend"; mkdir -p "/tmp/dump_$backend"
+            for _ in $(seq 200); do "/tmp/probe_$backend" sweep --dump "/tmp/dump_$backend"; done \
+              | sort | uniq -c | sort -k2,2 -k1,1rn > "/tmp/hist_$backend"
+            echo "### $backend" >> "$GITHUB_STEP_SUMMARY"
+            {
+              echo '```'
+              echo 'draws  N        hash              intra'
+              cat "/tmp/hist_$backend"
+              echo
+              echo 'distinct draws per size:'
+              awk '{print $2}' "/tmp/hist_$backend" | sort | uniq -c \
+                | awk '{printf "  %-9s %s draw(s)%s\n", $2, $1, ($1>1 ? "   <-- NONDETERMINISTIC" : "")}'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "== $backend =="; cat "/tmp/hist_$backend"
+          done
+
+      # 1b. The dump directory now holds one file per distinct draw, named
+      # N<size>-<hash>.bin. Any size with two files is a bifurcating size:
+      # diff its draws and let the probe classify the gap.
+      - name: 1b — how far apart are the draws
+        run: |
+          set -eu
+          echo "## 1b — distance between draws" >> "$GITHUB_STEP_SUMMARY"
+          found=0
+          for n in 64 128 256 512 1024 2048 4096 8192; do
+            # shellcheck disable=SC2231
+            set -- /tmp/dump_vdsp/N$n-*.bin
+            if [ "$#" -ge 2 ]; then
+              found=1
+              echo "### N=$n — $# distinct draws" >> "$GITHUB_STEP_SUMMARY"
+              {
+                echo '```'
+                /tmp/probe_vdsp diff "$1" "$2"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "== N=$n =="; /tmp/probe_vdsp diff "$1" "$2"
+            fi
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "No size produced more than one draw on this host — nothing to diff." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # 1c. Within ONE process: same input, same FFTSetup, buffers moved to
+      # deliberate byte offsets. The cross-process sweep cannot separate "the
+      # draw is fixed at process start" from "the draw follows the heap
+      # address", because both are constant within a process; this can.
+      - name: 1c — is the draw selected by buffer address
+        run: |
+          set -eu
+          echo "## 1c — alignment discriminator" >> "$GITHUB_STEP_SUMMARY"
+          for n in 512 2048 4096; do
+            {
+              echo '```'
+              /tmp/probe_vdsp align "$n"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            /tmp/probe_vdsp align "$n"
+          done
