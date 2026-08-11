@@ -112,8 +112,11 @@ jobs:
       # float32 rows sample a ~72/28 draw. Repeat the implicated rows on this
       # host so the log records how often the draw bites, rather than one
       # sample of it. Non-gating by virtue of the job's continue-on-error.
+      # always(), because the whole point of this step is to characterize a
+      # failure — and a failing Test step above would otherwise skip it, which
+      # is exactly what happened on the first run that needed it.
       - name: Repeat the float32 rows (vDSP draw rate)
-        if: matrix.nonblocking
+        if: always() && matrix.nonblocking
         run: >
           ctest --test-dir build -C Release --output-on-failure
           --repeat until-fail:20
