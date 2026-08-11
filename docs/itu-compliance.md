@@ -657,43 +657,49 @@ all green on the host CI legs) — with one backend carved out below.
 Precision is not the only axis the float32 path varies over: the float32
 real FFT has three backends, and "float32" alone does not name a
 configuration. The certified numbers above are measured on **Ooura**
-(Linux GCC, Linux Clang, Windows MSVC) and on **CMSIS Helium** and its
-**Ooura fallback** on the Cortex-M55 leg — which together cover every
-deployment target that ships today. Both are deterministic across
-processes.
+(Linux GCC, Linux Clang, Windows MSVC, **and macOS on both architectures** —
+see below) and on **CMSIS Helium** and its **Ooura fallback** on the
+Cortex-M55 leg — which together cover every deployment target that ships
+today. All are deterministic across processes, which is the property that
+makes a single run of a row count as evidence at all.
 
-**Apple/vDSP float32 is NOT currently certified.** Two rows fail there, and
-the macOS CI leg gates on vDSP — the backend that ships on Apple — so this
-is visible rather than filed away:
+**On Apple, MuTap uses Ooura for float32, not vDSP** — DspTap defaults vDSP
+ON for Apple and MuTap's root `CMakeLists.txt` turns it back off. The
+certified Apple numbers are therefore Ooura numbers, and the macOS CI leg
+gates on that same default, so the certified configuration and the built
+one cannot drift apart.
 
-| row | status on Apple/vDSP |
-|---|---|
-| `g168_adapted.ToneStability<float>` | **fails** |
-| `Float32Parity.ToneRowWithNarrowbandGuard` | **fails** |
-| everything else in the battery | passes |
+Two measured reasons, both from [tap/MuTap#31](https://github.com/tap/MuTap/issues/31):
 
-Both are driven by an **on-bin tone**. The row driven by broadband material
-(`itu_echo.EchoStability<float>`) passes. That distinction is the whole
-finding, and it is not a backend defect:
+**Accuracy on sparse spectra.** vDSP dispatches on buffer alignment, and
+the kernel selected by 64-byte-aligned split-complex buffers is far less
+accurate on spectra with exactly-empty bins — which is precisely what the
+G.168 §7 tone row drives the chain with. Median per-bin relative error
+against a double-precision reference, Apple M1:
 
-- vDSP's per-process nondeterminism — the original symptom, one of two
-  bit-exact outputs per process at N=2048 and N=4096 — was root-caused to
-  vDSP dispatching on 64-byte buffer alignment, and **fixed** in
-  [tap/DspTap#9](https://github.com/tap/DspTap/pull/9). Those two outputs
-  differed by 2.16e-07 peak-normalized, i.e. they were **within** the
-  documented 4e-7 agreement bound of each other the entire time.
-- What remains is that the chain converts a within-contract backend
-  difference into a compliance-scale swing. On an on-bin tone nearly every
-  bin holds nothing but float32 rounding noise, and measured against a
-  double-precision reference on that material, per-bin relative error
-  exceeds 1e6 for **both** backends — with Ooura roughly 4× *less* accurate
-  than vDSP. So a row whose outcome depends on those bins depends on
-  rounding noise, and switching backends does not fix it; it only changes
-  which noise you get.
+| material | vDSP (64-aligned) | vDSP (not aligned) | Ooura |
+|---|---|---|---|
+| broadband | 1.6e-07 | 1.2e-07 | 1.2e-07 |
+| tone, off-bin | 1.3e-06 | 1.3e-06 | 6.4e-07 |
+| **tone, on-bin** | **0.65** | 1.2e-07 | 1.1e-07 |
 
-Tracked in [tap/MuTap#31](https://github.com/tap/MuTap/issues/31). These
-rows return to certified status when the chain no longer takes its answer
-from empty bins — not when a backend is swapped.
+The gap appears only on exactly-on-bin excitation; any leakage that lifts
+the empty bins above the noise floor hides it, which is why the
+peak-normalized `fft_backend_parity` gate never saw it. On that kernel
+`g168_adapted.ToneStability<float>` and
+`Float32Parity.ToneRowWithNarrowbandGuard` fail; on Ooura they pass.
+
+**Contract.** Apple's `vDSP.h` states the routines are "free to rearrange
+calculations for better performance", that "rounding errors will often be
+different when operations are rearranged", and that they are "not expected
+to conform to IEEE 754". Which kernel runs was observed to depend on buffer
+alignment, and nothing documented prevents that from changing again. A
+certified compliance claim cannot rest on it.
+
+This is a MuTap policy choice rather than a DspTap defect — vDSP stays the
+right default for consumers who want the ~3× and can tolerate that
+latitude. Anyone wanting to measure it can still build with
+`-DTAP_DSP_FFT_ACCELERATE=ON`.
 
 Two consequences worth stating plainly, because the battery reported this
 correctly for two weeks while it was read as CI flake:

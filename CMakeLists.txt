@@ -6,9 +6,35 @@ project(MuTap VERSION 0.1.0 LANGUAGES C CXX)
 # Apple vDSP float32 backends, formerly vendored here (include/mutap/fft.h +
 # third_party/{ooura,cmsis-dsp}). Now consumed from the tap/dsptap submodule as
 # tap::dsp, which carries the same numeric contract and selects the per-target
-# backend itself (CMSIS on the bare-metal M55, vDSP on Apple, Ooura elsewhere).
-# Override with -DTAP_DSP_FFT_CMSIS=OFF / -DTAP_DSP_FFT_ACCELERATE=OFF.
+# backend itself (CMSIS on the bare-metal M55, Ooura elsewhere).
+# Override with -DTAP_DSP_FFT_CMSIS=OFF / -DTAP_DSP_FFT_ACCELERATE=ON.
+#
+# APPLE float32 USES OOURA, NOT vDSP — DspTap defaults vDSP ON for Apple and
+# MuTap deliberately turns it back off. Two measured reasons (tap/MuTap#31):
+#
+#   1. Accuracy. On spectra with exactly-empty bins — an on-bin tone, which is
+#      what the G.168 tone rows drive the chain with — the vDSP kernel selected
+#      by 64-byte buffer alignment is far less accurate than Ooura. Measured
+#      against a double-precision reference on Apple M1, MEDIAN per-bin relative
+#      error at N=2048: vDSP 0.65, Ooura 1.1e-07. Broadband and off-bin material
+#      show no such gap, which is why the peak-normalized parity gate never saw
+#      it. The compliance tone rows fail on that kernel and pass on Ooura.
+#
+#   2. Contract. Apple's own vDSP.h states the routines are "free to rearrange
+#      calculations for better performance", that "rounding errors will often be
+#      different when operations are rearranged", and that they are "not expected
+#      to conform to IEEE 754". Which kernel runs has been observed to depend on
+#      buffer alignment, and nothing documented prevents that from changing
+#      again. A certified compliance claim cannot rest on it.
+#
+# This is a MuTap policy choice, not a DspTap defect: vDSP remains the right
+# default for consumers who want the ~3x and can tolerate that latitude. Setting
+# it here (not FORCE) so an explicit -DTAP_DSP_FFT_ACCELERATE=ON still wins for
+# anyone who wants to measure it.
 # ------------------------------------------------------------------------------
+
+set(TAP_DSP_FFT_ACCELERATE OFF CACHE BOOL
+    "Route the float32 FFT through Apple vDSP (MuTap defaults this OFF; see #31)")
 
 add_subdirectory(submodules/dsptap)
 

@@ -28,27 +28,12 @@ jobs:
             cxx: clang++
             werror: ON
             capi: ON
-          # macOS GATES ON vDSP — the float32 backend that actually ships on
-          # Apple, and therefore the one whose failures are the ones that
-          # matter. It is the platform default, so no flag is needed.
-          #
-          # Expect this leg RED until the tonal fragility in tap/MuTap#31 is
-          # fixed: g168_adapted.ToneStability<float> and
-          # Float32Parity.ToneRowWithNarrowbandGuard fail here, consistently
-          # (both rows, both runs, since the DspTap alignment fix landed).
-          # That is deliberate. The failure is real — the shipped Apple
-          # float32 configuration does not currently meet two certified rows —
-          # and gating on the backend nobody ships in order to see green would
-          # be reporting on a configuration that is not the product.
-          #
-          # NOT the old flake. #31's per-process nondeterminism was
-          # root-caused to vDSP dispatching on 64-byte buffer alignment and
-          # fixed in DspTap (pinned here); what remains is the chain
-          # amplifying a WITHIN-CONTRACT backend difference (the two former
-          # draws differed by 2.16e-07 peak-normalized, inside the documented
-          # 4e-7) into a compliance-scale swing on tonal material. No backend
-          # choice fixes that: measured against a double reference on tonal
-          # material, Ooura is ~4x LESS accurate than vDSP.
+          # macOS gates on the float32 backend MuTap actually uses, which is
+          # OOURA — the root CMakeLists turns DspTap's Apple vDSP default back
+          # off, with the measurements behind that decision recorded there and
+          # in docs/itu-compliance.md (tap/MuTap#31). No flag needed here: the
+          # gate follows the product's default rather than overriding it, so
+          # this leg cannot drift away from what ships.
           - name: macOS AppleClang
             os: macos-latest
             werror: ON
