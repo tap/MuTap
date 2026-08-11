@@ -12,9 +12,6 @@ jobs:
   build-and-test:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    # The vDSP float32 leg is a known-flaky observation post, not a gate — see
-    # the matrix comment below and tap/MuTap#31.
-    continue-on-error: ${{ matrix.nonblocking }}
     strategy:
       fail-fast: false
       matrix:
@@ -25,39 +22,37 @@ jobs:
             cxx: g++
             werror: ON
             capi: ON
-            nonblocking: false
           - name: Linux Clang
             os: ubuntu-latest
             cc: clang
             cxx: clang++
             werror: ON
             capi: ON
-            nonblocking: false
-          # macOS gates on the OOURA float32 backend. Apple's vDSP is the
-          # platform default and stays exercised by the leg below, but
-          # vDSP_fft_zrip at N=2048 returns one of two bit-exact outputs for
-          # identical input, drawn once per process (tap/MuTap#31), and the
-          # residual suppressor amplifies that into a ~97 dB swing on the
-          # G.168 §7 tone row. A single run of the float32 battery on vDSP is
-          # therefore a ~72/28 coin flip rather than a gate, and it has been
-          # reddening unrelated PRs since 2026-07-27.
+          # macOS GATES ON vDSP — the float32 backend that actually ships on
+          # Apple, and therefore the one whose failures are the ones that
+          # matter. It is the platform default, so no flag is needed.
           #
-          # This job deliberately keeps the name "macOS AppleClang" so branch
-          # protection referencing that check keeps working. Restore vDSP as
-          # the gating backend — and delete the leg below — when #31 resolves.
+          # Expect this leg RED until the tonal fragility in tap/MuTap#31 is
+          # fixed: g168_adapted.ToneStability<float> and
+          # Float32Parity.ToneRowWithNarrowbandGuard fail here, consistently
+          # (both rows, both runs, since the DspTap alignment fix landed).
+          # That is deliberate. The failure is real — the shipped Apple
+          # float32 configuration does not currently meet two certified rows —
+          # and gating on the backend nobody ships in order to see green would
+          # be reporting on a configuration that is not the product.
+          #
+          # NOT the old flake. #31's per-process nondeterminism was
+          # root-caused to vDSP dispatching on 64-byte buffer alignment and
+          # fixed in DspTap (pinned here); what remains is the chain
+          # amplifying a WITHIN-CONTRACT backend difference (the two former
+          # draws differed by 2.16e-07 peak-normalized, inside the documented
+          # 4e-7) into a compliance-scale swing on tonal material. No backend
+          # choice fixes that: measured against a double reference on tonal
+          # material, Ooura is ~4x LESS accurate than vDSP.
           - name: macOS AppleClang
             os: macos-latest
             werror: ON
             capi: ON
-            nonblocking: false
-            extra_cmake: -DTAP_DSP_FFT_ACCELERATE=OFF
-          # Non-gating: keeps the vDSP float32 draw visible (and measures how
-          # often it bites) without blocking work that has nothing to do with it.
-          - name: macOS AppleClang (vDSP float32, non-gating)
-            os: macos-latest
-            werror: ON
-            capi: ON
-            nonblocking: true
           # Warnings stay non-fatal on MSVC until /W4 output has been triaged
           # on a Windows runner (same policy as the sibling *Tap repos).
           # capi stays OFF on Windows: tools/capi carries no __declspec(dllexport)
@@ -68,7 +63,6 @@ jobs:
             os: windows-latest
             werror: OFF
             capi: OFF
-            nonblocking: false
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -94,7 +88,6 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DMUTAP_WERROR=${{ matrix.werror }}
           -DMUTAP_BUILD_CAPI=${{ matrix.capi }}
-          ${{ matrix.extra_cmake }}
 
       # Record the backend actually built, so a log can never be misread about
       # which float32 configuration produced its numbers.
@@ -108,15 +101,18 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      # A single pass cannot certify a per-process bimodal outcome: on vDSP the
-      # float32 rows sample a ~72/28 draw. Repeat the implicated rows on this
-      # host so the log records how often the draw bites, rather than one
-      # sample of it. Non-gating by virtue of the job's continue-on-error.
-      # always(), because the whole point of this step is to characterize a
-      # failure — and a failing Test step above would otherwise skip it, which
-      # is exactly what happened on the first run that needed it.
-      - name: Repeat the float32 rows (vDSP draw rate)
-        if: always() && matrix.nonblocking
+      # These three rows were the per-process bifurcation in #31. Now that the
+      # alignment fix has removed the draw, repeating them says something
+      # different but still worth recording: whether the remaining failures are
+      # STABLE. A row that fails 20/20 is a deterministic property of the
+      # backend difference; one that still wanders means a second source of
+      # variation survives and the diagnosis is incomplete.
+      #
+      # always(), because the whole point is to characterize a failure — and a
+      # failing Test step above would otherwise skip it, which is exactly what
+      # happened on the first run that needed it.
+      - name: Repeat the float32 rows (stability, not a draw)
+        if: always() && runner.os == 'macOS'
         run: >
           ctest --test-dir build -C Release --output-on-failure
           --repeat until-fail:20
