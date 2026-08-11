@@ -153,3 +153,116 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             /tmp/probe_vdsp align "$n"
           done
+
+  # ---------------------------------------------------------------------------
+  # Round 2. The alignment fix made vDSP deterministic by forcing every process
+  # onto the 64-byte-aligned kernel. It was never checked whether that is the
+  # kernel on which the compliance rows PASS — the 140/60 split was measured on
+  # FFT output hashes, not on test outcomes. If the tone rows pass on the OTHER
+  # path, the fix picked the losing kernel and the story needs rewriting.
+  #
+  # Three builds of the same tree, same host, same run:
+  #   aligned    as shipped (m_rp/m_ip forced to 64-byte alignment)
+  #   unaligned  the fix deliberately defeated (+4 bytes past the boundary), so
+  #              every process takes the non-64-aligned kernel
+  #   ooura      backend control
+  #
+  # Each runs the two failing tonal rows plus the broadband row that passes, 5
+  # repetitions each, so within-variant stability is visible too. A row that
+  # fails 5/5 in one variant and passes 5/5 in another is decisive; a row that
+  # wanders inside a variant means a source of variation survives the fix and
+  # the diagnosis is incomplete.
+  tone-rows-vs-kernel-path:
+    name: tone rows vs FFT kernel path (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          submodules: recursive
+
+      - name: Record host identity
+        run: |
+          sysctl -n machdep.cpu.brand_string
+          sysctl -n hw.model
+          sw_vers
+          cc --version | head -2
+
+      - name: Build and run all three variants
+        run: |
+          set -u
+          fft=submodules/dsptap/include/tap/dsp/fft.h
+          rows='g168_adapted\.ToneStability<float>|Float32Parity\.ToneRowWithNarrowbandGuard|itu_echo\.EchoStability<float>'
+          cp "$fft" /tmp/fft.h.orig
+          echo "## Round 2 — do the tone rows depend on which vDSP kernel runs?" >> "$GITHUB_STEP_SUMMARY"
+
+          run_variant() {
+            name="$1"; shift
+            echo "=============== $name ==============="
+            cmake -B "build-$name" -DCMAKE_BUILD_TYPE=Release "$@" > "/tmp/cfg-$name.log" 2>&1 || {
+              echo "configure FAILED"; tail -20 "/tmp/cfg-$name.log"; return 1; }
+            grep -E '^TAP_DSP_FFT_ACCELERATE' "build-$name/CMakeCache.txt" || echo "(accelerate default)"
+            cmake --build "build-$name" --parallel > "/tmp/build-$name.log" 2>&1 || {
+              echo "build FAILED"; tail -20 "/tmp/build-$name.log"; return 1; }
+            set +e
+            ctest --test-dir "build-$name" --output-on-failure --repeat until-fail:5 -R "$rows" \
+              > "/tmp/test-$name.log" 2>&1
+            rc=$?
+            set -e
+            echo "ctest rc=$rc"
+            grep -E "tests passed|Passed|\*\*\*Failed|actual:" "/tmp/test-$name.log" | head -40
+            {
+              echo "### $name (ctest rc=$rc)"
+              echo '```'
+              grep -E "tests passed|Passed|\*\*\*Failed|actual:" "/tmp/test-$name.log" | head -40
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+
+          # 1. As shipped.
+          run_variant aligned
+
+          # 2. Fix defeated: push the split buffers 4 bytes PAST the 64-byte
+          #    boundary so every process takes the other kernel. The assert
+          #    makes a silent no-op impossible — without it a failed patch
+          #    would quietly run the same build twice and look like a result.
+          python3 - <<'PY'
+          p = 'submodules/dsptap/include/tap/dsp/fft.h'
+          s = open(p).read()
+          old = 'return reinterpret_cast<float*>(up);'
+          assert s.count(old) == 1, f'patch site found {s.count(old)} times, expected 1'
+          s = s.replace(old, 'return reinterpret_cast<float*>(up + 4); // #31 round 2: force the NON-64-aligned kernel')
+          open(p, 'w').write(s)
+          print('patched: split buffers forced 4 bytes past the 64-byte boundary')
+          PY
+          run_variant unaligned
+          cp /tmp/fft.h.orig "$fft"
+
+          # 3. Backend control.
+          run_variant ooura -DTAP_DSP_FFT_ACCELERATE=OFF
+
+      # Independent of the rows: with the fix pinned, is the wrapper's output
+      # now actually invariant across processes ON THIS HOST? The sweep in the
+      # job above proved the bifurcation before the fix; this is the same
+      # measurement after it, and it is the in-situ check that the fix does
+      # what it claims rather than only passing DspTap's own tests.
+      - name: Post-fix determinism re-check (200 processes)
+        if: always()
+        run: |
+          set -eu
+          cc -O2 -c submodules/dsptap/third_party/ooura/fftsg.c -o /tmp/fftsg.o
+          cc -O2 -c submodules/dsptap/third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
+          c++ -std=c++20 -O2 -DTAP_DSP_FFT_ACCELERATE -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o \
+            -framework Accelerate -o /tmp/probe_vdsp
+          for _ in $(seq 200); do /tmp/probe_vdsp sweep; done | sort | uniq -c | sort -k2,2 -k1,1rn > /tmp/hist
+          {
+            echo "## Post-fix determinism (expect exactly 1 draw per size)"
+            echo '```'
+            cat /tmp/hist
+            echo
+            awk '{print $2}' /tmp/hist | sort | uniq -c \
+              | awk '{printf "  %-9s %s draw(s)%s\n", $2, $1, ($1>1 ? "   <-- STILL NONDETERMINISTIC" : "")}'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat /tmp/hist
