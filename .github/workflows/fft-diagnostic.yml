@@ -266,3 +266,26 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           cat /tmp/hist
+
+      # Which kernel is actually CORRECT? The A/B above shows the compliance
+      # rows pass on the non-64-aligned kernel and fail on the aligned one, but
+      # that alone does not say the aligned kernel is WRONG — it may simply be
+      # differently rounded, in which case selecting the other one is choosing
+      # a lucky coin rather than fixing anything. Measuring both against a
+      # double-precision reference decides which it is, and therefore whether
+      # changing the alignment constant is engineering or superstition.
+      - name: Which kernel is more accurate (vs a double reference)
+        if: always()
+        run: |
+          set -eu
+          c++ -std=c++20 -O2 -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/probe_ooura
+          {
+            echo "## Accuracy of each kernel against a double-precision reference"
+            echo '```'
+            for n in 512 2048 4096; do
+              /tmp/probe_vdsp truth "$n"
+              /tmp/probe_ooura truth "$n"
+            done
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

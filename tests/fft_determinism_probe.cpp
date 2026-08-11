@@ -213,19 +213,24 @@ namespace {
     // Replicates accelerate_real_fft_f32::forward_inplace exactly, but on
     // caller-placed buffers, so the split-complex halves and the interleaved
     // input can be moved to arbitrary byte offsets within one process.
-    std::uint64_t transform_at(FFTSetup setup, int n, int log2n, const std::vector<float>& x, float* in, float* rp,
-                               float* ip) {
+    void capture_transform(FFTSetup setup, int n, int log2n, const std::vector<float>& x, float* in, float* rp,
+                           float* ip, float* out) {
         std::memcpy(in, x.data(), x.size() * sizeof(float));
         DSPSplitComplex sp{rp, ip};
         vDSP_ctoz(reinterpret_cast<const DSPComplex*>(in), 2, &sp, 1, static_cast<vDSP_Length>(n / 2));
         vDSP_fft_zrip(setup, &sp, 1, static_cast<vDSP_Length>(log2n), kFFTDirection_Forward);
-        std::vector<float> out(static_cast<size_t>(n));
         out[0] = rp[0] * 0.5f;
         out[1] = ip[0] * 0.5f;
         for (int k = 1; k < n / 2; ++k) {
             out[2 * k]     = rp[k] * 0.5f;
             out[2 * k + 1] = -ip[k] * 0.5f;
         }
+    }
+
+    std::uint64_t transform_at(FFTSetup setup, int n, int log2n, const std::vector<float>& x, float* in, float* rp,
+                               float* ip) {
+        std::vector<float> out(static_cast<size_t>(n));
+        capture_transform(setup, n, log2n, x, in, rp, ip, out.data());
         return fnv1a(out.data(), out.size() * sizeof(float));
     }
 
@@ -316,6 +321,92 @@ namespace {
 
 #endif // TAP_DSP_FFT_ACCELERATE
 
+    // ---- which kernel is actually CORRECT? ----
+    //
+    // The A/B showed the compliance rows pass on the non-64-aligned kernel and
+    // fail on the aligned one. That does NOT by itself say the aligned kernel
+    // is wrong — it may just be differently rounded, in which case picking the
+    // other one is choosing a lucky coin rather than fixing anything.
+    //
+    // Settle it against a double-precision transform of the same input (error
+    // ~1e-15 at these sizes, so a legitimate stand-in for truth against
+    // float32's ~1e-7). Two materials, because the failing rows are tonal and
+    // the existing parity gate is broadband.
+
+    // 1000 Hz at fs 16000 lands exactly on bin n/16 — on-bin by construction.
+    std::vector<float> on_bin_tone(int n) {
+        std::vector<float> x(static_cast<size_t>(n));
+        const double       k = static_cast<double>(n) / 16.0;
+        for (int i = 0; i < n; ++i) {
+            x[static_cast<size_t>(i)] =
+                static_cast<float>(0.5 * std::sin(2.0 * 3.14159265358979323846 * k * i / static_cast<double>(n)));
+        }
+        return x;
+    }
+
+    void report_vs_double(const char* label, const char* material, const std::vector<float>& got,
+                          const std::vector<double>& ref) {
+        double peak = 0.0;
+        for (const double v : ref) {
+            peak = std::max(peak, std::abs(v));
+        }
+        std::vector<double> rel;
+        double              max_rel = 0.0, max_abs = 0.0;
+        for (size_t i = 0; i < ref.size(); ++i) {
+            const double d = std::abs(static_cast<double>(got[i]) - ref[i]);
+            max_abs        = std::max(max_abs, d);
+            const double r = std::abs(ref[i]) > 0.0 ? d / std::abs(ref[i]) : 0.0;
+            rel.push_back(r);
+            max_rel = std::max(max_rel, r);
+        }
+        std::sort(rel.begin(), rel.end());
+        std::printf("  %-22s %-10s max_rel=%-11.4g p50_rel=%-11.4g abs/peak=%.4g\n", label, material, max_rel,
+                    rel[rel.size() / 2], peak > 0.0 ? max_abs / peak : 0.0);
+    }
+
+    int truth(int n) {
+        std::printf("== accuracy vs a double-precision reference, N=%d ==\n", n);
+        for (const auto& [name, x] :
+             {std::pair<const char*, std::vector<float>>{"broadband", broadband(n, 0x9E3779B9u)},
+              std::pair<const char*, std::vector<float>>{"tone(1k)", on_bin_tone(n)}}) {
+            std::vector<double>              ref(x.begin(), x.end());
+            tap::dsp::basic_real_fft<double> dfft(static_cast<size_t>(n));
+            dfft.forward_inplace(ref.data());
+
+#if defined(TAP_DSP_FFT_ACCELERATE)
+            // Drive vDSP directly at both alignments, so one process reports
+            // both kernels — the wrapper alone can only ever show us one.
+            const int log2n = static_cast<int>(std::lround(std::log2(static_cast<double>(n))));
+            FFTSetup  setup = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
+            if (!setup) {
+                std::fprintf(stderr, "vDSP_create_fftsetup failed\n");
+                return 2;
+            }
+            void* slab = nullptr;
+            if (posix_memalign(&slab, 4096, static_cast<size_t>(n) * sizeof(float) * 8 + 3 * 4096) != 0) {
+                return 2;
+            }
+            auto* base = static_cast<unsigned char*>(slab);
+            for (const size_t off : {size_t{0}, size_t{4}}) {
+                auto* in = reinterpret_cast<float*>(base + off);
+                auto* rp = reinterpret_cast<float*>(base + off + static_cast<size_t>(n) * sizeof(float) + 4096);
+                auto* ip = rp + n / 2;
+                std::vector<float> out(static_cast<size_t>(n));
+                capture_transform(setup, n, log2n, x, in, rp, ip, out.data());
+                report_vs_double(off == 0 ? "vdsp 64-aligned" : "vdsp NOT 64-aligned", name, out, ref);
+            }
+            std::free(slab);
+            vDSP_destroy_fftsetup(setup);
+#else
+            std::vector<float>              got = x;
+            tap::dsp::basic_real_fft<float> ffft(static_cast<size_t>(n));
+            ffft.forward_inplace(got.data());
+            report_vs_double("ooura", name, got, ref);
+#endif
+        }
+        return 0;
+    }
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -336,6 +427,9 @@ int main(int argc, char** argv) {
             return 2;
         }
         return diff(argv[2], argv[3]);
+    }
+    if (mode == "truth") {
+        return truth(argc > 2 ? std::atoi(argv[2]) : 2048);
     }
     if (mode == "align") {
 #if defined(TAP_DSP_FFT_ACCELERATE)
