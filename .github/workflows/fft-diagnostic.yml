@@ -278,14 +278,46 @@ jobs:
         if: always()
         run: |
           set -eu
+          fft=submodules/dsptap/include/tap/dsp/fft.h
+          cp "$fft" /tmp/fft.h.acc
+
+          # Stock header: the wrapper reports the 64-aligned kernel.
+          c++ -std=c++20 -O2 -DTAP_DSP_FFT_ACCELERATE -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o \
+            -framework Accelerate -o /tmp/acc_aligned
+
+          # Patched header: the SAME wrapper, now landing off the boundary.
+          # Measuring through the wrapper is the point — it removes the probe's
+          # own buffer placement as an explanation for the earlier result.
+          python3 - <<'PY'
+          p = 'submodules/dsptap/include/tap/dsp/fft.h'
+          s = open(p).read()
+          old = 'return reinterpret_cast<float*>(up);'
+          assert s.count(old) == 1, f'patch site found {s.count(old)} times, expected 1'
+          open(p, 'w').write(s.replace(old, 'return reinterpret_cast<float*>(up + 4);'))
+          print('patched for the accuracy comparison')
+          PY
+          c++ -std=c++20 -O2 -DTAP_DSP_FFT_ACCELERATE -Isubmodules/dsptap/include \
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o \
+            -framework Accelerate -o /tmp/acc_unaligned
+          cp /tmp/fft.h.acc "$fft"
+
           c++ -std=c++20 -O2 -Isubmodules/dsptap/include \
-            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/probe_ooura
+            tests/fft_determinism_probe.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/acc_ooura
+
           {
-            echo "## Accuracy of each kernel against a double-precision reference"
+            echo "## Accuracy against a double-precision reference"
+            echo "Read the p50 column: it is the median bin, so it says whether"
+            echo "MOST of the spectrum is right, which max_rel cannot on sparse"
+            echo "material and abs/peak cannot on any material."
             echo '```'
             for n in 512 2048 4096; do
-              /tmp/probe_vdsp truth "$n"
-              /tmp/probe_ooura truth "$n"
+              echo "---- built 64-ALIGNED (as shipped) ----"
+              /tmp/acc_aligned truth "$n"
+              echo "---- built NOT-64-ALIGNED (fix defeated) ----"
+              /tmp/acc_unaligned truth "$n"
+              echo "---- built OOURA ----"
+              /tmp/acc_ooura truth "$n"
             done
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -333,15 +333,47 @@ namespace {
     // float32's ~1e-7). Two materials, because the failing rows are tonal and
     // the existing parity gate is broadband.
 
-    // 1000 Hz at fs 16000 lands exactly on bin n/16 — on-bin by construction.
-    std::vector<float> on_bin_tone(int n) {
+    constexpr double k_pi = 3.14159265358979323846;
+
+    // A sinusoid at bin index k (fractional k = deliberately off-bin, which
+    // spreads leakage into every bin and removes the near-empty ones).
+    std::vector<float> tone_at_bin(int n, double k, double amp = 0.5) {
         std::vector<float> x(static_cast<size_t>(n));
-        const double       k = static_cast<double>(n) / 16.0;
         for (int i = 0; i < n; ++i) {
-            x[static_cast<size_t>(i)] =
-                static_cast<float>(0.5 * std::sin(2.0 * 3.14159265358979323846 * k * i / static_cast<double>(n)));
+            x[static_cast<size_t>(i)] = static_cast<float>(amp * std::sin(2.0 * k_pi * k * i / static_cast<double>(n)));
         }
         return x;
+    }
+
+    // Three widely separated on-bin partials: still a sparse spectrum, but not
+    // the single-tone special case, so a finding cannot be blamed on it.
+    std::vector<float> sparse_three_tone(int n) {
+        std::vector<float> x(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i) {
+            const double t            = static_cast<double>(i) / static_cast<double>(n);
+            x[static_cast<size_t>(i)] = static_cast<float>(0.30 * std::sin(2.0 * k_pi * (n / 16.0) * t)
+                                                           + 0.15 * std::sin(2.0 * k_pi * (n / 5.0) * t)
+                                                           + 0.05 * std::sin(2.0 * k_pi * (n / 3.0) * t));
+        }
+        return x;
+    }
+
+    struct material {
+        const char*        name;
+        std::vector<float> x;
+    };
+
+    // Sparse (mostly-empty) spectra are the class where the defect should
+    // show; broadband and the off-bin tone are the controls where every bin
+    // carries energy and the two kernels should look the same.
+    std::vector<material> materials(int n) {
+        std::vector<material> m;
+        m.push_back({"broadband", broadband(n, 0x9E3779B9u)});
+        m.push_back({"tone n/16", tone_at_bin(n, n / 16.0)});
+        m.push_back({"tone n/8", tone_at_bin(n, n / 8.0)});
+        m.push_back({"tone offbin", tone_at_bin(n, n / 16.0 + 0.37)});
+        m.push_back({"3-tone", sparse_three_tone(n)});
+        return m;
     }
 
     void report_vs_double(const char* label, const char* material, const std::vector<float>& got,
@@ -366,16 +398,24 @@ namespace {
 
     int truth(int n) {
         std::printf("== accuracy vs a double-precision reference, N=%d ==\n", n);
-        for (const auto& [name, x] :
-             {std::pair<const char*, std::vector<float>>{"broadband", broadband(n, 0x9E3779B9u)},
-              std::pair<const char*, std::vector<float>>{"tone(1k)", on_bin_tone(n)}}) {
-            std::vector<double>              ref(x.begin(), x.end());
+        for (const auto& m : materials(n)) {
+            std::vector<double>              ref(m.x.begin(), m.x.end());
             tap::dsp::basic_real_fft<double> dfft(static_cast<size_t>(n));
             dfft.forward_inplace(ref.data());
 
+            // THE WRAPPER as actually compiled — this is the path MuTap uses,
+            // and measuring it removes the probe's own buffer placement as an
+            // explanation. Build once stock and once with the alignment
+            // defeated to see both kernels through it.
+            {
+                std::vector<float>              got = m.x;
+                tap::dsp::basic_real_fft<float> ffft(static_cast<size_t>(n));
+                ffft.forward_inplace(got.data());
+                report_vs_double("wrapper (as built)", m.name, got, ref);
+            }
+
 #if defined(TAP_DSP_FFT_ACCELERATE)
-            // Drive vDSP directly at both alignments, so one process reports
-            // both kernels — the wrapper alone can only ever show us one.
+            // Raw vDSP at both alignments, for cross-checking the wrapper.
             const int log2n = static_cast<int>(std::lround(std::log2(static_cast<double>(n))));
             FFTSetup  setup = vDSP_create_fftsetup(static_cast<vDSP_Length>(log2n), kFFTRadix2);
             if (!setup) {
@@ -392,16 +432,11 @@ namespace {
                 auto* rp = reinterpret_cast<float*>(base + off + static_cast<size_t>(n) * sizeof(float) + 4096);
                 auto* ip = rp + n / 2;
                 std::vector<float> out(static_cast<size_t>(n));
-                capture_transform(setup, n, log2n, x, in, rp, ip, out.data());
-                report_vs_double(off == 0 ? "vdsp 64-aligned" : "vdsp NOT 64-aligned", name, out, ref);
+                capture_transform(setup, n, log2n, m.x, in, rp, ip, out.data());
+                report_vs_double(off == 0 ? "raw vdsp 64-aligned" : "raw vdsp not-aligned", m.name, out, ref);
             }
             std::free(slab);
             vDSP_destroy_fftsetup(setup);
-#else
-            std::vector<float>              got = x;
-            tap::dsp::basic_real_fft<float> ffft(static_cast<size_t>(n));
-            ffft.forward_inplace(got.data());
-            report_vs_double("ooura", name, got, ref);
 #endif
         }
         return 0;
