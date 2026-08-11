@@ -662,32 +662,54 @@ configuration. The certified numbers above are measured on **Ooura**
 deployment target that ships today. Both are deterministic across
 processes.
 
-**Apple/vDSP float32 is NOT currently certified**, and its rows should be
-read as pending rather than passing. `TAP_DSP_FFT_ACCELERATE` defaults ON
-for Apple, so the macOS host leg runs the battery against Apple's vDSP —
-and `vDSP_fft_zrip` at N=2048 has been measured returning one of two
-bit-exact outputs for identical input, drawn once per process
-(145/55 over 200 processes on macOS 26.5.2 / Xcode 26.6 / Apple M1; not
-reproduced on macOS 15.7.7 / AppleClang 17 / Intel, 200/200 identical at
-every size 64–8192). The residual suppressor's N=2048 analysis geometry
-sits on that draw, and the chain amplifies it into a ~97 dB difference in
-the G.168 §7 tone row. Tracked in
-[tap/MuTap#31](https://github.com/tap/MuTap/issues/31).
+**Apple/vDSP float32 is NOT currently certified.** Two rows fail there, and
+the macOS CI leg gates on vDSP — the backend that ships on Apple — so this
+is visible rather than filed away:
+
+| row | status on Apple/vDSP |
+|---|---|
+| `g168_adapted.ToneStability<float>` | **fails** |
+| `Float32Parity.ToneRowWithNarrowbandGuard` | **fails** |
+| everything else in the battery | passes |
+
+Both are driven by an **on-bin tone**. The row driven by broadband material
+(`itu_echo.EchoStability<float>`) passes. That distinction is the whole
+finding, and it is not a backend defect:
+
+- vDSP's per-process nondeterminism — the original symptom, one of two
+  bit-exact outputs per process at N=2048 and N=4096 — was root-caused to
+  vDSP dispatching on 64-byte buffer alignment, and **fixed** in
+  [tap/DspTap#9](https://github.com/tap/DspTap/pull/9). Those two outputs
+  differed by 2.16e-07 peak-normalized, i.e. they were **within** the
+  documented 4e-7 agreement bound of each other the entire time.
+- What remains is that the chain converts a within-contract backend
+  difference into a compliance-scale swing. On an on-bin tone nearly every
+  bin holds nothing but float32 rounding noise, and measured against a
+  double-precision reference on that material, per-bin relative error
+  exceeds 1e6 for **both** backends — with Ooura roughly 4× *less* accurate
+  than vDSP. So a row whose outcome depends on those bins depends on
+  rounding noise, and switching backends does not fix it; it only changes
+  which noise you get.
+
+Tracked in [tap/MuTap#31](https://github.com/tap/MuTap/issues/31). These
+rows return to certified status when the chain no longer takes its answer
+from empty bins — not when a backend is swapped.
 
 Two consequences worth stating plainly, because the battery reported this
 correctly for two weeks while it was read as CI flake:
 
-- A row that is run **once** per leg cannot certify a bimodal outcome. On
-  the vDSP leg the float32 rows sample a ~72/28 draw, so "green" there is
-  a sample, not a gate. Repetition (`--repeat until-fail:N`) is what makes
-  a float32 result evidence, and it is now applied on that leg.
+- A row that is run **once** per leg cannot certify a bimodal outcome. While
+  the alignment bug was live, the float32 rows on vDSP sampled a ~70/30
+  draw, so a green there was a sample rather than a gate — which is how a
+  genuine compliance failure read as CI flake for two weeks. Repetition
+  (`--repeat until-fail:N`) is what makes a float32 result evidence, and it
+  is applied on the macOS leg.
 - The argument this section makes for the precision axis — *if "double
   passes ⇒ float passes" were sound, the tone row could not exist* —
   transposes onto backends unchanged. float32-on-Ooura does not certify
-  float32-on-vDSP any more than double certifies float.
-
-The Apple float32 rows return to certified status when #31 resolves and
-the battery clears them under repetition on that backend.
+  float32-on-vDSP any more than double certifies float. That is why the
+  backend is named for every number above, and why the macOS gate points at
+  the backend that ships rather than the one that is convenient.
 
 Why both, rather than certify in double and infer float32: the two are
 not related by a uniform noise floor. The G.168 §7 tone row is the
