@@ -20,6 +20,7 @@
 // echo) is the one that stays meaningful under double-talk.
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
@@ -52,6 +53,14 @@ namespace mutap_test {
         struct config {
             std::vector<Sample> echo_path;       ///< F: true speaker->mic path (RIR)
             size_t              block_size = 64; ///< must match the canceller's block size
+            /// Mic saturation limit (0 = off, the default — bit-identical
+            /// to the pre-knob harness): y is clamped to +-mic_clip before
+            /// the canceller sees it, the outdoor close-range scenario's
+            /// overloaded-ADC condition. The energy accounting keeps the
+            /// UNCLIPPED d as "true echo"; the clipping products land in
+            /// the residual (e - v), where they belong — they are
+            /// echo-correlated junk in the send path.
+            Sample mic_clip = Sample(0);
         };
 
         explicit echo_sim(config cfg)
@@ -81,27 +90,39 @@ namespace mutap_test {
         /// and may be null (e = y, the uncancelled mic).
         template <typename Canceller>
         block_energies step(const Sample* x, const Sample* v, Canceller* canceller) {
+            return step(x, x, v, canceller);
+        }
+
+        /// Nonlinear-loudspeaker variant: the echo path is driven by
+        /// x_drive (the DISTORTED loudspeaker output) while the canceller
+        /// receives the clean reference x_ref — the outdoor close-range
+        /// scenario, where the linear canceller can only ever explain the
+        /// component of the echo that is linear in its reference. With
+        /// x_drive == x_ref this is the plain step() above, bit for bit.
+        template <typename Canceller>
+        block_energies step(const Sample* x_ref, const Sample* x_drive, const Sample* v, Canceller* canceller) {
             const size_t b  = m_cfg.block_size;
             const size_t lf = m_cfg.echo_path.size();
 
-            // Echo block d = F * x at sample resolution.
+            // Echo block d = F * x_drive at sample resolution.
             for (size_t i = 0; i < b; ++i) {
-                m_x_work[lf - 1 + i] = x[i];
+                m_x_work[lf - 1 + i] = x_drive[i];
             }
             for (size_t i = 0; i < b; ++i) {
                 double acc = 0.0;
                 for (size_t k = 0; k < lf; ++k) {
                     acc += static_cast<double>(m_cfg.echo_path[k]) * static_cast<double>(m_x_work[lf - 1 + i - k]);
                 }
-                m_d[i] = static_cast<Sample>(acc);
-                m_y[i] = static_cast<Sample>((v != nullptr ? static_cast<double>(v[i]) : 0.0) + acc);
+                m_d[i]         = static_cast<Sample>(acc);
+                const double y = (v != nullptr ? static_cast<double>(v[i]) : 0.0) + acc;
+                const double c = static_cast<double>(m_cfg.mic_clip);
+                m_y[i]         = static_cast<Sample>(c > 0.0 ? std::clamp(y, -c, c) : y);
             }
             for (size_t i = 0; i + 1 < lf; ++i) { // slide x history
                 m_x_work[i] = m_x_work[b + i];
             }
-
             if (canceller != nullptr) {
-                canceller->process_block(x, m_y.data(), m_e.data());
+                canceller->process_block(x_ref, m_y.data(), m_e.data());
             }
             else {
                 for (size_t i = 0; i < b; ++i) {
@@ -126,6 +147,11 @@ namespace mutap_test {
         /// Open-loop overload: a literal `nullptr` cannot deduce Canceller.
         block_energies step(const Sample* x, const Sample* v, std::nullptr_t) {
             return step(x, v, static_cast<tap::mu::partitioned_fdaf<Sample>*>(nullptr));
+        }
+
+        /// Open-loop overload of the nonlinear-loudspeaker variant.
+        block_energies step(const Sample* x_ref, const Sample* x_drive, const Sample* v, std::nullptr_t) {
+            return step(x_ref, x_drive, v, static_cast<tap::mu::partitioned_fdaf<Sample>*>(nullptr));
         }
 
         const std::vector<Sample>& error_block() const { return m_e; }

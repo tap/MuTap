@@ -560,6 +560,65 @@ external's make_chain_config to call the library preset.*
 
 ---
 
+## The next effort (Rev 6): outdoor close-range AEC
+
+Scope discussion settled with Tim (2026-08-19): what does the ideal AEC
+look like when the loudspeaker is within an inch of the mic, outdoors?
+The scenario inverts the ITU battery's assumptions — ERL goes NEGATIVE
+(near-field echo 10..30 dB above the reference at the mic; P.1110
+Annex E stops at 0), the room disappears (all path support inside
+~7 ms, rigid device geometry), and the transducer becomes the problem
+(driver distortion, mic overload, wind as the near-end disturbance).
+Repo decision: IN-TREE, not a fork or a separate repo — scenario +
+preset + default-off core extensions, same playbook as every prior
+departure; a product spin-off would be a downstream consumer repo
+(the MuTap-Max relationship), decided only when there is hardware.
+
+**Stage 0 — Scenario fixture + measured baseline.** *DONE —
+`tests/support/outdoor_scenario.h` (close-range path builder with
+direct/structure/ground anatomy and calibrated-ERL scaling, measured
+exact to 0.01 dB; tanh loudspeaker-drive model with unity small-signal
+gain, THD-calibrated severity presets -40.4/-27.1/-17.8 dB at the
+-10 dBm0 operating level; wind generator, ~48 dB LF tilt with +-8 dB
+gust wander) + echo_sim's two additive knobs (a 4-arg step driving the
+path with the distorted speaker signal while the canceller sees the
+clean reference; mic_clip — both default-off, prior harness behavior
+bit-identical, certified suites re-verified green) + `test_outdoor.cpp`
+(measured-first gates, full table in its banner; certified chain and
+preset UNTOUCHED). The baseline says exactly where the problem lives:
+(1) the LINEAR close-range problem is easy — 55..60 dB suppression flat
+across ERL 0..-30 with convergence holding (37.5 dB by 1.2 s at -30) —
+but negative ERL spends the budget: 58 dB against a +20 dBm0 echo still
+leaves -35 dBm0(A) in the send path; (2) the HEADLINE: ~1 % THD (mild
+drive) collapses linear cancellation 50 -> 26 dB and the coherence
+suppressor recovers only 2..4 dB — its evidence lives at harmonics the
+linear echo estimate cannot correlate; moderate drive leaves the send
+residual at -10 dBm0(A), and under permanent double talk (near end
+40 dB below the echo) the send path is echo junk 20 dB ABOVE the
+talker, where the linear rows hold delta ~0 with no DTD (the Kalman
+Psi_s machinery survives always-double-talk as designed); (3) full-
+scale mic clipping alone costs ~32 dB of suppression at 52 % clipped
+samples; (4) wind slows convergence (31 vs 55 dB by 1.2 s) but never
+diverges. Baseline is double-golden only; the float32 parity pass
+comes with the departure work.*
+
+**Follow-ups the numbers rank** (in expected-payoff order): (a) a
+multi-branch nonlinear-basis canceller (Hammerstein-style MISO
+extension of partitioned_fdkf: x plus clipped/odd-power reference
+branches under a shared denominator) — the mild/moderate raw rows
+(25.6/15.6 dB) are its acceptance test; (b) a device-trained
+nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
+datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
+widen; (c) a clip guard in the core (freeze adaptation on saturated
+blocks, decay-not-reset release — the narrowband-guard discipline),
+default OFF, preset-enabled; (d) a short-geometry outdoor preset
+(fewer partitions for the 7 ms path — less null space, the block-128
+family of pathologies never enters); (e) the noise-tracker semantics
+revisit already filed by the TVP/hangover margins, which wind now also
+argues for.
+
+---
+
 ## What this is
 
 **MuTap** is a collection of portable, reusable audio "cleaning" tools built around adaptive filtering. The first tool targets **acoustic feedback (howling) suppression** using a PEM-AFROW-based adaptive feedback canceller. The defining constraint is **portability**: the same DSP core must run on Max/MSP (desktop float), ARM Cortex-M55 (Helium), and Qualcomm Hexagon (HVX, floating-point). Because the Hexagon target has float HVX, the plan is a single float32 core across all three — no fixed-point port.
