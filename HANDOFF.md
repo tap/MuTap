@@ -606,7 +606,20 @@ comes with the departure work.*
 multi-branch nonlinear-basis canceller (Hammerstein-style MISO
 extension of partitioned_fdkf: x plus clipped/odd-power reference
 branches under a shared denominator) — the mild/moderate raw rows
-(25.6/15.6 dB) are its acceptance test; (b) a device-trained
+(25.6/15.6 dB) are its acceptance test; *design doc DONE —
+`docs/multibranch-canceller.md`: model choice (power-filter MISO in
+the diagonalized-Kalman frame, per Malik & Enzner 2012 / Küch &
+Kellermann 2006; adaptive-preprocessor and Volterra rejected with
+reasons), the joint-denominator math and the branch P(0) prior
+("echo is mostly linear" — the branch axis's initial_uncertainty_decay,
+without which branch collinearity re-runs the block-128 notch), four
+basis candidates for a scratch bake-off with an off-model hard-clip
+row so nothing wins by rigging, the ranked watch-list (collinearity
+null space, Psi_s absorbing unmodeled distortion during branch
+convergence, DT weight-motion surface, tones, cost), extend-in-place
+architecture behind an empty-spec bit-identical dump gate (shadow
+stays linear — one gated chain line), and the staged plan with
+acceptance gates. Open decisions for Tim in its §9;* (b) a device-trained
 nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
 datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
 widen; (c) a clip guard in the core (freeze adaptation on saturated
