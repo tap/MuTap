@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.24)
+# 3.22 is Ubuntu 22.04 LTS's stock cmake. Nothing here uses a 3.23+ feature --
+# no FILE_SET, no cmake_path, no TARGET_RUNTIME_DLLS, no CMP0135-dependent
+# FetchContent URL handling -- so the higher floor only excluded the current LTS.
+cmake_minimum_required(VERSION 3.22)
 project(MuTap VERSION 0.1.0 LANGUAGES C CXX)
 
 # ------------------------------------------------------------------------------
