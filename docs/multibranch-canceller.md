@@ -353,6 +353,40 @@ holds on the branch axis. (4) Tones and (5) M55 cost: Stage 4.
 - **Stage 3 — land + outdoor preset.** Gates pinned in test_outdoor
   (new rows) and test_fd_kalman (parity, contract, validation);
   outdoor preset with short geometry; HANDOFF Rev 6 updated.
+
+### Stage 3 delivered (measured)
+
+`tap::mu::aec_chain_outdoor_preset(block_size, sample_rate)` landed in
+postfilter.h: the certified chain preset re-based onto the short
+outdoor geometry (partitions cover ~8.5 ms and no more: 2 at
+48 kHz / block 256, 1 at 16 kHz), the Stage 2 winner branches with the
+calibration constants pinned at the −10 dBm0 shaped-CSS operating
+plane (rate-invariant to 0.1 %; test_outdoor gates the pinned values
+against a fresh calibration at both rates), and the novelty discount
+always on. The shadow never exceeds the short main geometry and stays
+linear.
+
+The chain-level table (erl −20, vs the certified chain's Stage 0 rows
+on the identical scenario; supp dB / residual dBm0(A), 48 kHz):
+clean 58.8/−46.5 → 61.8/−39.5; mild 29.8/−18.2 → **57.2/−43.2**;
+moderate 19.3/−10.3 → **44.4/−33.8**; severe 20.6/−11.4 → 28.6/−21.5
+(16 kHz equivalent or better — moderate 43.3/−33.8). Permanent double
+talk at moderate drive: suppression 36.0/35.3 with send delta
+**+0.4/−0.3 dB** where the certified chain read +20.1 — full duplex
+restored under distortion. Convergence by 1.2 s at parity with the
+certified chain (49.9/40.1 vs 51.1/40.1) with deeper steady state.
+The suppressor multiplies rather than merely adds: at moderate drive
+the raw winner reads 39.7 and the chain 44.4 — with the harmonic
+content in the echo estimate, the coherence machinery finally has
+evidence at the distortion frequencies (the certified chain could add
+only 2..4 dB over ITS raw core on these rows).
+
+FILED OBSERVATION: the clean-drive 48 kHz residual MAX reads −39.5 vs
+the certified chain's −46.5 while average suppression is 3 dB deeper —
+an instantaneous-onset effect (novelty-on weight motion at CSS voiced
+onsets is the suspect); no distorted row is affected (mild's residual
+is 25 dB BELOW the certified chain's). Worth its own look alongside
+the 16 kHz branch clean-cost item.
 - **Stage 4 — float32 + bench.** Parity pass, tone battery, bench
   rows; icount/M55 with that milestone, not this one.
 - **Stage 5 — externals.** `mutap.aec~` branch attributes + help/ref,

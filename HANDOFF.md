@@ -632,8 +632,18 @@ on the branch axis); the 16 kHz clean-drive cost is the comb-
 collinearity family and the novelty knobs (0.8/0.1) erase it at
 48 kHz and halve it at 16 kHz (remaining ~12 dB recorded as the
 branch cost at that rate). Doc's "Stage 2 delivered" section has the
-narrative; Stage 3 (outdoor preset + chain rows) is next, then
-float32/tone/bench as Stage 4;* (b) a device-trained
+narrative. STAGE 3 DELIVERED — `mutap::aec_chain_outdoor_preset`
+(short geometry, winner branches at the pinned -10 dBm0 calibration
+plane, novelty always on) + the chain-level battery in test_outdoor:
+mild-distortion send residual -18.2 -> -43.2 dBm0(A) (supp 29.8 ->
+57.2), moderate -10.3 -> -33.8 (19.3 -> 44.4), and permanent-DT send
+delta +20.1 -> +0.4 dB — FULL DUPLEX UNDER DISTORTION, at
+convergence parity with the certified chain. The suppressor now
+multiplies the branches (echo estimate carries the harmonics), where
+over the linear core it could only add 2..4 dB. One observation
+filed (clean-drive 48 kHz residual max -39.5 vs certified -46.5,
+onset-instantaneous, no distorted row affected). Next: Stage 4 —
+float32 parity, the tone-walk re-check branches-ON, bench rows;* (b) a device-trained
 nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
 datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
 widen; (c) a clip guard in the core (freeze adaptation on saturated

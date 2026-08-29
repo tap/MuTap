@@ -1195,4 +1195,67 @@ namespace tap::mu {
         return cfg;
     }
 
+    /// The OUTDOOR CLOSE-RANGE preset (HANDOFF.md Rev 6;
+    /// docs/multibranch-canceller.md has the design and every measured
+    /// number): a loudspeaker within an inch of the mic, in the open —
+    /// negative ERL, no reverb tail, a distorting transducer. Three
+    /// deltas from the certified chain preset it builds on:
+    ///
+    ///  1. SHORT GEOMETRY: the path has all support inside ~8 ms (direct
+    ///     near-field spike + structure cluster + a 1/r-tiny ground
+    ///     bounce), so the preset picks the partition count that covers
+    ///     ~8.5 ms and no more (2 at 48 kHz / block 256, 1 at 16 kHz) —
+    ///     idle tap budget is null space, and the partition-
+    ///     redistribution pathologies live in null space.
+    ///  2. THE MULTI-BRANCH CANCELLER, Stage 2's bake-off winner:
+    ///     {x^3, x^5}, each LS-centered against x and the pair Gram-
+    ///     Schmidt chained. Measured at erl -20, 48 kHz (raw core,
+    ///     suppression dB vs the linear core): mild-distortion drive
+    ///     25.6 -> 46.4, moderate 15.6 -> 39.7, severe 10.2 -> 24.6,
+    ///     off-model hard clip 12.4 -> 26.8; permanent double talk
+    ///     15.6 -> 38.3 (the model-based DT immunity holds on the
+    ///     branch axis). The branch constants are CALIBRATED AT THE
+    ///     -10 dBm0 SHAPED-CSS OPERATING PLANE and are rate-invariant
+    ///     to 0.1 % (a property of the material's amplitude
+    ///     distribution); a deployment at a different reference level
+    ///     recalibrates them with the documented instrument
+    ///     (tests/support/outdoor_scenario.h branch_gain and the
+    ///     center/chain formulas; tests/test_outdoor.cpp gates the
+    ///     pinned values against a fresh calibration).
+    ///  3. NOVELTY DISCOUNT ALWAYS ON (0.8 / 0.1): with branches, the
+    ///     CSS-voiced-comb collinearity family bites at EVERY hop, not
+    ///     just the 6..12 ms band — measured: the winner's clean-drive
+    ///     row goes 44.6 -> 52.8 dB at 48 kHz (the linear core's own
+    ///     row is 50.2) and 35.6 -> 41.5 at 16 kHz with the discount.
+    ///     The decaying uncertainty prior stays off (bulk delay is
+    ///     system latency here and the certified trade holds).
+    ///
+    /// The shadow filter never exceeds the (short) main geometry and
+    /// stays linear (aec_chain clears branch specs on the shadow).
+    template <typename Sample = double>
+    typename aec_chain<Sample>::config aec_chain_outdoor_preset(size_t block_size, double sample_rate) {
+        const size_t need       = static_cast<size_t>(0.0085 * sample_rate) + 1;
+        const size_t partitions = std::max<size_t>(1, (need + block_size - 1) / block_size);
+
+        auto cfg                        = aec_chain_preset<Sample>(block_size, partitions, sample_rate);
+        cfg.canceller.novelty_smoothing = Sample(0.8);
+        cfg.canceller.novelty_floor     = Sample(0.1);
+        cfg.shadow_partitions           = std::min(cfg.shadow_partitions, partitions);
+
+        using branch = typename partitioned_fdkf<Sample>::config::branch;
+        branch b3;
+        b3.kind   = branch::basis::odd_power;
+        b3.power  = Sample(3);
+        b3.center = Sample(0.19389); // E[x^4]/E[x^2], -10 dBm0 shaped CSS
+        b3.gain   = Sample(30.888);
+        branch b5;
+        b5.kind                = branch::basis::odd_power;
+        b5.power               = Sample(5);
+        b5.center              = Sample(0.059190); // E[x^6]/E[x^2]
+        b5.gain                = Sample(57.171);
+        b5.chain               = Sample(0.95740); // GS against the finished x^3 branch
+        cfg.canceller.branches = {b3, b5};
+        return cfg;
+    }
+
 } // namespace tap::mu

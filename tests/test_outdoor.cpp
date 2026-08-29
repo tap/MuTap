@@ -70,6 +70,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <random>
 #include <vector>
 
@@ -427,6 +428,166 @@ namespace {
             EXPECT_GT(pct, 45.0) << "fs " << rs.fs; // measured 52.2 / 52.9
             EXPECT_LT(pct, 60.0) << "fs " << rs.fs;
             EXPECT_GE(r.suppression_db, rs.fs == 48000.0 ? 23.0 : 21.0) << "fs " << rs.fs;
+        }
+    }
+
+    // --------------------------------------------- the outdoor chain preset
+    //
+    // tap::mu::aec_chain_outdoor_preset (Rev 6 Stage 3): short geometry,
+    // the Stage 2 winner branches, novelty always on. Measured, against
+    // the certified chain's Stage 0 rows on the same scenario
+    // (erl -20; supp dB / residual dBm0(A)):
+    //
+    //             certified 48k     outdoor 48k      certified 16k     outdoor 16k
+    //   clean     58.8 / -46.5      61.8 / -39.5     58.6 / -42.6      66.6 / -44.4
+    //   mild      29.8 / -18.2      57.2 / -43.2     28.1 / -17.4      54.1 / -42.7
+    //   moderate  19.3 / -10.3      44.4 / -33.8     17.5 /  -8.7      43.3 / -33.8
+    //   severe    20.6 / -11.4      28.6 / -21.5     12.1 /  -6.8      27.6 / -20.9
+    //
+    //   DT (moderate drive): supp 36.0/35.3, send delta +0.4/-0.3 dB —
+    //   the certified chain's +20 dB of echo-over-talker becomes full
+    //   duplex. Convergence by 1.2 s: 49.9/40.1 (certified row 51.1/40.1
+    //   — the short geometry converges at parity with deeper steady
+    //   state).
+    //
+    //   FILED OBSERVATION: the clean-drive residual MAX reads -39.5 at
+    //   48 kHz vs the certified chain's -46.5 while average suppression
+    //   is 3 dB deeper — an instantaneous-onset effect worth its own
+    //   look (novelty-on weight motion at CSS voiced onsets is the
+    //   suspect), not affecting any distorted row (mild is 25 dB BELOW
+    //   the certified chain's residual).
+
+    // The preset's pinned branch constants against a fresh calibration
+    // from the operating-plane CSS, at both rates (they are pinned
+    // rate-invariant; the calibration instrument is the doc's).
+    TEST(OutdoorChain, BranchCalibration) {
+        for (const auto& rs : required_rates()) {
+            const auto x  = far_end(rs, 8.4);
+            double     s2 = 0.0;
+            for (const double v : x) {
+                s2 += v * v;
+            }
+            auto calib = [&](auto&& phi) {
+                double sxp = 0.0;
+                for (const double v : x) {
+                    sxp += v * phi(v);
+                }
+                const double c  = sxp / s2;
+                double       sq = 0.0;
+                for (const double v : x) {
+                    const double p = phi(v) - c * v;
+                    sq += p * p;
+                }
+                return std::pair<double, double>{c, 1.0 / std::sqrt(sq / static_cast<double>(x.size()))};
+            };
+            const auto [c3, g3] = calib([](double v) { return v * v * v; });
+            const auto [c5, g5] = calib([](double v) { return v * v * v * v * v; });
+            double num          = 0.0;
+            double den          = 0.0;
+            for (const double v : x) {
+                const double e3 = g3 * (v * v * v - c3 * v);
+                const double e5 = g5 * (v * v * v * v * v - c5 * v);
+                num += e5 * e3;
+                den += e3 * e3;
+            }
+            const auto cfg = tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs);
+            ASSERT_EQ(cfg.canceller.branches.size(), 2u);
+            const auto& b3 = cfg.canceller.branches[0];
+            const auto& b5 = cfg.canceller.branches[1];
+            EXPECT_NEAR(b3.center, c3, 0.02 * c3) << "fs " << rs.fs;
+            EXPECT_NEAR(b3.gain, g3, 0.02 * g3) << "fs " << rs.fs;
+            EXPECT_NEAR(b5.center, c5, 0.02 * c5) << "fs " << rs.fs;
+            EXPECT_NEAR(b5.gain, g5, 0.02 * g5) << "fs " << rs.fs;
+            EXPECT_NEAR(b5.chain, num / den, 0.02 * (num / den)) << "fs " << rs.fs;
+        }
+    }
+
+    // The chain-level distortion table: the full outdoor chain (preset
+    // above) on the Stage 0 scenario the certified chain was baselined
+    // on (its rows: chain supp 58.8/29.8/19.3/20.6 at 48 kHz,
+    // 58.6/28.1/17.5/12.1 at 16 kHz; residual -46.5/-18.2/-10.3/-11.4
+    // and -42.6/-17.4/-8.7/-6.8 dBm0(A)).
+    TEST(OutdoorChain, NonlinearDrive) {
+        for (const auto& rs : required_rates()) {
+            size_t i = 0;
+            for (const double drive : {0.0, k_drive_mild, k_drive_moderate, k_drive_severe}) {
+                const auto    p = make_outdoor_path(rs.fs, rs.taps, -20.0);
+                const auto    x = far_end(rs, 8.4);
+                speaker_drive sp{drive};
+                const auto    xd = sp.apply(x);
+
+                tap::mu::aec_chain<double> chain(tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs));
+                auto                       sim = make_sim(p, rs.block);
+                auto                       r   = run_outdoor(sim, &chain, x, xd, nullptr, blocks_at(4.0, rs));
+                ASSERT_TRUE(r.finite) << "fs " << rs.fs << " drive " << drive;
+
+                // Measured (banner table): supp 61.8/57.2/44.4/28.6 (48k),
+                // 66.6/54.1/43.3/27.6 (16k); residual -39.5/-43.2/-33.8/
+                // -21.5 and -44.4/-42.7/-33.8/-20.9. Gates = measured
+                // with ~3 dB margin.
+                const double residual_tail =
+                    max_level_dbm0a(r.residual, rs.fs, static_cast<size_t>(6.0 * rs.fs), r.residual.size());
+                EXPECT_GE(r.suppression_db, at(rs, {58.0, 54.0, 41.0, 25.0}, {63.0, 51.0, 40.0, 24.0}, i))
+                    << "fs " << rs.fs << " drive " << drive;
+                EXPECT_LE(residual_tail, at(rs, {-36.5, -40.0, -30.5, -18.5}, {-41.0, -39.5, -30.5, -17.5}, i))
+                    << "fs " << rs.fs << " drive " << drive;
+                ++i;
+            }
+        }
+    }
+
+    // Permanent double talk through the outdoor chain at moderate drive
+    // (certified-chain Stage 0 row: supp 19.2/17.6, send delta +20 dB).
+    TEST(OutdoorChain, PermanentDoubleTalk) {
+        for (const auto& rs : required_rates()) {
+            const auto    p = make_outdoor_path(rs.fs, rs.taps, -20.0);
+            const auto    x = far_end(rs, 8.4);
+            speaker_drive sp{k_drive_moderate};
+            const auto    xd = sp.apply(x);
+
+            itu::css_config nc;
+            nc.kind    = itu::css_kind::double_talk;
+            nc.periods = static_cast<size_t>(8.4 / 0.4) + 1;
+            nc.seed    = 977;
+            auto v     = itu::make_css_at(nc, rs.fs);
+            itu::set_level_dbm0(v, -30.0);
+            v.resize(x.size(), 0.0);
+
+            tap::mu::aec_chain<double> chain(tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs));
+            auto                       sim = make_sim(p, rs.block);
+            auto                       r   = run_outdoor(sim, &chain, x, xd, &v, blocks_at(4.0, rs));
+            ASSERT_TRUE(r.finite) << "fs " << rs.fs;
+
+            // Measured: supp 36.0 (48k) / 35.3 (16k); send delta +0.42 /
+            // -0.34 dB — the certified chain's +20.1 on this row becomes
+            // full duplex.
+            const size_t t0       = static_cast<size_t>(6.0 * rs.fs);
+            const double out_lvl  = max_level_dbm0a(r.out, rs.fs, t0, r.out.size());
+            const double near_lvl = max_level_dbm0a(v, rs.fs, t0, r.out.size());
+            EXPECT_GE(r.suppression_db, rs.fs == 48000.0 ? 33.0 : 32.0) << "fs " << rs.fs;
+            EXPECT_LE(out_lvl - near_lvl, 3.0) << "fs " << rs.fs;
+        }
+    }
+
+    // Convergence on the linear path with the short geometry (certified
+    // chain by 1.2 s: 51.1 at 48 kHz, 40.1 at 16 kHz on this row).
+    TEST(OutdoorChain, Convergence) {
+        for (const auto& rs : required_rates()) {
+            const auto p = make_outdoor_path(rs.fs, rs.taps, -20.0);
+            const auto x = far_end(rs, 8.4);
+
+            tap::mu::aec_chain<double> chain(tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs));
+            auto                       sim = make_sim(p, rs.block);
+            auto                       r   = run_outdoor(sim, &chain, x, x, nullptr, blocks_at(4.0, rs));
+            ASSERT_TRUE(r.finite) << "fs " << rs.fs;
+
+            // Measured: by 1.2 s 49.9 (48k) / 40.1 (16k) — parity with
+            // the certified chain's 51.1/40.1 on this row — with deeper
+            // steady state (61.8/66.6 vs 58.8/58.6).
+            std::vector<double>   mic(r.echo);
+            const itu::erl_reader rd(mic, r.out, rs.fs);
+            EXPECT_GE(rd.by(1.2), rs.fs == 48000.0 ? 46.0 : 37.0) << "fs " << rs.fs;
+            EXPECT_GE(r.suppression_db, rs.fs == 48000.0 ? 58.0 : 63.0) << "fs " << rs.fs;
         }
     }
 
