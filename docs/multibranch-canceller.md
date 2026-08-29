@@ -489,6 +489,129 @@ review; and the two Stage 3/2 filed observations (16 kHz branch clean
 cost at the certified geometry, clean-drive onset residual) remain
 open items, unchanged by the audit.
 
+## Stage 6 — level-adaptive centering (PLAN, awaiting Tim's review;
+## nothing below is implemented)
+
+The Stage 5 audit's one open vulnerability: the branch constants are
+pinned at the −10 dBm0 shaped-CSS plane, and off-plane the pinned
+constants cost ~7 dB at −4 dBm0 and ~16 dB at −16 dBm0 against
+level-matched recalibration — while material SHAPE costs nothing
+(white noise: 39.03 vs 39.02). This stage makes the constants track
+level, so the preset works on rigs whose playback level varies.
+
+### 6.1 The mechanism, and why the fix is one scalar
+
+The centering exists to decorrelate each branch input from x; the LS
+center is a moment ratio, and moments scale with level. Under pure
+amplitude scaling x → s·x of fixed-shape material the laws are CLOSED
+FORM and material-independent (verified numerically to 6 digits on
+heavy-tailed material):
+
+    c_p(s) = c_p(1) · s^(p−1)      (c3 ∝ s², c5 ∝ s⁴)
+    g_p(s) = g_p(1) · s^(−p)       (g3 ∝ s⁻³, g5 ∝ s⁻⁵)
+    chain  : INVARIANT in s
+
+The audit already established shape-invariance is what holds and
+level is what breaks — exactly the regime where these laws are exact.
+So no adaptive moment estimation (the Küch-style tracker, option B
+below) is needed: ONE slowly tracked scale statistic ŝ = rms(x)/rms₀
+(rms₀ = the calibration plane's RMS, a new config field since the
+library is unit-agnostic) corrects everything.
+
+### 6.2 Proposed form (A2): normalize-in, scale-out
+
+Rather than rescaling three constants per branch, evaluate the basis
+on the normalized input and restore the scale on the way out — the
+algebra collapses to two extra multiplies per branch:
+
+    phi_adapted(x) = ŝ · g⁰ · ((x/ŝ)^p − c⁰ · (x/ŝ))
+                   = g⁰ · (x^p · ŝ^(1−p)  −  c⁰ · x)
+
+Properties: at ŝ = 1 it is bit-identical to today's evaluation (cold
+start initializes ŝ to the plane, so behavior is EXACTLY pinned until
+evidence accrues); the branch signal's amplitude tracks x linearly,
+so the branch path weight cleanly absorbs the physical level-
+dependent distortion fraction (which adaptation must track anyway —
+that is the physics, not a defect); decorrelation against x holds at
+every level by the laws above; and the GS chain subtraction needs no
+change (both branch signals scale as s, chain invariant).
+
+The ŝ tracker: one-pole on the REFERENCE block power (never the mic —
+x is exogenous, so the tracker is double-talk-immune by
+construction), smoothing ~1 s of real time, updated only on active
+blocks (block power above a small fraction of the tracked level —
+CSS pauses must not drag ŝ toward zero, since ŝ^(1−p) grows as ŝ
+shrinks), hard-clamped to ±18 dB around the plane, updated inside
+branch_gather (already out of the hot path and MUTAP_NOINLINE — the
+icount lesson is baked into the placement, and empty-spec parity is
+structural since the tracker only runs with branches present).
+
+Scope limit, stated now: this applies to the odd_power bases (the
+shipped winner). The knee bases (clip_difference / tanh_difference)
+have an ABSOLUTE knee — the speaker clips at a fixed signal level
+regardless of program level — so normalizing their input would
+wrongly move the knee; their centers could be tracked separately, but
+that is deferred until a knee-based preset exists to need it.
+
+### 6.3 Config surface (all default-off, empty/off bit-identical)
+
+    Sample level_adapt = 0;   // one-pole smoothing of the reference
+                              // power tracker, 0 = off (today)
+    Sample level_ref   = 1;   // rms the branch constants were
+                              // calibrated at (the preset sets
+                              // 0.2203 = -10 dBm0)
+
+Clamp (±18 dB) and activity gate (~−20 dB relative) as documented
+constants first; promoted to knobs only if the scratch says they need
+tuning.
+
+### 6.4 Scratch battery (measure first; every number below is a
+### hypothesis until then)
+
+1. DECOMPOSITION: at −16/−4 dBm0, recalibrate ONLY the centers vs
+   ONLY the gains vs both — which half of the 16/7 dB is collinearity
+   (center) and which is prior/normalization (gain). Understanding
+   for the record; A2 fixes both jointly regardless.
+2. STATIC LEVELS: moderate-drive row at {−16, −10, −4} dBm0 —
+   tracker-on vs pinned vs the recalibrated oracle. Acceptance
+   hypothesis: recover ≥ 80 % of the oracle gap off-plane (43.4 →
+   ≥ 55 at −16; 21.8 → ≥ 27 at −4) at ≤ 1 dB cost on-plane.
+3. SMOOTHING SWEEP: ŝ time constant {0.25, 1, 4} s — the
+   nonstationarity-churn cost at steady level vs step-response speed.
+4. LEVEL STEPS (the actual use case): −10 → −4 and −10 → −16 mid-run;
+   settle to within 2 dB of the static tracker-on figure within a few
+   seconds; watch the rescue/shadow machinery for false fires (a
+   level step is not a path change; the shadow's DT-immune statistic
+   should not care, but that is a claim to measure, not assume).
+5. SILENCE / COLD START: long CSS pauses, start-from-silence — ŝ must
+   hold the plane, never walk; the activity gate's job.
+6. SAFETY ROWS: permanent DT at moderate drive with the tracker on
+   (must hold ~38 dB — x-side tracker, expect no effect); float32
+   parity; the AM-FM DtImdFloor gate unmoved.
+7. PARITY: empty-spec and level_adapt=0 byte-identical on the dump;
+   local M55 icount (toolchain now in-container) before push, per the
+   Stage 5 addendum's lesson.
+
+### 6.5 Rejected-unless-scratch-disagrees alternatives
+
+- B: adaptive per-moment tracking (running E[x²], E[x⁴], E[x⁶],
+  Gram-Schmidt online, Küch & Kellermann style). Strictly more
+  general — it would also track material-shape drift — but the audit
+  measured shape-invariance, it adds four tracked statistics with
+  their own silence/DT pathologies, and it cannot beat closed-form
+  laws in the regime that actually failed. Revisit only if scratch
+  row 2 shows the laws missing the oracle badly (which would mean
+  level steps change the material's SHAPE, e.g. a limiter upstream).
+- C: multi-level calibration tables with interpolation. Clunky,
+  material-plane-multiplying, and dominated by A2's exact laws.
+
+### 6.6 Landing plan
+
+S1 scratch (rows 1–6) → decisions recorded here; S2 land the knob
+default-off with gates (parity trio + the static-level and step rows
+pinned measured-first) + HANDOFF; S3 the exposure decision — see
+§9 addendum below.
+
 ## 9. Open decisions (for Tim)
 
 - **Default basis family** — B2 vs B3 is a philosophy call if the
@@ -503,3 +626,14 @@ open items, unchanged by the audit.
 - **mutap.aec~ exposure timing** — Stage 5 here, or defer externals
   until the outdoor preset (Rev 6 (d)) also exists so Max gets one
   coherent "outdoor" story instead of two attribute drops.
+  *(RESOLVED: shipped together — @outdoor landed with the preset.)*
+- **Stage 6 exposure (NEW, with the level-adaptive-centering plan
+  above)** — once the tracker measures well: (i) does
+  aec_chain_outdoor_preset enable it BY DEFAULT? Default-on changes
+  every pinned outdoor gate (full re-measure — the on-plane cost had
+  better measure ~0) but makes the preset honest for level-varying
+  rigs, which is most outdoor rigs; opt-in keeps the certified-style
+  stability and puts a knob in the deployment's hands. (ii) Does
+  mutap.aec~ then need anything, or does @outdoor inherit the preset's
+  choice silently? Recommendation deferred until scratch row 2/3
+  numbers exist; the on-plane cost decides (i) almost by itself.
