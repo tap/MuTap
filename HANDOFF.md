@@ -653,7 +653,15 @@ geometry pays for the branches, table in bench/README.md). Remaining
 in the effort: the M55/Hexagon icount rows (deferred to that
 milestone as planned), mutap.aec~ exposure (Stage 5, timing is
 Tim's §9 call), and the two filed observations (16 kHz branch clean
-cost; clean-drive onset residual). ADVERSARIAL AUDIT DONE (Tim's
+cost; clean-drive onset residual). STAGE 5 EXTERNALS DELIVERED
+(MuTap-Max, same branch): mutap.aec~ grew @outdoor — with
+@postfilter 1 it swaps the compliance preset for
+aec_chain_outdoor_preset (filter-length creation arg deliberately
+ignored: the preset owns the short geometry); @gate/@comfort compose
+unchanged, ignored with a console notice otherwise; maxref, help
+patcher row, README and the attribute-default test updated; MuTap
+submodule re-pinned to this branch's head (re-pin to main tip after
+the MuTap PR rebase-merges, working note 6). ADVERSARIAL AUDIT DONE (Tim's
 directive, before externals) — full record in the doc's "Stage 5
 (out of order)" section. Code review: 4 findings, all fixed (a
 -Werror CI break; the preset's FALSE "novelty always on" claim at
