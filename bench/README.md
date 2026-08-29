@@ -71,6 +71,25 @@ Two findings the table pins down for the optimization work ahead:
    Hexagon HVX, which is exactly why the parity gates
    (`tests/test_float32.cpp`) were landed before this harness.
 
+## The outdoor chain (bench_outdoor_chain)
+
+`aec_chain_outdoor_preset` — short main geometry (2 partitions at
+48 kHz / 1 at 16 kHz vs the certified 8/4) carrying the two Stage 2
+nonlinear-basis branches (docs/multibranch-canceller.md). Measured
+COST-NEUTRAL against bench_chain, same machine, same run (medians of
+3, load 0.6; ratios are what transfer, per the load-average rule):
+
+| | 48 kHz f64 | 48 kHz f32 | 16 kHz f64 | 16 kHz f32 |
+|---|---|---|---|---|
+| chain          | 207.5 µs | 191.5 µs | 184.8 µs | 168.2 µs |
+| outdoor chain  | 207.3 µs | 191.5 µs | 178.9 µs | 169.0 µs |
+
+The short geometry pays for the branches almost exactly (main
+partitions 8 → 2 buys back what 2 branches × 2 partitions + 2 extra
+forward FFTs + the per-sample basis evaluation spend), and the
+suppressor — the dominant term — is identical. The multi-branch
+capability at the outdoor operating point is free at the chain level.
+
 ## Per-stage suppressor profile (48 kHz f64, hand-inlined instrumentation)
 
 | stage | µs | share |

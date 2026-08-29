@@ -642,8 +642,18 @@ convergence parity with the certified chain. The suppressor now
 multiplies the branches (echo estimate carries the harmonics), where
 over the linear core it could only add 2..4 dB. One observation
 filed (clean-drive 48 kHz residual max -39.5 vs certified -46.5,
-onset-instantaneous, no distorted row affected). Next: Stage 4 —
-float32 parity, the tone-walk re-check branches-ON, bench rows;* (b) a device-trained
+onset-instantaneous, no distorted row affected). STAGE 4 DELIVERED —
+float32 parity within 0.04 dB of the double golden model on every
+outdoor row (gated); the 30 s on-bin tone with branches ON at
+deployment precision shows no walk (-115.3 dBm0(A) residual at
+48 kHz, -42.8 at 16 kHz on a +10 dBm0 echo; gated); and
+bench_outdoor_chain measures the outdoor chain COST-NEUTRAL vs the
+certified chain (207.3 vs 207.5 us at 48 kHz f64 — the short
+geometry pays for the branches, table in bench/README.md). Remaining
+in the effort: the M55/Hexagon icount rows (deferred to that
+milestone as planned), mutap.aec~ exposure (Stage 5, timing is
+Tim's §9 call), and the two filed observations (16 kHz branch clean
+cost; clean-drive onset residual);* (b) a device-trained
 nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
 datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
 widen; (c) a clip guard in the core (freeze adaptation on saturated

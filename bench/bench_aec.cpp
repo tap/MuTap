@@ -149,6 +149,26 @@ namespace {
         state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * g.block));
     }
 
+    /// The outdoor close-range chain (aec_chain_outdoor_preset): SHORT
+    /// main geometry (2 partitions at 48 kHz / 1 at 16 kHz vs the
+    /// certified 8/4) carrying two extra nonlinear-basis branches at the
+    /// same short span — the trade the preset makes is measured here
+    /// against bench_chain at the certified geometry.
+    template <typename S>
+    void bench_outdoor_chain(benchmark::State& state, geometry g) {
+        tap::mu::aec_chain<S> chain(tap::mu::aec_chain_outdoor_preset<S>(g.block, g.fs));
+        corpus<S>             c(g);
+        std::vector<S>        e(g.block);
+        warm(chain, c, e);
+        size_t i = 2000;
+        for (auto _ : state) {
+            chain.process_block(c.xb(i), c.yb(i), e.data());
+            benchmark::DoNotOptimize(e.data());
+            ++i;
+        }
+        state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations() * g.block));
+    }
+
 } // namespace
 
 BENCHMARK_CAPTURE(bench_fdkf<double>, 48k_f64, k_48k);
@@ -170,3 +190,8 @@ BENCHMARK_CAPTURE(bench_chain<double>, 48k_f64, k_48k);
 BENCHMARK_CAPTURE(bench_chain<float>, 48k_f32, k_48k);
 BENCHMARK_CAPTURE(bench_chain<double>, 16k_f64, k_16k);
 BENCHMARK_CAPTURE(bench_chain<float>, 16k_f32, k_16k);
+
+BENCHMARK_CAPTURE(bench_outdoor_chain<double>, 48k_f64, k_48k);
+BENCHMARK_CAPTURE(bench_outdoor_chain<float>, 48k_f32, k_48k);
+BENCHMARK_CAPTURE(bench_outdoor_chain<double>, 16k_f64, k_16k);
+BENCHMARK_CAPTURE(bench_outdoor_chain<float>, 16k_f32, k_16k);

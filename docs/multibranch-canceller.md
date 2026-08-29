@@ -389,6 +389,24 @@ is 25 dB BELOW the certified chain's). Worth its own look alongside
 the 16 kHz branch clean-cost item.
 - **Stage 4 — float32 + bench.** Parity pass, tone battery, bench
   rows; icount/M55 with that milestone, not this one.
+
+### Stage 4 delivered (measured)
+
+Float32 (the deployment precision) holds the outdoor chain to within
+**0.04 dB** of the double golden model on every drive row at both
+rates — better than the classical chain's own 0.1..0.7 dB parity; the
+short path and structure-limited suppression leave rounding nothing to
+bind on. The §5.1 tone-walk re-check: a 30 s on-bin tone through the
+float32 outdoor chain (branches ON, narrowband guard per the float
+preset) reads −115.3 dBm0(A) residual at 48 kHz and −42.8 at 16 kHz on
+a +10 dBm0 echo, no walk, no divergence — the branch-augmented null
+space stays contained by the guard + constraint discipline. Bench
+(`bench_outdoor_chain`, same-machine ratios per the README rule): the
+outdoor chain is **cost-neutral** against the certified chain (207.3
+vs 207.5 µs at 48 kHz f64) — the short geometry pays for the branches
+almost exactly, and the suppressor term is unchanged. The remaining
+Stage 4 item deferred to the M55 milestone as planned: the icount
+ratchet rows.
 - **Stage 5 — externals.** `mutap.aec~` branch attributes + help/ref,
   the submodule dance, after the core proves out.
 

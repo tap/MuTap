@@ -66,12 +66,15 @@
 //     the model-based DT immunity holds on the branch axis, and the
 //     winner's DT row nearly matches its single-talk row.
 //
-// Double golden model only, like the Stage 0 baseline; float32 parity
-// (and the §5.1 tone-walk re-check) is Stage 4.
+// The Stage 2/3 batteries run the double golden model; Stage 4's rows
+// at the bottom of this file cover deployment precision — float32
+// parity within 0.04 dB and the §5.1 tone-walk re-check, both gated.
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
+#include <numbers>
 #include <random>
 #include <utility>
 #include <vector>
@@ -375,6 +378,77 @@ namespace {
             auto rb = run_outdoor(sim_b, &c_mb, x, xd, &v, static_cast<size_t>(4.0 * rs.fs) / rs.block);
             ASSERT_TRUE(rb.finite);
             EXPECT_GE(rb.suppression_db, rs.fs == 48000.0 ? 35.0 : 32.0) << "fs " << rs.fs;
+        }
+    }
+
+    // ------------------------------------------------------- Stage 4
+    //
+    // Float32 is the deployment precision (M55/Hexagon have no double);
+    // the branched chain must hold at it, and the §5.1 concern — the
+    // constraint-churn weight walk with MORE null space — must be
+    // re-checked on a sustained tone with branches ON (a tone through
+    // x^3/x^5 is spectrally concentrated in every branch; the
+    // narrowband guard reads branch 0 and its freeze covers all).
+
+    // The outdoor chain at float32 vs the double golden model, same
+    // scenario, boundary-quantized exactly like the compliance battery
+    // (itu_chain.h compliance_dut).
+    TEST(Multibranch, Float32ChainParity) {
+        for (const auto& rs : itu::required_rates()) {
+            const auto path = make_outdoor_path(rs.fs, rs.taps, -20.0);
+            const auto x    = far_end(rs, 8.4);
+            for (const double drive : {0.0, k_drive_mild, k_drive_moderate}) {
+                speaker_drive sp{drive};
+                const auto    xd = sp.apply(x);
+
+                itu::compliance_dut<double> cd(tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs), rs.block);
+                itu::compliance_dut<float>  cf(tap::mu::aec_chain_outdoor_preset<float>(rs.block, rs.fs), rs.block);
+                auto                        sim_d = make_sim(path, rs.block);
+                auto                        sim_f = make_sim(path, rs.block);
+                auto rd = run_outdoor(sim_d, &cd, x, xd, nullptr, static_cast<size_t>(4.0 * rs.fs) / rs.block);
+                auto rf = run_outdoor(sim_f, &cf, x, xd, nullptr, static_cast<size_t>(4.0 * rs.fs) / rs.block);
+                ASSERT_TRUE(rd.finite && rf.finite) << "fs " << rs.fs << " drive " << drive;
+                // Measured parity within 0.04 dB on every row (clean/mild/
+                // moderate: 61.76/57.21/44.36 vs 61.76/57.18/44.36 at
+                // 48 kHz; 66.63/54.07/43.29 vs 66.61/54.11/43.29 at
+                // 16 kHz) — the short path and structure-limited
+                // suppression leave float32 nothing to lose.
+                EXPECT_NEAR(rf.suppression_db, rd.suppression_db, 0.5) << "fs " << rs.fs << " drive " << drive;
+            }
+        }
+    }
+
+    // 30 s on-bin 1 kHz tone at the operating level through the float32
+    // outdoor chain (linear drive: the G.168 SS7 discipline; the
+    // narrowband guard is float32-preset-enabled and must contain the
+    // branch-augmented weight walk).
+    TEST(Multibranch, Float32ToneGuard) {
+        for (const auto& rs : itu::required_rates()) {
+            const auto path = make_outdoor_path(rs.fs, rs.taps, -20.0);
+
+            const size_t n    = static_cast<size_t>(30.0 * rs.fs);
+            const size_t nfft = 8192;
+            const double f    = std::round(1000.0 * static_cast<double>(nfft) / rs.fs) * rs.fs
+                             / static_cast<double>(nfft); // on-bin at the analysis size
+            std::vector<double> x(n);
+            for (size_t i = 0; i < n; ++i) {
+                x[i] = std::sin(2.0 * std::numbers::pi * f * static_cast<double>(i) / rs.fs);
+            }
+            itu::set_level_dbm0(x, k_level);
+
+            itu::compliance_dut<float> cf(tap::mu::aec_chain_outdoor_preset<float>(rs.block, rs.fs), rs.block);
+            auto                       sim = make_sim(path, rs.block);
+            auto rf = run_outdoor(sim, &cf, x, x, nullptr, static_cast<size_t>(10.0 * rs.fs) / rs.block);
+            ASSERT_TRUE(rf.finite) << "fs " << rs.fs;
+            // Measured: suppression 128.6 dB / residual -115.3 dBm0(A)
+            // at 48 kHz, 57.4 / -42.8 at 16 kHz (the echo rides at
+            // +10 dBm0 here — 52.8 dB down). No walk, no divergence:
+            // the branch-augmented null space stays contained by the
+            // guard + constraint discipline at deployment precision.
+            const double tail =
+                itu::max_level_dbm0a(rf.residual, rs.fs, static_cast<size_t>(20.0 * rs.fs), rf.residual.size());
+            EXPECT_GE(rf.suppression_db, rs.fs == 48000.0 ? 100.0 : 53.0) << "fs " << rs.fs;
+            EXPECT_LE(tail, rs.fs == 48000.0 ? -110.0 : -39.0) << "fs " << rs.fs;
         }
     }
 
