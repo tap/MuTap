@@ -158,6 +158,98 @@ namespace tap::mu {
             /// the guard must outwait a CSS voiced segment, 48.6 ms).
             size_t narrowband_hold_blocks = 187;
             bool   constrained            = true; ///< gradient constraint, as in partitioned_fdaf
+
+            /// One extra reference branch of the multi-branch (power-
+            /// filter / Hammerstein-MISO) canceller: a memoryless basis
+            /// function of the input, run through its own partitioned
+            /// filter under the SHARED innovation denominator, so gain
+            /// is allocated across branches in proportion to each
+            /// branch's uncertainty-weighted excitation. Motivation,
+            /// model choice and watch-list: docs/multibranch-canceller.md
+            /// (Rev 6 follow-up (a): a distorting loudspeaker's echo is
+            /// deterministic in the reference, so the model — not the
+            /// suppressor — is where it comes out).
+            struct branch {
+                enum class basis {
+                    odd_power,       ///< phi = x^power - center * x
+                    clip_difference, ///< phi = x - clamp(x, -knee, knee)
+                    tanh_difference, ///< phi = tanh(knee x)/knee - x
+                };
+                basis kind = basis::odd_power;
+                /// odd_power exponent; an odd integer >= 3.
+                Sample power = Sample(3);
+                /// clip_difference: the clip level. tanh_difference: the
+                /// saturator gain. Ignored by odd_power.
+                Sample knee = Sample(0.5);
+                /// Subtract center * x from the raw basis output — the
+                /// moment-orthogonalized basis (Kuech & Kellermann 2006),
+                /// center = E[x phi(x)]/E[x^2] at the operating level,
+                /// decorrelating the branch from the linear one. 0 = raw.
+                /// Applies to EVERY kind: the Stage 2 bake-off measured
+                /// the un-orthogonalized x^3 branch costing 15 dB of
+                /// clean-drive misadjustment (50.2 -> 34.9) where the
+                /// orthogonalized one costs 2.5 and adds +19 dB at mild
+                /// drive — collinearity with the linear branch, not the
+                /// basis shape, was the binding constraint.
+                Sample center = Sample(0);
+                /// Fixed normalization applied to phi(x): branch signals
+                /// differ by orders of magnitude in power, and P(0)
+                /// semantics, the regularization floor and float32
+                /// headroom all assume O(1) inputs. A calibration
+                /// constant (tests/support/outdoor_scenario.h
+                /// branch_gain), never adaptive.
+                Sample gain = Sample(1);
+                /// Partition count for this branch (0 = same as the main
+                /// filter). Distortion rides the same short acoustic
+                /// path as the linear echo, so branches can cover just
+                /// the early support where the energy is.
+                size_t partitions = 0;
+                /// P(0) multiplier in (0, 1]: the branch axis's
+                /// initial-uncertainty prior, encoding "echo is mostly
+                /// linear". Without it, collinear branch excitation
+                /// makes the diagonal update split the minimum-norm
+                /// solution across branches by prior — the block-128-
+                /// notch failure on a new axis (fd_kalman.h novelty /
+                /// initial_uncertainty_decay comments have the family
+                /// history).
+                Sample prior = Sample(0.1);
+                /// Gram-Schmidt chain coefficient: additionally subtract
+                /// chain * (the PREVIOUS branch's basis signal) — the
+                /// sequential orthogonalization that `center` performs
+                /// against the linear branch, extended to branch pairs.
+                /// Measured need (Stage 2 bake-off round 2): two branches
+                /// each orthogonalized against x but not each other pay
+                /// ~8 dB of clean-drive misadjustment that single
+                /// branches do not. Ignored on the first branch. A
+                /// calibration constant like center/gain.
+                Sample chain = Sample(0);
+
+                Sample eval(Sample x) const noexcept {
+                    Sample y = Sample(0);
+                    switch (kind) {
+                    case basis::odd_power: {
+                        y = x;
+                        for (int i = 1; i < static_cast<int>(power); ++i) {
+                            y *= x;
+                        }
+                        break;
+                    }
+                    case basis::clip_difference: {
+                        const Sample c = x < -knee ? -knee : (x > knee ? knee : x);
+                        y              = x - c;
+                        break;
+                    }
+                    case basis::tanh_difference:
+                        y = std::tanh(knee * x) / knee - x;
+                        break;
+                    }
+                    return gain * (y - center * x);
+                }
+            };
+            /// Extra nonlinear-basis branches. EMPTY (the default) is the
+            /// classic single-branch linear core, bit-identical to the
+            /// certified battery — the branch loops do not execute.
+            std::vector<branch> branches;
         };
 
         explicit partitioned_fdkf(const config& cfg)
@@ -176,6 +268,18 @@ namespace tap::mu {
             , m_coh_num(2 * (cfg.block_size + 1))
             , m_coh_den(cfg.block_size + 1)
             , m_nov(cfg.block_size + 1) {
+            m_bwin.resize(m_cfg.branches.size());
+            m_bu.resize(m_cfg.branches.size());
+            m_bh.resize(m_cfg.branches.size());
+            m_bp.resize(m_cfg.branches.size());
+            m_bhead.assign(m_cfg.branches.size(), 0);
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const size_t pj = branch_partitions(j);
+                m_bwin[j].resize(m_n);
+                m_bu[j].resize(pj * m_n);
+                m_bh[j].resize(pj * m_n);
+                m_bp[j].resize(pj * (cfg.block_size + 1));
+            }
             reset();
         }
 
@@ -183,6 +287,13 @@ namespace tap::mu {
         size_t partitions() const noexcept { return m_cfg.partitions; }
         size_t filter_length() const noexcept { return m_cfg.block_size * m_cfg.partitions; }
         size_t fft_size() const noexcept { return m_n; }
+        size_t branch_count() const noexcept { return m_cfg.branches.size(); }
+        /// Branch j's resolved partition count (its config value, or the
+        /// main filter's when the config says 0).
+        size_t branch_partitions(size_t j) const noexcept {
+            const size_t p = m_cfg.branches[j].partitions;
+            return p == 0 ? m_cfg.partitions : p;
+        }
 
         /// Read access to partition p's filter spectrum (packed layout) —
         /// the surface that lets pem_afc cancel on the raw signal stream.
@@ -239,6 +350,16 @@ namespace tap::mu {
                 }
                 p0 *= m_cfg.initial_uncertainty_decay;
             }
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                Sample bp0 = m_cfg.initial_uncertainty * m_cfg.branches[j].prior;
+                for (size_t p = 0; p < branch_partitions(j); ++p) {
+                    for (size_t k = 0; k < stride; ++k) {
+                        Sample& x = m_bp[j][p * stride + k];
+                        x         = x < bp0 ? bp0 : x;
+                    }
+                    bp0 *= m_cfg.initial_uncertainty_decay;
+                }
+            }
         }
 
         /// Zero the filter and histories, restore the initial uncertainty
@@ -260,6 +381,19 @@ namespace tap::mu {
             }
             for (auto& x : m_nov) {
                 x = Sample(1);
+            }
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                fill_zero(m_bwin[j]);
+                fill_zero(m_bu[j]);
+                fill_zero(m_bh[j]);
+                Sample bp0 = m_cfg.initial_uncertainty * m_cfg.branches[j].prior;
+                for (size_t p = 0; p < branch_partitions(j); ++p) {
+                    for (size_t k = 0; k < stride; ++k) {
+                        m_bp[j][p * stride + k] = bp0;
+                    }
+                    bp0 *= m_cfg.initial_uncertainty_decay;
+                }
+                m_bhead[j] = branch_partitions(j) - 1;
             }
             m_head     = m_cfg.partitions - 1;
             m_nb_count = 0;
@@ -286,6 +420,31 @@ namespace tap::mu {
                 u_new[i] = m_input[i];
             }
             m_fft.forward_inplace(u_new);
+
+            // Extra branches: slide each branch's phi(x) window (the
+            // memoryless basis commutes with overlap-save, so phi runs
+            // once per new sample) and take the newest block spectrum.
+            // Branch j's window is filled before branch j+1 reads it for
+            // the Gram-Schmidt chain term.
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const auto& br = m_cfg.branches[j];
+                Sample*     w  = m_bwin[j].data();
+                std::memmove(w, w + b, b * sizeof(Sample));
+                for (size_t i = 0; i < b; ++i) {
+                    w[b + i] = br.eval(input[i]);
+                }
+                if (j > 0 && br.chain != Sample(0)) {
+                    const Sample* wp = m_bwin[j - 1].data();
+                    for (size_t i = 0; i < b; ++i) {
+                        w[b + i] -= br.chain * wp[b + i];
+                    }
+                }
+                const size_t pj = branch_partitions(j);
+                m_bhead[j]      = (m_bhead[j] + 1) % pj;
+                Sample* bu      = &m_bu[j][m_bhead[j] * m_n];
+                std::memcpy(bu, w, m_n * sizeof(Sample));
+                m_fft.forward_inplace(bu);
+            }
 
             // Excitation-novelty discount: per-bin coherence between this
             // block's spectrum and the previous one (partition-1 ring
@@ -323,6 +482,13 @@ namespace tap::mu {
             for (size_t p = 0; p < p_n; ++p) {
                 const Sample* u = &m_u[((m_head + p_n - p) % p_n) * m_n];
                 detail::packed_mac(u, &m_h[p * m_n], m_accum.data(), m_n);
+            }
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const size_t pj = branch_partitions(j);
+                for (size_t p = 0; p < pj; ++p) {
+                    const Sample* u = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
+                    detail::packed_mac(u, &m_bh[j][p * m_n], m_accum.data(), m_n);
+                }
             }
             m_fft.inverse(m_accum.data(), m_time.data());
             for (size_t i = 0; i < b; ++i) {
@@ -412,6 +578,32 @@ namespace tap::mu {
                     m_denom[k] += (ur * ur + ui * ui) * pp[k];
                 }
             }
+            // Extra branches join the SAME innovation denominator: gain
+            // is allocated across branches in proportion to uncertainty-
+            // weighted excitation, which is the whole point of doing the
+            // MISO extension inside the Kalman rather than running
+            // parallel filters on a shared error.
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const size_t pj = branch_partitions(j);
+                for (size_t p = 0; p < pj; ++p) {
+                    const Sample* u  = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
+                    const Sample* h  = &m_bh[j][p * m_n];
+                    Sample*       pp = &m_bp[j][p * (half + 1)];
+
+                    pp[0]    = a2 * pp[0] + q_gain * h[0] * h[0];
+                    pp[half] = a2 * pp[half] + q_gain * h[1] * h[1];
+                    m_denom[0] += u[0] * u[0] * pp[0];
+                    m_denom[half] += u[1] * u[1] * pp[half];
+                    for (size_t k = 1; k < half; ++k) {
+                        const Sample hr = h[2 * k];
+                        const Sample hi = h[2 * k + 1];
+                        pp[k]           = a2 * pp[k] + q_gain * (hr * hr + hi * hi);
+                        const Sample ur = u[2 * k];
+                        const Sample ui = u[2 * k + 1];
+                        m_denom[k] += (ur * ur + ui * ui) * pp[k];
+                    }
+                }
+            }
 
             // Correct: per bin and partition, gain g = P_p / denom;
             // W_p += g conj(U_p) E, P_p *= 1 - (1/2) g |U_p|^2.
@@ -446,6 +638,45 @@ namespace tap::mu {
                         m_time[i + b] = Sample(0);
                     }
                     m_fft.forward(m_time.data(), h);
+                }
+            }
+            // Extra branches: the identical correct step per (branch,
+            // partition), gradient constraint included; the shared
+            // denominator above already carries every branch's term.
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const size_t pj = branch_partitions(j);
+                for (size_t p = 0; p < pj; ++p) {
+                    const Sample* u  = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
+                    Sample*       h  = &m_bh[j][p * m_n];
+                    Sample*       pp = &m_bp[j][p * (half + 1)];
+
+                    {
+                        const Sample g = pp[0] / m_denom[0];
+                        h[0] += g * u[0] * m_espec[0];
+                        pp[0] *= Sample(1) - Sample(0.5) * g * u[0] * u[0] * m_nov[0];
+                    }
+                    {
+                        const Sample g = pp[half] / m_denom[half];
+                        h[1] += g * u[1] * m_espec[1];
+                        pp[half] *= Sample(1) - Sample(0.5) * g * u[1] * u[1] * m_nov[half];
+                    }
+                    for (size_t k = 1; k < half; ++k) {
+                        const Sample g  = pp[k] / m_denom[k];
+                        const Sample ur = u[2 * k];
+                        const Sample ui = u[2 * k + 1];
+                        const Sample er = m_espec[2 * k];
+                        const Sample ei = m_espec[2 * k + 1];
+                        h[2 * k] += g * (ur * er + ui * ei);
+                        h[2 * k + 1] += g * (ur * ei - ui * er);
+                        pp[k] *= Sample(1) - Sample(0.5) * g * (ur * ur + ui * ui) * m_nov[k];
+                    }
+                    if (m_cfg.constrained) {
+                        m_fft.inverse(h, m_time.data());
+                        for (size_t i = 0; i < b; ++i) {
+                            m_time[i + b] = Sample(0);
+                        }
+                        m_fft.forward(m_time.data(), h);
+                    }
                 }
             }
 
@@ -520,6 +751,23 @@ namespace tap::mu {
                 throw std::invalid_argument(
                     "partitioned_fdkf: narrowband_hold_blocks must be >= 1 when the guard is on");
             }
+            for (const auto& br : cfg.branches) {
+                if (br.kind == config::branch::basis::odd_power) {
+                    const int p = static_cast<int>(br.power);
+                    if (Sample(p) != br.power || p < 3 || p % 2 == 0) {
+                        throw std::invalid_argument("partitioned_fdkf: branch power must be an odd integer >= 3");
+                    }
+                }
+                else if (!(br.knee > Sample(0))) {
+                    throw std::invalid_argument("partitioned_fdkf: branch knee must be > 0");
+                }
+                if (!(br.gain > Sample(0))) {
+                    throw std::invalid_argument("partitioned_fdkf: branch gain must be > 0");
+                }
+                if (!(br.prior > Sample(0)) || !(br.prior <= Sample(1))) {
+                    throw std::invalid_argument("partitioned_fdkf: branch prior must be in (0, 1]");
+                }
+            }
             return cfg;
         }
 
@@ -544,9 +792,18 @@ namespace tap::mu {
         std::vector<Sample>    m_coh_num; ///< novelty: packed complex <U_t conj(U_t-1)> accumulator
         std::vector<Sample>    m_coh_den; ///< novelty: |U_t||U_t-1| accumulator
         std::vector<Sample>    m_nov;     ///< novelty: per-bin P-decrement scale, this block
-        size_t                 m_head     = 0;
-        size_t                 m_nb_count = 0;
-        bool                   m_adapt    = true;
+
+        // Multi-branch state, one entry per extra branch (empty in the
+        // classic linear-only configuration — none of it is touched).
+        std::vector<std::vector<Sample>> m_bwin;  ///< per branch: sliding 2B phi(x) window
+        std::vector<std::vector<Sample>> m_bu;    ///< per branch: P_j input-block spectra ring
+        std::vector<std::vector<Sample>> m_bh;    ///< per branch: P_j filter-partition spectra
+        std::vector<std::vector<Sample>> m_bp;    ///< per branch: per-partition, per-bin state variance
+        std::vector<size_t>              m_bhead; ///< per branch: ring head
+
+        size_t m_head     = 0;
+        size_t m_nb_count = 0;
+        bool   m_adapt    = true;
     };
 
 } // namespace tap::mu

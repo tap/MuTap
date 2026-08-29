@@ -619,7 +619,21 @@ null space, Psi_s absorbing unmodeled distortion during branch
 convergence, DT weight-motion surface, tones, cost), extend-in-place
 architecture behind an empty-spec bit-identical dump gate (shadow
 stays linear — one gated chain line), and the staged plan with
-acceptance gates. Open decisions for Tim in its §9;* (b) a device-trained
+acceptance gates. Open decisions for Tim in its §9. STAGE 2 DELIVERED
+— the core extension (branch spec on partitioned_fdkf: basis kinds
+odd_power/clip_difference/tanh_difference with LS-centering, GS
+chain coefficient, per-branch partitions and P(0) prior; empty spec
+byte-identical on the full certified ITU dump) + the measured
+bake-off in tests/test_multibranch.cpp. VERDICT: {x^3 orth, x^5 orth
+GS-chained}, partitions 2/branch, prior 0.1 — mild +20.8 dB,
+moderate +24.1, severe/off-model +14.4 over the linear core at
+48 kHz; permanent-DT winner 38.3 dB vs linear 15.6 (immunity holds
+on the branch axis); the 16 kHz clean-drive cost is the comb-
+collinearity family and the novelty knobs (0.8/0.1) erase it at
+48 kHz and halve it at 16 kHz (remaining ~12 dB recorded as the
+branch cost at that rate). Doc's "Stage 2 delivered" section has the
+narrative; Stage 3 (outdoor preset + chain rows) is next, then
+float32/tone/bench as Stage 4;* (b) a device-trained
 nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
 datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
 widen; (c) a clip guard in the core (freeze adaptation on saturated

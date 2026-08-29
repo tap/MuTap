@@ -134,15 +134,24 @@ namespace mutap_test::outdoor {
     /// Memoryless odd-saturation loudspeaker model, y = tanh(g x)/g:
     /// unity gain for small signals (the linear component stays on the
     /// calibration plane), distortion power rising with g. drive <= 0 is
-    /// the identity (the linear-path control condition).
+    /// the identity (the linear-path control condition). `clip` (0 = off)
+    /// adds a hard ceiling after the saturator — with drive 0 it is the
+    /// PURE hard clipper, the multibranch bake-off's off-model drive
+    /// (docs/multibranch-canceller.md §4: the basis choice must be made
+    /// on a drive the basis was not built from).
     struct speaker_drive {
         double drive = 0.0;
+        double clip  = 0.0;
 
         double operator()(double x) const {
-            if (drive <= 0.0) {
-                return x;
+            double y = x;
+            if (drive > 0.0) {
+                y = std::tanh(drive * x) / drive;
             }
-            return std::tanh(drive * x) / drive;
+            if (clip > 0.0) {
+                y = std::clamp(y, -clip, clip);
+            }
+            return y;
         }
         std::vector<double> apply(const std::vector<double>& x) const {
             std::vector<double> y(x.size());
@@ -163,11 +172,10 @@ namespace mutap_test::outdoor {
     /// THD (dB, harmonics-to-fundamental) of the drive model for an
     /// on-bin sine near f_hz at level_dbm0 — the calibration instrument
     /// behind the presets.
-    inline double drive_thd_db(double drive, double level_dbm0, double fs, double f_hz = 1000.0) {
+    inline double drive_thd_db(const speaker_drive& sp, double level_dbm0, double fs, double f_hz = 1000.0) {
         const size_t        n_fft = 8192;
         const size_t        bin   = static_cast<size_t>(std::round(f_hz * static_cast<double>(n_fft) / fs));
         const double        amp   = itu::dbm0_to_rms(level_dbm0) * std::numbers::sqrt2;
-        speaker_drive       sp{drive};
         std::vector<double> x(n_fft);
         for (size_t i = 0; i < n_fft; ++i) {
             x[i] = sp(amp
@@ -188,6 +196,28 @@ namespace mutap_test::outdoor {
             harm += power_at(h * bin);
         }
         return 10.0 * std::log10(harm / fund);
+    }
+
+    /// Normalization gain for a nonlinear-basis branch signal at the
+    /// scenario operating level: 1 / rms(phi(x)) over shaped CSS at
+    /// level_dbm0. Branch signals differ by orders of magnitude in power
+    /// (x^3 of an RMS-0.22 signal), and the canceller's P(0) semantics,
+    /// regularization floor and float32 headroom all assume O(1) inputs
+    /// (docs/multibranch-canceller.md §4) — so branch gains are fixed
+    /// calibration constants measured by this instrument, not adaptive.
+    template <typename Phi>
+    double branch_gain(Phi&& phi, double level_dbm0, double fs) {
+        itu::css_config cc;
+        cc.periods = 3;
+        cc.shaped  = true;
+        auto x     = itu::make_css_at(cc, fs);
+        itu::set_level_dbm0(x, level_dbm0);
+        double sq = 0.0;
+        for (const double v : x) {
+            const double p = phi(v);
+            sq += p * p;
+        }
+        return 1.0 / std::sqrt(sq / static_cast<double>(x.size()));
     }
 
     // ------------------------------------------------------------ wind noise

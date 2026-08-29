@@ -179,9 +179,12 @@ namespace {
     // -17.8 (~12.9 %). Rate-independent (memoryless model, on-bin sine).
     TEST(OutdoorFixture, SpeakerDriveThd) {
         for (const auto& rs : required_rates()) {
-            EXPECT_NEAR(drive_thd_db(k_drive_mild, k_far_level_dbm0, rs.fs), -40.4, 1.0) << "fs " << rs.fs;
-            EXPECT_NEAR(drive_thd_db(k_drive_moderate, k_far_level_dbm0, rs.fs), -27.1, 1.0) << "fs " << rs.fs;
-            EXPECT_NEAR(drive_thd_db(k_drive_severe, k_far_level_dbm0, rs.fs), -17.8, 1.0) << "fs " << rs.fs;
+            EXPECT_NEAR(drive_thd_db(speaker_drive{k_drive_mild}, k_far_level_dbm0, rs.fs), -40.4, 1.0)
+                << "fs " << rs.fs;
+            EXPECT_NEAR(drive_thd_db(speaker_drive{k_drive_moderate}, k_far_level_dbm0, rs.fs), -27.1, 1.0)
+                << "fs " << rs.fs;
+            EXPECT_NEAR(drive_thd_db(speaker_drive{k_drive_severe}, k_far_level_dbm0, rs.fs), -17.8, 1.0)
+                << "fs " << rs.fs;
         }
     }
 

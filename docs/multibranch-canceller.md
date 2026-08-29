@@ -303,6 +303,53 @@ The acceptance ladder, each a regression gate when it lands:
   behind the empty-spec parity gate; scratch battery per §4/§7 rows
   2–4; basis and branch_prior chosen by the table, decisions recorded
   here.
+
+### Stage 2 delivered (measured; the full tables live in
+### tests/test_multibranch.cpp's banner)
+
+The core extension landed as designed (§6 option A): branch spec on
+`partitioned_fdkf::config`, per-branch windows/rings/state, joint
+denominator, constraint per (branch, partition), branch-0 statements
+untouched; the empty-spec configuration is byte-identical on the full
+certified ITU dump, and the shadow-stays-linear line landed in
+aec_chain. Two design deltas the measurements forced, both now in §4's
+spirit rather than its letter:
+
+- **`center` generalized to every basis kind** (not just powers).
+  Round 1 measured the collinearity cost directly: plain x³ pays 15 dB
+  of clean-drive misadjustment (50.2 → 34.9) and every un-centered
+  basis paid 14..18; LS-centering (c\* = E[xφ]/E[x²] over the actual
+  material, not the Gaussian moment formula) restored the clean rows to
+  ~47.5 and bought +19 dB at mild drive.
+- **A Gram-Schmidt `chain` coefficient per branch** — round 2 found
+  branch PAIRS each orthogonal to x still pay ~8 dB against *each
+  other*; chaining the second branch against the first's finished
+  signal recovered ~5.5 dB and produced the winner.
+
+**The verdict: {x³ orth, x⁵ orth GS-chained}, partitions 2 per branch,
+prior 0.1** — at 48 kHz, erl −20: mild 46.4 (linear 25.6, **+20.8**),
+moderate 39.7 (**+24.1**), severe 24.6 (+14.4), off-model hard clip
+26.8 (+14.4), clean-drive cost 5.6 dB. Runner-up notes that survive
+into presets: `tanh_difference` at the device's measured knee hits
+49.9 at moderate (the exactly-representable case — the per-device
+preset when a curve is measured); `clip_difference` wins the hard-
+limiter column (32+ both rates). The §7-row-2 hypothesis ("under
++10 dB at mild says the structure is losing") was beaten by 2x.
+
+**The watch-list scored** (§5, in order): (1) collinearity was indeed
+the #1 binding constraint and the remedies were exactly the predicted
+family — centering, GS, and the novelty discount: the 16 kHz clean row
+showed EVERY branched config paying ~14 dB, and the block-128-notch
+counter-measure values (novelty 0.8/0.1) erased the cost at 48 kHz
+(clean 44.6 → 52.8) and recovered +6 at 16 kHz (35.6 → 41.5; the
+remaining ~12 dB against the linear core's exceptional 53.7 is the
+recorded cost of branches at 16 kHz — future work, and clean-drive
+rigs take the single-branch or branchless preset anyway). (2) The
+Ψ_s race never bit: the prior sweep (1.0..0.03) moved moderate-drive
+suppression by only 0.4 dB at 48 kHz — default 0.1 held. (3) DT
+safety passed emphatically: permanent double talk at moderate drive,
+winner 38.3/35.1 dB vs linear 15.6/15.9 — the model-based immunity
+holds on the branch axis. (4) Tones and (5) M55 cost: Stage 4.
 - **Stage 3 — land + outdoor preset.** Gates pinned in test_outdoor
   (new rows) and test_fd_kalman (parity, contract, validation);
   outdoor preset with short geometry; HANDOFF Rev 6 updated.

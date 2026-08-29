@@ -45,7 +45,8 @@ add_executable(mutap_tests
     test_g168.cpp
     test_float32.cpp
     test_nn_suppressor.cpp
-    test_outdoor.cpp)
+    test_outdoor.cpp
+    test_multibranch.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)

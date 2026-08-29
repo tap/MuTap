@@ -897,6 +897,15 @@ namespace tap::mu {
                     auto sc       = cfg.canceller;
                     sc.partitions = cfg.shadow_partitions;
                     sc.transition = cfg.shadow_transition;
+                    // The shadow stays LINEAR under a multi-branch main
+                    // canceller: it is a fast path-mismatch comparator,
+                    // its DT immunity rests on performance comparison
+                    // (not correlation), and a linear shadow keeps its
+                    // cost at the documented ~25 %
+                    // (docs/multibranch-canceller.md §6).
+                    if constexpr (requires { sc.branches; }) {
+                        sc.branches.clear();
+                    }
                     m_shadow.emplace(sc);
                     m_shadow_e.resize(m_afc.block_size());
                 }
