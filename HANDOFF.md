@@ -653,7 +653,23 @@ geometry pays for the branches, table in bench/README.md). Remaining
 in the effort: the M55/Hexagon icount rows (deferred to that
 milestone as planned), mutap.aec~ exposure (Stage 5, timing is
 Tim's §9 call), and the two filed observations (16 kHz branch clean
-cost; clean-drive onset residual);* (b) a device-trained
+cost; clean-drive onset residual). ADVERSARIAL AUDIT DONE (Tim's
+directive, before externals) — full record in the doc's "Stage 5
+(out of order)" section. Code review: 4 findings, all fixed (a
+-Werror CI break; the preset's FALSE "novelty always on" claim at
+16 kHz — and the naive fix measured WORSE, so the 1-partition
+geometry stands with the claim corrected; UB in branch validation;
+three drifting copies of the calibration formulas, consolidated
+into outdoor_scenario.h). Counter-experiments: the "full duplex"
+claim REVISED to "level duplex" — the AM-FM instrument shows send-
+band content at moderate drive is residual echo IMD ~9 dB above the
+talker's in-band energy (now a permanent gate, DtImdFloor: the
+number the nn-suppressor work must move); calibration is LEVEL-
+sensitive (~7 dB cost at -4 dBm0, ~16 at -16 vs recalibration —
+recalibrate off-plane; level-adaptive centering filed) but material-
+shape robust (white noise: 39.03 vs 39.02) and seed/geometry robust
+(>= 2.8 dB gate headroom across 4 seeds + a hostile mount). No
+correctness defect found in the core branch update path;* (b) a device-trained
 nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
 datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
 widen; (c) a clip guard in the core (freeze adaptation on saturated

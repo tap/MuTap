@@ -753,19 +753,30 @@ namespace tap::mu {
             }
             for (const auto& br : cfg.branches) {
                 if (br.kind == config::branch::basis::odd_power) {
+                    // Range-check BEFORE the int cast: casting a NaN or
+                    // out-of-int-range float to int is undefined behavior
+                    // ([conv.fpint]) — inside the very check meant to
+                    // reject bad powers. The >= / <= comparisons are
+                    // false for NaN, so it lands here too.
+                    if (!(br.power >= Sample(3)) || !(br.power <= Sample(99))) {
+                        throw std::invalid_argument("partitioned_fdkf: branch power must be an odd integer in 3..99");
+                    }
                     const int p = static_cast<int>(br.power);
-                    if (Sample(p) != br.power || p < 3 || p % 2 == 0) {
-                        throw std::invalid_argument("partitioned_fdkf: branch power must be an odd integer >= 3");
+                    if (Sample(p) != br.power || p % 2 == 0) {
+                        throw std::invalid_argument("partitioned_fdkf: branch power must be an odd integer in 3..99");
                     }
                 }
-                else if (!(br.knee > Sample(0))) {
-                    throw std::invalid_argument("partitioned_fdkf: branch knee must be > 0");
+                else if (!(br.knee > Sample(0)) || !std::isfinite(static_cast<double>(br.knee))) {
+                    throw std::invalid_argument("partitioned_fdkf: branch knee must be finite and > 0");
                 }
-                if (!(br.gain > Sample(0))) {
-                    throw std::invalid_argument("partitioned_fdkf: branch gain must be > 0");
+                if (!(br.gain > Sample(0)) || !std::isfinite(static_cast<double>(br.gain))) {
+                    throw std::invalid_argument("partitioned_fdkf: branch gain must be finite and > 0");
                 }
                 if (!(br.prior > Sample(0)) || !(br.prior <= Sample(1))) {
                     throw std::invalid_argument("partitioned_fdkf: branch prior must be in (0, 1]");
+                }
+                if (!std::isfinite(static_cast<double>(br.center)) || !std::isfinite(static_cast<double>(br.chain))) {
+                    throw std::invalid_argument("partitioned_fdkf: branch center/chain must be finite");
                 }
             }
             return cfg;

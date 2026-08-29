@@ -100,12 +100,7 @@ namespace {
                                          ///< collapses the linear core to 12.4/12.8 dB)
 
     std::vector<double> far_end(const rate_setup& rs, double seconds) {
-        itu::css_config cc;
-        cc.periods = static_cast<size_t>(seconds / 0.35);
-        cc.shaped  = true;
-        auto x     = itu::make_css_at(cc, rs.fs);
-        itu::set_level_dbm0(x, k_level);
-        return x;
+        return make_far_end(rs.fs, seconds, k_level);
     }
 
     echo_sim<double> make_sim(const std::vector<double>& path, size_t block) {
@@ -122,35 +117,15 @@ namespace {
 
     // --------------------------------------------------- branch builders
     //
-    // Calibration replicates the core's evaluation order exactly
-    // (kf_branch::eval applies gain * (raw - center * x); the chain
-    // subtraction happens on the previous branch's FINAL signal):
-    // center = E[x phi]/E[x^2] over the material, gain normalizes the
-    // centered signal, chain is the residual correlation between
-    // finished branch signals.
-
-    template <typename Phi>
-    std::pair<double, double> center_and_gain(const std::vector<double>& x, Phi&& phi) {
-        double s2  = 0.0;
-        double sxp = 0.0;
-        for (const double v : x) {
-            s2 += v * v;
-            sxp += v * phi(v);
-        }
-        const double c  = sxp / s2;
-        double       sq = 0.0;
-        for (const double v : x) {
-            const double p = phi(v) - c * v;
-            sq += p * p;
-        }
-        return {c, 1.0 / std::sqrt(sq / static_cast<double>(x.size()))};
-    }
+    // Calibration goes through THE instrument in outdoor_scenario.h
+    // (branch_center_and_gain / branch_gs_chain / winner_branches) —
+    // one copy, per the Stage 5 audit.
 
     kf_branch pow_branch(const std::vector<double>& x, double p) {
         kf_branch b;
         b.kind            = kf_branch::basis::odd_power;
         b.power           = p;
-        const auto [c, g] = center_and_gain(x, [&](double v) {
+        const auto [c, g] = branch_center_and_gain(x, [&](double v) {
             double y = v;
             for (int i = 1; i < static_cast<int>(p); ++i) {
                 y *= v;
@@ -167,30 +142,14 @@ namespace {
         kf_branch b;
         b.kind            = kf_branch::basis::clip_difference;
         b.knee            = knee;
-        const auto [c, g] = center_and_gain(x, [&](double v) { return v - std::clamp(v, -knee, knee); });
+        const auto [c, g] = branch_center_and_gain(x, [&](double v) { return v - std::clamp(v, -knee, knee); });
         b.center          = c;
         b.gain            = g;
         b.partitions      = 2;
         return b;
     }
 
-    kf_branch gs_chain(const std::vector<double>& x, const kf_branch& first, kf_branch second) {
-        double num = 0.0;
-        double den = 0.0;
-        for (const double v : x) {
-            const double e1 = first.eval(v);
-            num += second.eval(v) * e1;
-            den += e1 * e1;
-        }
-        second.chain = num / den;
-        return second;
-    }
-
-    /// The bake-off winner: {x^3 orth, x^5 orth GS-chained}.
-    std::vector<kf_branch> winner_branches(const std::vector<double>& x) {
-        const kf_branch b3 = pow_branch(x, 3.0);
-        return {b3, gs_chain(x, b3, pow_branch(x, 5.0))};
-    }
+    // gs_chain / winner_branches: outdoor_scenario.h (the instrument).
 
     // ------------------------------------------------------- contract
 
@@ -292,7 +251,7 @@ namespace {
             bases.push_back({"lin", {}});
             bases.push_back({"p3orth", {pow_branch(x, 3.0)}});
             bases.push_back({"clipo", {clip_branch(x, 0.30)}});
-            bases.push_back({"winner", winner_branches(x)});
+            bases.push_back({"winner", winner_branches<kf_branch>(x)});
 
             struct drive_spec {
                 const char*   name;
@@ -321,8 +280,7 @@ namespace {
                     auto                     sim = make_sim(path, rs.block);
                     auto r = run_outdoor(sim, &core, x, xd, nullptr, static_cast<size_t>(4.0 * rs.fs) / rs.block);
                     ASSERT_TRUE(r.finite) << bases[bi].name << " " << drives[di].name;
-                    const double gate = rs.fs == 48000.0 ? *(gates[bi][0].begin() + static_cast<long>(di))
-                                                         : *(gates[bi][1].begin() + static_cast<long>(di));
+                    const double gate = at(rs, gates[bi][0], gates[bi][1], di);
                     EXPECT_GE(r.suppression_db, gate)
                         << "fs " << rs.fs << " " << bases[bi].name << " " << drives[di].name;
                 }
@@ -337,7 +295,7 @@ namespace {
         for (const auto& rs : itu::required_rates()) {
             const auto path = make_outdoor_path(rs.fs, rs.taps, -20.0);
             const auto x    = far_end(rs, 8.4);
-            const auto br   = winner_branches(x);
+            const auto br   = winner_branches<kf_branch>(x);
 
             speaker_drive sp{k_drive_moderate};
             const auto    xd = sp.apply(x);

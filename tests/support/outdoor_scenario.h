@@ -39,6 +39,7 @@
 #include <cstddef>
 #include <numbers>
 #include <random>
+#include <utility>
 #include <vector>
 
 #include "echo_scenario.h"
@@ -218,6 +219,89 @@ namespace mutap_test::outdoor {
             sq += p * p;
         }
         return 1.0 / std::sqrt(sq / static_cast<double>(x.size()));
+    }
+
+    // --------------------------------------- branch calibration instrument
+    //
+    // THE calibration instrument the design doc and the preset comments
+    // point at — one copy, used by every test that derives or gates
+    // branch constants (the Stage 5 audit found three drifting
+    // duplicates of these formulas). Replicates the core's evaluation
+    // order exactly: kf eval applies gain * (raw - center * x), the GS
+    // chain subtraction happens on the previous branch's FINISHED
+    // signal.
+
+    /// LS-orthogonalization center and normalization gain for a raw
+    /// basis over material x: center = E[x phi]/E[x^2], gain normalizes
+    /// the CENTERED signal to unit RMS.
+    template <typename Phi>
+    std::pair<double, double> branch_center_and_gain(const std::vector<double>& x, Phi&& phi) {
+        double s2  = 0.0;
+        double sxp = 0.0;
+        for (const double v : x) {
+            s2 += v * v;
+            sxp += v * phi(v);
+        }
+        const double c  = sxp / s2;
+        double       sq = 0.0;
+        for (const double v : x) {
+            const double p = phi(v) - c * v;
+            sq += p * p;
+        }
+        return {c, 1.0 / std::sqrt(sq / static_cast<double>(x.size()))};
+    }
+
+    /// Gram-Schmidt chain coefficient for a branch pair: the second
+    /// branch's residual correlation against the first's finished
+    /// signal. Branch is the canceller config's branch type (templated
+    /// so this header needs no core include).
+    template <typename Branch>
+    Branch branch_gs_chain(const std::vector<double>& x, const Branch& first, Branch second) {
+        double num = 0.0;
+        double den = 0.0;
+        for (const double v : x) {
+            const double e1 = first.eval(v);
+            num += second.eval(v) * e1;
+            den += e1 * e1;
+        }
+        second.chain = num / den;
+        return second;
+    }
+
+    /// The Stage 2 bake-off winner {x^3 orth, x^5 orth GS-chained}
+    /// built from material x — the reference constructor the preset's
+    /// pinned constants are gated against.
+    template <typename Branch>
+    std::vector<Branch> winner_branches(const std::vector<double>& x, size_t partitions = 2) {
+        auto make_pow = [&](double p) {
+            Branch b;
+            b.kind            = Branch::basis::odd_power;
+            b.power           = p;
+            const auto [c, g] = branch_center_and_gain(x, [&](double v) {
+                double y = v;
+                for (int i = 1; i < static_cast<int>(p); ++i) {
+                    y *= v;
+                }
+                return y;
+            });
+            b.center          = c;
+            b.gain            = g;
+            b.partitions      = partitions;
+            return b;
+        };
+        const Branch b3 = make_pow(3.0);
+        return {b3, branch_gs_chain(x, b3, make_pow(5.0))};
+    }
+
+    /// Shaped single-talk CSS at an operating level — the scenario's
+    /// standard far-end material.
+    inline std::vector<double> make_far_end(double fs, double seconds, double level_dbm0) {
+        itu::css_config cc;
+        cc.periods = static_cast<size_t>(seconds / 0.35);
+        cc.shaped  = true;
+        auto x     = itu::make_css_at(cc, fs);
+        itu::set_level_dbm0(x, level_dbm0);
+        return x;
     }
 
     // ------------------------------------------------------------ wind noise

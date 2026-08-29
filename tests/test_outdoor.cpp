@@ -92,12 +92,7 @@ namespace {
 
     // Shaped single-talk CSS at the operating level, `seconds` long.
     std::vector<double> far_end(const rate_setup& rs, double seconds) {
-        itu::css_config cc;
-        cc.periods = static_cast<size_t>(seconds / 0.35);
-        cc.shaped  = true;
-        auto x     = itu::make_css_at(cc, rs.fs);
-        itu::set_level_dbm0(x, k_far_level_dbm0);
-        return x;
+        return make_far_end(rs.fs, seconds, k_far_level_dbm0);
     }
 
     echo_sim<double> make_sim(const std::vector<double>& path, size_t block, double mic_clip = 0.0) {
@@ -445,10 +440,16 @@ namespace {
     //   severe    20.6 / -11.4      28.6 / -21.5     12.1 /  -6.8      27.6 / -20.9
     //
     //   DT (moderate drive): supp 36.0/35.3, send delta +0.4/-0.3 dB —
-    //   the certified chain's +20 dB of echo-over-talker becomes full
-    //   duplex. Convergence by 1.2 s: 49.9/40.1 (certified row 51.1/40.1
-    //   — the short geometry converges at parity with deeper steady
-    //   state).
+    //   the certified chain's +20 dB of echo-over-talker becomes LEVEL
+    //   duplex: the residual is pulled down TO the talker's level. The
+    //   Stage 5 audit's sharper AM-FM instrument (DtImdFloor below)
+    //   shows what the level delta cannot: the send-band content at
+    //   this drive is dominated by residual echo INTERMODULATION
+    //   sitting ~9 dB above the talker's own in-band comb energy — not
+    //   transparent duplex; the remaining IMD is the device-trained
+    //   suppressor's (Rev 6 follow-up (b)) target. Convergence by
+    //   1.2 s: 49.9/40.1 (certified row 51.1/40.1 — the short geometry
+    //   converges at parity with deeper steady state).
     //
     //   FILED OBSERVATION: the clean-drive residual MAX reads -39.5 at
     //   48 kHz vs the certified chain's -46.5 while average suppression
@@ -461,44 +462,20 @@ namespace {
     // from the operating-plane CSS, at both rates (they are pinned
     // rate-invariant; the calibration instrument is the doc's).
     TEST(OutdoorChain, BranchCalibration) {
+        using kf_branch = tap::mu::partitioned_fdkf<double>::config::branch;
         for (const auto& rs : required_rates()) {
-            const auto x  = far_end(rs, 8.4);
-            double     s2 = 0.0;
-            for (const double v : x) {
-                s2 += v * v;
-            }
-            auto calib = [&](auto&& phi) {
-                double sxp = 0.0;
-                for (const double v : x) {
-                    sxp += v * phi(v);
-                }
-                const double c  = sxp / s2;
-                double       sq = 0.0;
-                for (const double v : x) {
-                    const double p = phi(v) - c * v;
-                    sq += p * p;
-                }
-                return std::pair<double, double>{c, 1.0 / std::sqrt(sq / static_cast<double>(x.size()))};
-            };
-            const auto [c3, g3] = calib([](double v) { return v * v * v; });
-            const auto [c5, g5] = calib([](double v) { return v * v * v * v * v; });
-            double num          = 0.0;
-            double den          = 0.0;
-            for (const double v : x) {
-                const double e3 = g3 * (v * v * v - c3 * v);
-                const double e5 = g5 * (v * v * v * v * v - c5 * v);
-                num += e5 * e3;
-                den += e3 * e3;
-            }
+            const auto x   = far_end(rs, 8.4);
+            const auto ref = winner_branches<kf_branch>(x); // THE instrument (outdoor_scenario.h)
             const auto cfg = tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs);
-            ASSERT_EQ(cfg.canceller.branches.size(), 2u);
-            const auto& b3 = cfg.canceller.branches[0];
-            const auto& b5 = cfg.canceller.branches[1];
-            EXPECT_NEAR(b3.center, c3, 0.02 * c3) << "fs " << rs.fs;
-            EXPECT_NEAR(b3.gain, g3, 0.02 * g3) << "fs " << rs.fs;
-            EXPECT_NEAR(b5.center, c5, 0.02 * c5) << "fs " << rs.fs;
-            EXPECT_NEAR(b5.gain, g5, 0.02 * g5) << "fs " << rs.fs;
-            EXPECT_NEAR(b5.chain, num / den, 0.02 * (num / den)) << "fs " << rs.fs;
+            ASSERT_EQ(cfg.canceller.branches.size(), ref.size());
+            for (size_t j = 0; j < ref.size(); ++j) {
+                const auto& pinned = cfg.canceller.branches[j];
+                EXPECT_NEAR(pinned.center, ref[j].center, 0.02 * ref[j].center) << "fs " << rs.fs << " b" << j;
+                EXPECT_NEAR(pinned.gain, ref[j].gain, 0.02 * ref[j].gain) << "fs " << rs.fs << " b" << j;
+                if (j > 0) {
+                    EXPECT_NEAR(pinned.chain, ref[j].chain, 0.02 * ref[j].chain) << "fs " << rs.fs << " b" << j;
+                }
+            }
         }
     }
 
@@ -560,7 +537,8 @@ namespace {
 
             // Measured: supp 36.0 (48k) / 35.3 (16k); send delta +0.42 /
             // -0.34 dB — the certified chain's +20.1 on this row becomes
-            // full duplex.
+            // LEVEL duplex (see the banner and DtImdFloor for what the
+            // level delta cannot see).
             const size_t t0       = static_cast<size_t>(6.0 * rs.fs);
             const double out_lvl  = max_level_dbm0a(r.out, rs.fs, t0, r.out.size());
             const double near_lvl = max_level_dbm0a(v, rs.fs, t0, r.out.size());
@@ -571,6 +549,50 @@ namespace {
 
     // Convergence on the linear path with the short geometry (certified
     // chain by 1.2 s: 51.1 at 48 kHz, 40.1 at 16 kHz on this row).
+    // The Stage 5 audit instrument, kept as a permanent gate: the P.501
+    // AM-FM orthogonal pair separates what the DT level delta cannot —
+    // near end = send plan at -30 dBm0, far end = receive plan at -10,
+    // moderate drive; send-band comb energy at the output vs the near
+    // end's own, plus a no-near-end control run isolating the echo-IMD
+    // pollution floor in those bands. Measured: output send-band energy
+    // sits 9.4/9.5 dB ABOVE the talker's (48/16 kHz), and the control
+    // run shows it is echo intermodulation (floor 9.2/9.8 above) — the
+    // DT claim is LEVEL duplex, and this row pins the IMD floor so the
+    // suppressor work that must move it has its number.
+    TEST(OutdoorChain, DtImdFloor) {
+        for (const auto& rs : required_rates()) {
+            const auto   p = make_outdoor_path(rs.fs, rs.taps, -20.0);
+            const size_t n = static_cast<size_t>(8.4 * rs.fs);
+
+            auto x = itu::make_amfm(itu::amfm_receive_plan(), n, rs.fs);
+            itu::set_level_dbm0(x, -10.0);
+            auto v = itu::make_amfm(itu::amfm_send_plan(), n, rs.fs);
+            itu::set_level_dbm0(v, -30.0);
+            speaker_drive sp{k_drive_moderate};
+            const auto    xd = sp.apply(x);
+
+            auto tail = [&](const std::vector<double>& s) {
+                return std::vector<double>(s.begin() + static_cast<long>(4.0 * rs.fs), s.end());
+            };
+            const auto send_plan = itu::amfm_send_plan();
+
+            tap::mu::aec_chain<double> c1(tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs));
+            auto                       s1 = make_sim(p, rs.block);
+            auto                       r1 = run_outdoor(s1, &c1, x, xd, &v, 0);
+            tap::mu::aec_chain<double> c2(tap::mu::aec_chain_outdoor_preset<double>(rs.block, rs.fs));
+            auto                       s2 = make_sim(p, rs.block);
+            auto                       r2 = run_outdoor(s2, &c2, x, xd, nullptr, 0);
+            ASSERT_TRUE(r1.finite && r2.finite) << "fs " << rs.fs;
+
+            const double send_in    = itu::comb_band_level_db(tail(v), send_plan, 0.0, rs.fs);
+            const double send_out   = itu::comb_band_level_db(tail(r1.out), send_plan, 0.0, rs.fs);
+            const double send_floor = itu::comb_band_level_db(tail(r2.out), send_plan, 0.0, rs.fs);
+            // Measured: in - out = -9.44/-9.49; in - floor = -9.15/-9.76.
+            EXPECT_GE(send_in - send_out, -12.5) << "fs " << rs.fs;
+            EXPECT_GE(send_in - send_floor, -13.0) << "fs " << rs.fs;
+        }
+    }
+
     TEST(OutdoorChain, Convergence) {
         for (const auto& rs : required_rates()) {
             const auto p = make_outdoor_path(rs.fs, rs.taps, -20.0);

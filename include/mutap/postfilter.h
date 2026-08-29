@@ -1216,17 +1216,28 @@ namespace tap::mu {
     ///     15.6 -> 38.3 (the model-based DT immunity holds on the
     ///     branch axis). The branch constants are CALIBRATED AT THE
     ///     -10 dBm0 SHAPED-CSS OPERATING PLANE and are rate-invariant
-    ///     to 0.1 % (a property of the material's amplitude
-    ///     distribution); a deployment at a different reference level
-    ///     recalibrates them with the documented instrument
-    ///     (tests/support/outdoor_scenario.h branch_gain and the
-    ///     center/chain formulas; tests/test_outdoor.cpp gates the
-    ///     pinned values against a fresh calibration).
-    ///  3. NOVELTY DISCOUNT ALWAYS ON (0.8 / 0.1): with branches, the
-    ///     CSS-voiced-comb collinearity family bites at EVERY hop, not
-    ///     just the 6..12 ms band — measured: the winner's clean-drive
-    ///     row goes 44.6 -> 52.8 dB at 48 kHz (the linear core's own
-    ///     row is 50.2) and 35.6 -> 41.5 at 16 kHz with the discount.
+    ///     to 0.1 % and MATERIAL-shape-invariant (measured: identical
+    ///     suppression on white noise) — but LEVEL-SENSITIVE: the
+    ///     Stage 5 audit measured the pinned constants costing ~7 dB
+    ///     at a -4 dBm0 operating level and ~16 dB at -16 dBm0
+    ///     against level-matched recalibration (the moments the
+    ///     centering cancels scale with level). A deployment whose
+    ///     reference level differs from -10 dBm0 MUST recalibrate with
+    ///     the documented instrument (tests/support/outdoor_scenario.h
+    ///     branch_center_and_gain / branch_gs_chain / winner_branches;
+    ///     tests/test_outdoor.cpp gates the pinned values against a
+    ///     fresh calibration). Level-adaptive centering is the filed
+    ///     follow-up for level-varying rigs.
+    ///  3. NOVELTY DISCOUNT WHERE IT CAN ACT (0.8 / 0.1 at 2+
+    ///     partitions): with branches, the CSS-voiced-comb collinearity
+    ///     family bites at every hop, not just the 6..12 ms band —
+    ///     measured at 48 kHz: the winner's clean-drive row goes
+    ///     44.6 -> 52.8 dB with the discount (the linear core's own row
+    ///     is 50.2). At a 1-partition geometry (16 kHz / block 256) the
+    ///     tracker is structurally inert (fd_kalman.h needs the
+    ///     partition ring) AND unnecessary — measured: 1 partition
+    ///     without it beats 2 partitions with it by 10 dB on the clean
+    ///     row (no partition null space at all; Stage 5 audit record).
     ///     The decaying uncertainty prior stays off (bulk delay is
     ///     system latency here and the certified trade holds).
     ///
@@ -1237,10 +1248,23 @@ namespace tap::mu {
         const size_t need       = static_cast<size_t>(0.0085 * sample_rate) + 1;
         const size_t partitions = std::max<size_t>(1, (need + block_size - 1) / block_size);
 
-        auto cfg                        = aec_chain_preset<Sample>(block_size, partitions, sample_rate);
-        cfg.canceller.novelty_smoothing = Sample(0.8);
-        cfg.canceller.novelty_floor     = Sample(0.1);
-        cfg.shadow_partitions           = std::min(cfg.shadow_partitions, partitions);
+        auto cfg = aec_chain_preset<Sample>(block_size, partitions, sample_rate);
+        // Novelty discount only where it can act: the coherence tracker
+        // reads the previous block's spectrum from the partition ring
+        // and is inert at p_n == 1 (fd_kalman.h). The Stage 5 audit
+        // caught the inert-knob state at 16 kHz / block 256 (1
+        // partition) and MEASURED the alternative — forcing 2
+        // partitions to activate the discount reads WORSE (clean
+        // 66.6 -> 56.5 dB, mild 54.1 -> 51.4): a 1-partition geometry
+        // has no partition-redistribution null space at all, which is
+        // worth more than the discount. So the natural short geometry
+        // stands and the knobs are set only where they act (2+
+        // partitions, e.g. 48 kHz / block 256).
+        if (partitions >= 2) {
+            cfg.canceller.novelty_smoothing = Sample(0.8);
+            cfg.canceller.novelty_floor     = Sample(0.1);
+        }
+        cfg.shadow_partitions = std::min(cfg.shadow_partitions, partitions);
 
         using branch = typename partitioned_fdkf<Sample>::config::branch;
         branch b3;

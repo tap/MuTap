@@ -410,6 +410,69 @@ ratchet rows.
 - **Stage 5 — externals.** `mutap.aec~` branch attributes + help/ref,
   the submodule dance, after the core proves out.
 
+### Stage 5 (out of order) — the adversarial audit (delivered)
+
+Before externals, the whole effort was audited adversarially: a
+high-effort code review of the branch diff plus counter-experiments
+attacking the claims themselves. Everything below is measured; the
+fixes landed with this record.
+
+**Code review findings (all fixed):** (1) an unused helper broke the
+three -Werror CI matrix builds; (2) the outdoor preset's "novelty
+always on" claim was FALSE at 16 kHz — the coherence tracker needs the
+partition ring (p_n >= 2) and the preset's natural 16 kHz geometry is
+1 partition, so the knobs were silently inert. The audit then measured
+the naive fix (force 2 partitions) and REJECTED it: 1 partition
+without the discount beats 2 with it by 10 dB on the 16 kHz clean row
+(66.6 vs 56.5; mild 54.1 vs 51.4) — a 1-partition geometry has no
+partition-redistribution null space at all, which is worth more than
+the counter-measure. Resolution: geometry stands, knobs set only where
+they act, comment corrected. (3) UB in branch validation (float->int
+cast before the range check; NaN center/chain unvalidated) — fixed
+with pre-cast range checks and finiteness validation. (4) The
+calibration formulas existed in three drifting copies — consolidated
+into tests/support/outdoor_scenario.h (branch_center_and_gain /
+branch_gs_chain / winner_branches), now the single instrument every
+test and the preset gate use.
+
+**Counter-experiment verdicts:**
+
+- **The "full duplex" claim was revised.** The DT level delta (+0.4 dB)
+  cannot distinguish talker-preserved from talker-ducked, and a
+  sharper instrument — the P.501 AM-FM orthogonal pair with a
+  no-near-end control run — shows the send-band output at moderate
+  drive is DOMINATED by residual echo intermodulation sitting ~9 dB
+  above the talker's own in-band comb energy (floor 9.2/9.8 dB above
+  at 48/16 kHz; the near end itself is not ducked). Honest claim:
+  **level duplex** — the residual is pulled down TO the talker's
+  level, from 20 dB above. The IMD floor is now a permanent gate
+  (test_outdoor DtImdFloor) so the device-trained-suppressor work has
+  its number to move. Caveat recorded: the AM-FM multi-sine through
+  tanh is an IMD torture signal — speech-material IMD will read
+  kinder; the gate is deliberately the harsh instrument.
+- **Level sensitivity is real and now documented as a deployment
+  requirement.** Pinned-at-−10 dBm0 constants cost ~7 dB at a −4 dBm0
+  operating level and ~16 dB at −16 dBm0 versus level-matched
+  recalibration (43.4 vs 59.2 at −16; 21.8 vs 28.6 at −4; identical
+  at −10 by construction). The preset doc now says MUST recalibrate
+  off-plane; **level-adaptive centering is the filed follow-up** for
+  level-varying rigs.
+- **Material-shape robustness passed cleanly**: CSS-calibrated
+  constants on white noise measure 39.03 vs 39.02 recalibrated — the
+  calibration captures level moments, not CSS structure. The
+  overfitting risk was level, not material.
+- **Seed/geometry robustness passed**: the headline chain row across
+  four structure seeds spans 43.8..46.0 dB, and a hostile geometry
+  (0.5 m mount, 0.95 ground reflectance, −10 dB structure) reads
+  43.9 — every pinned gate holds with >= 2.8 dB headroom.
+
+**What the audit did NOT find:** any correctness defect in the core
+branch update path — the (b, p) extension, empty-spec bit-identity,
+ring/stride indexing and gate arithmetic all held under line-level
+review; and the two Stage 3/2 filed observations (16 kHz branch clean
+cost at the certified geometry, clean-drive onset residual) remain
+open items, unchanged by the audit.
+
 ## 9. Open decisions (for Tim)
 
 - **Default basis family** — B2 vs B3 is a philosophy call if the
