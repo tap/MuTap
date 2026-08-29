@@ -612,6 +612,83 @@ default-off with gates (parity trio + the static-level and step rows
 pinned measured-first) + HANDOFF; S3 the exposure decision — see
 §9 addendum below.
 
+### 6.7 ADVERSARIAL AUDIT OF THIS PLAN (measured; plan amended below)
+
+Tim's directive before implementation: attack the plan down to the
+physics. Three counter-experiments ran (25 s runs, 48 kHz, erl −20,
+moderate drive; suppression over the plan's original window 4..8.4 s
+["early"] and 18..25 s ["late"], plus the A-weighted send residual
+over the tail):
+
+    level  variant   early    late    residual dBm0(A)
+    −16    pinned    43.4     45.6    −40.4
+    −16    oracle    59.2     56.8    −50.9
+    −16    loudcal   40.4     44.7    −41.0
+    −10    pinned    44.4     44.0    −33.3
+    −10    loudcal   34.3     35.7    −26.1
+    −4     pinned    21.8     26.4    −13.6
+    −4     oracle    28.6     28.6    −15.4
+
+**What survived attack.** The off-plane penalty at the QUIET side is
+a genuine steady-state loss, not a transient: the representability
+argument (mis-centering only adds a component along x, and
+Span{x, φ+δx} = Span{x, φ}, so a joint estimator loses nothing) is
+true but does not rescue the diagonal update — the late window still
+shows an 11 dB ratio gap at −16. The mechanism is persistent
+misadjustment from cross-channel gain competition (the TCLwdt
+weight-motion family), not slow convergence. The closed-form scaling
+laws and the DT-immunity of a reference-side statistic also survived.
+
+**What fell.**
+1. **The value was framed in the wrong units.** In ABSOLUTE send
+   residual — the product quantity — the quiet side is
+   self-forgiving: pinned at −16 already reads −40.4 dBm0(A), seven
+   dB QUIETER than the on-plane operating point, because the echo
+   scales down with the program. The oracle's 10.5 dB there polishes
+   a corner that does not bind. At the LOUD side, where residual
+   genuinely worsens (−13.6), the early-window 6.8 dB gap mostly
+   closes by itself (late: 2.2 dB) — the oracle chiefly buys
+   SETTLING SPEED after arriving at a loud level, and ~2 dB steady.
+2. **Alternative F (calibrate at the loud edge) is measured dead**:
+   −4-calibrated constants cost 8.3 dB at the plane (44.0 → 35.7
+   late). Quiet-side forgiveness is not symmetric in calibration
+   error.
+3. **The plan built an estimator for a control input.** Every real
+   rig KNOWS its playback level — volume is set upstream of the
+   (post-processing) reference tap the house doctrine already
+   mandates. A `set_reference_level()` API applying the exact laws
+   (alternative G, absent from the original plan) achieves the FULL
+   oracle line deterministically — the oracle rows above ARE its
+   measured performance, since set_level_dbm0 is pure scaling — with
+   zero estimation hazards. The ŝ tracker is only needed by rigs
+   that cannot plumb their own volume, and it carries all the
+   hazards for the smaller remainder.
+4. **Two defects in the tracker half as specified**: (a) a
+   calibration-convention mismatch — the constants are calibrated on
+   whole-material RMS but an activity-gated tracker measures active
+   RMS, +1.74 dB apart on the CSS (measured, active fraction 0.67),
+   so "bit-identical at the plane" fails once the tracker converges
+   unless level_ref is defined in the tracker's own statistic; and
+   (b) the on-plane cost test was too kind — ŝ rides the program's
+   own phrase-scale envelope continuously (and A2's two terms scale
+   differently in ŝ, so ŝ motion morphs the branch signal — a
+   partial path change, not a gain change), so the honest on-plane
+   row is envelope-wandering material at fixed volume, not steady
+   CSS.
+
+**Amended recommendation.** (i) If Stage 6 proceeds: G-FIRST —
+land `set_reference_level(s)` applying the closed-form laws (small
+RT-safe API, deterministic, gated by the identity set_level ≡
+level-matched recalibration), and demote the ŝ tracker to an
+optional follow-on for volume-blind rigs, with the convention fix
+and the envelope-wander row added to its battery. (ii) It is equally
+defensible to DEFER Stage 6 entirely: the absolute-residual analysis
+says the binding outdoor problem is the loud edge, where even the
+oracle only reaches 28.6 dB — basis saturation, which is the
+device-trained suppressor's territory (the DtImdFloor gate), not
+calibration's. Level adaptation polishes; the suppressor attacks the
+bottleneck.
+
 ## 9. Open decisions (for Tim)
 
 - **Default basis family** — B2 vs B3 is a philosophy call if the
