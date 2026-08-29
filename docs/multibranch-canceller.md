@@ -407,6 +407,22 @@ vs 207.5 µs at 48 kHz f64) — the short geometry pays for the branches
 almost exactly, and the suppressor term is unchanged. The remaining
 Stage 4 item deferred to the M55 milestone as planned: the icount
 ratchet rows.
+
+**Post-audit addendum — the ratchet caught what nothing else did.**
+The existing M55 icount CI gate flagged the chain workload at
++4.25/+4.92% instructions (gate 3 %) with EMPTY branch spec — while
+the byte-identical dump, the full test suite, x86 wall-clock bench and
+the Hexagon icount rows (+0.10/+0.14 %) all read clean, and the
+standalone fdkf workload moved 0.02 %. Mechanism: the branch loops
+written inline in process_block shifted GCC-arm's -O3 codegen for the
+inlined-into-aec_chain context. Fix, reproduced and verified locally
+under QEMU/MPS3: the four branch sections extracted into
+MUTAP_NOINLINE private methods behind `if (!branches.empty())` —
+chain rows back to +0.01/+0.00 % against the UNCHANGED baselines (no
+re-record), dump still byte-identical to the pre-branch baseline,
+branches-on batteries unchanged. Lesson recorded: on the deployment
+target, code SIZE in the hot path is behavior, and only the
+per-target instruction ratchet sees it.
 - **Stage 5 — externals.** `mutap.aec~` branch attributes + help/ref,
   the submodule dance, after the core proves out.
 

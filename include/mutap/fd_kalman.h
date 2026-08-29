@@ -15,6 +15,20 @@
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
 
+// Branch processing is kept OUT of process_block's hot path on purpose,
+// and not just as tidiness: with the branch loops written inline, the
+// mere presence of the (never-executed, empty-spec) code shifted GCC's
+// -O3 codegen for the M55 chain workload by +4.3/+4.9% instructions —
+// caught by the icount ratchet; fdkf standalone moved 0.02%. noinline
+// keeps the extracted branch bodies from being inlined straight back
+// (GCC inlines functions called once regardless of size), restoring the
+// empty-spec caller to its certified shape.
+#if defined(_MSC_VER)
+#define MUTAP_NOINLINE __declspec(noinline)
+#else
+#define MUTAP_NOINLINE __attribute__((noinline))
+#endif
+
 namespace tap::mu {
 
     /// Partitioned-block frequency-domain Kalman filter (after Enzner & Vary
@@ -421,29 +435,8 @@ namespace tap::mu {
             }
             m_fft.forward_inplace(u_new);
 
-            // Extra branches: slide each branch's phi(x) window (the
-            // memoryless basis commutes with overlap-save, so phi runs
-            // once per new sample) and take the newest block spectrum.
-            // Branch j's window is filled before branch j+1 reads it for
-            // the Gram-Schmidt chain term.
-            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
-                const auto& br = m_cfg.branches[j];
-                Sample*     w  = m_bwin[j].data();
-                std::memmove(w, w + b, b * sizeof(Sample));
-                for (size_t i = 0; i < b; ++i) {
-                    w[b + i] = br.eval(input[i]);
-                }
-                if (j > 0 && br.chain != Sample(0)) {
-                    const Sample* wp = m_bwin[j - 1].data();
-                    for (size_t i = 0; i < b; ++i) {
-                        w[b + i] -= br.chain * wp[b + i];
-                    }
-                }
-                const size_t pj = branch_partitions(j);
-                m_bhead[j]      = (m_bhead[j] + 1) % pj;
-                Sample* bu      = &m_bu[j][m_bhead[j] * m_n];
-                std::memcpy(bu, w, m_n * sizeof(Sample));
-                m_fft.forward_inplace(bu);
+            if (!m_cfg.branches.empty()) {
+                branch_gather(input);
             }
 
             // Excitation-novelty discount: per-bin coherence between this
@@ -483,12 +476,8 @@ namespace tap::mu {
                 const Sample* u = &m_u[((m_head + p_n - p) % p_n) * m_n];
                 detail::packed_mac(u, &m_h[p * m_n], m_accum.data(), m_n);
             }
-            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
-                const size_t pj = branch_partitions(j);
-                for (size_t p = 0; p < pj; ++p) {
-                    const Sample* u = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
-                    detail::packed_mac(u, &m_bh[j][p * m_n], m_accum.data(), m_n);
-                }
+            if (!m_cfg.branches.empty()) {
+                branch_accumulate();
             }
             m_fft.inverse(m_accum.data(), m_time.data());
             for (size_t i = 0; i < b; ++i) {
@@ -583,26 +572,8 @@ namespace tap::mu {
             // weighted excitation, which is the whole point of doing the
             // MISO extension inside the Kalman rather than running
             // parallel filters on a shared error.
-            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
-                const size_t pj = branch_partitions(j);
-                for (size_t p = 0; p < pj; ++p) {
-                    const Sample* u  = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
-                    const Sample* h  = &m_bh[j][p * m_n];
-                    Sample*       pp = &m_bp[j][p * (half + 1)];
-
-                    pp[0]    = a2 * pp[0] + q_gain * h[0] * h[0];
-                    pp[half] = a2 * pp[half] + q_gain * h[1] * h[1];
-                    m_denom[0] += u[0] * u[0] * pp[0];
-                    m_denom[half] += u[1] * u[1] * pp[half];
-                    for (size_t k = 1; k < half; ++k) {
-                        const Sample hr = h[2 * k];
-                        const Sample hi = h[2 * k + 1];
-                        pp[k]           = a2 * pp[k] + q_gain * (hr * hr + hi * hi);
-                        const Sample ur = u[2 * k];
-                        const Sample ui = u[2 * k + 1];
-                        m_denom[k] += (ur * ur + ui * ui) * pp[k];
-                    }
-                }
+            if (!m_cfg.branches.empty()) {
+                branch_predict(a2, q_gain);
             }
 
             // Correct: per bin and partition, gain g = P_p / denom;
@@ -643,6 +614,114 @@ namespace tap::mu {
             // Extra branches: the identical correct step per (branch,
             // partition), gradient constraint included; the shared
             // denominator above already carries every branch's term.
+            if (!m_cfg.branches.empty()) {
+                branch_correct();
+            }
+
+            // Track the near-end PSD from the residual (post-update: the
+            // denominator above used the estimate from before this block).
+            const Sample beta     = m_cfg.noise_smoothing;
+            const Sample one_beta = Sample(1) - beta;
+            m_psi_s[0]            = beta * m_psi_s[0] + one_beta * m_espec[0] * m_espec[0];
+            m_psi_s[half]         = beta * m_psi_s[half] + one_beta * m_espec[1] * m_espec[1];
+            for (size_t k = 1; k < half; ++k) {
+                const Sample er = m_espec[2 * k];
+                const Sample ei = m_espec[2 * k + 1];
+                m_psi_s[k]      = beta * m_psi_s[k] + one_beta * (er * er + ei * ei);
+            }
+        }
+
+        /// Copy the current filter estimate as a time-domain impulse response
+        /// of filter_length() taps. Allocation-free (uses internal scratch).
+        void copy_impulse_response(Sample* dest) noexcept {
+            const size_t b = m_cfg.block_size;
+            for (size_t p = 0; p < m_cfg.partitions; ++p) {
+                m_fft.inverse(&m_h[p * m_n], m_time.data());
+                for (size_t i = 0; i < b; ++i) {
+                    dest[p * b + i] = m_time[i];
+                }
+            }
+        }
+
+      private:
+        // ------------------------------------------------ branch sections
+        //
+        // The four multi-branch pieces of process_block, out-of-line and
+        // MUTAP_NOINLINE (the measured why is at the macro's definition).
+        // Statement-for-statement the code the caller used to hold, so
+        // branches-on numerics are unchanged.
+
+        /// Slide each branch's phi(x) window (the memoryless basis
+        /// commutes with overlap-save, so phi runs once per new sample)
+        /// and take the newest block spectrum. Branch j's window is
+        /// filled before branch j+1 reads it for the GS chain term.
+        MUTAP_NOINLINE void branch_gather(const Sample* input) noexcept {
+            const size_t b = m_cfg.block_size;
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const auto& br = m_cfg.branches[j];
+                Sample*     w  = m_bwin[j].data();
+                std::memmove(w, w + b, b * sizeof(Sample));
+                for (size_t i = 0; i < b; ++i) {
+                    w[b + i] = br.eval(input[i]);
+                }
+                if (j > 0 && br.chain != Sample(0)) {
+                    const Sample* wp = m_bwin[j - 1].data();
+                    for (size_t i = 0; i < b; ++i) {
+                        w[b + i] -= br.chain * wp[b + i];
+                    }
+                }
+                const size_t pj = branch_partitions(j);
+                m_bhead[j]      = (m_bhead[j] + 1) % pj;
+                Sample* bu      = &m_bu[j][m_bhead[j] * m_n];
+                std::memcpy(bu, w, m_n * sizeof(Sample));
+                m_fft.forward_inplace(bu);
+            }
+        }
+
+        /// Branch filtering contributions into the shared output-spectrum
+        /// accumulator.
+        MUTAP_NOINLINE void branch_accumulate() noexcept {
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const size_t pj = branch_partitions(j);
+                for (size_t p = 0; p < pj; ++p) {
+                    const Sample* u = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
+                    detail::packed_mac(u, &m_bh[j][p * m_n], m_accum.data(), m_n);
+                }
+            }
+        }
+
+        /// Branch predict step: age each (branch, partition) covariance
+        /// plane and add its term to the shared innovation denominator.
+        MUTAP_NOINLINE void branch_predict(Sample a2, Sample q_gain) noexcept {
+            const size_t half = m_cfg.block_size;
+            for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
+                const size_t pj = branch_partitions(j);
+                for (size_t p = 0; p < pj; ++p) {
+                    const Sample* u  = &m_bu[j][((m_bhead[j] + pj - p) % pj) * m_n];
+                    const Sample* h  = &m_bh[j][p * m_n];
+                    Sample*       pp = &m_bp[j][p * (half + 1)];
+
+                    pp[0]    = a2 * pp[0] + q_gain * h[0] * h[0];
+                    pp[half] = a2 * pp[half] + q_gain * h[1] * h[1];
+                    m_denom[0] += u[0] * u[0] * pp[0];
+                    m_denom[half] += u[1] * u[1] * pp[half];
+                    for (size_t k = 1; k < half; ++k) {
+                        const Sample hr = h[2 * k];
+                        const Sample hi = h[2 * k + 1];
+                        pp[k]           = a2 * pp[k] + q_gain * (hr * hr + hi * hi);
+                        const Sample ur = u[2 * k];
+                        const Sample ui = u[2 * k + 1];
+                        m_denom[k] += (ur * ur + ui * ui) * pp[k];
+                    }
+                }
+            }
+        }
+
+        /// Branch correct step, gradient constraint included — identical
+        /// per (branch, partition) to the main partitions' correct step.
+        MUTAP_NOINLINE void branch_correct() noexcept {
+            const size_t b    = m_cfg.block_size;
+            const size_t half = b;
             for (size_t j = 0; j < m_cfg.branches.size(); ++j) {
                 const size_t pj = branch_partitions(j);
                 for (size_t p = 0; p < pj; ++p) {
@@ -679,33 +758,8 @@ namespace tap::mu {
                     }
                 }
             }
-
-            // Track the near-end PSD from the residual (post-update: the
-            // denominator above used the estimate from before this block).
-            const Sample beta     = m_cfg.noise_smoothing;
-            const Sample one_beta = Sample(1) - beta;
-            m_psi_s[0]            = beta * m_psi_s[0] + one_beta * m_espec[0] * m_espec[0];
-            m_psi_s[half]         = beta * m_psi_s[half] + one_beta * m_espec[1] * m_espec[1];
-            for (size_t k = 1; k < half; ++k) {
-                const Sample er = m_espec[2 * k];
-                const Sample ei = m_espec[2 * k + 1];
-                m_psi_s[k]      = beta * m_psi_s[k] + one_beta * (er * er + ei * ei);
-            }
         }
 
-        /// Copy the current filter estimate as a time-domain impulse response
-        /// of filter_length() taps. Allocation-free (uses internal scratch).
-        void copy_impulse_response(Sample* dest) noexcept {
-            const size_t b = m_cfg.block_size;
-            for (size_t p = 0; p < m_cfg.partitions; ++p) {
-                m_fft.inverse(&m_h[p * m_n], m_time.data());
-                for (size_t i = 0; i < b; ++i) {
-                    dest[p * b + i] = m_time[i];
-                }
-            }
-        }
-
-      private:
         Sample inst_floor(Sample psi, Sample inst_e2) const noexcept {
             const Sample psi_eff =
                 (inst_e2 > m_cfg.transient_floor_ratio * psi && m_cfg.transient_floor_ratio > Sample(0)) ? inst_e2
