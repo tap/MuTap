@@ -63,9 +63,12 @@
 //   Mic clipping (erl -20 linear, full-scale ADC, echo at +10 dBm0):
 //   52 % of echo samples beyond full scale; suppression 26.6 (48k) /
 //   24.5 (16k) vs 58.8/58.6 unclipped. A ~32 dB loss with no
-//   nonlinearity in the speaker at all — the case for input gain
-//   staging plus a clip guard (freeze adaptation on saturated blocks,
-//   the narrowband-guard discipline) in the departure work.
+//   nonlinearity in the speaker at all. RESOLVED by the follow-up
+//   severity study (MicClipSeverity below): the hard clip guard this
+//   banner originally proposed was built, measured and REJECTED —
+//   harmful at every severity; the measured answers are input gain
+//   staging and the core's existing transient floor (never negative,
+//   +7.3 dB at the 16 kHz heavy-clipping point).
 
 #include <algorithm>
 #include <cmath>
@@ -423,6 +426,70 @@ namespace {
             EXPECT_GT(pct, 45.0) << "fs " << rs.fs; // measured 52.2 / 52.9
             EXPECT_LT(pct, 60.0) << "fs " << rs.fs;
             EXPECT_GE(r.suppression_db, rs.fs == 48000.0 ? 23.0 : 21.0) << "fs " << rs.fs;
+        }
+    }
+
+    // Mic-overload severity characterization + the REJECTED clip guard
+    // (Rev 6 follow-up (c), resolved by measurement). ADC ceilings
+    // {2.2, 3.1, 4.4, 6.2} against the +10 dBm0 echo (RMS 2.2) give
+    // clipped-sample fractions {29.9, 16.6, 7.2, 1.8} %; certified
+    // chain, stock vs transient_floor_ratio 8 (the core's existing SOFT
+    // overload mechanism):
+    //
+    //   48 kHz  stock/floor8: 23.5/24.0  24.4/24.7  20.8/21.2  29.3/29.8
+    //   16 kHz  stock/floor8: 14.6/21.9  15.6/16.1  19.0/19.6  27.2/27.7
+    //
+    // REJECTED DESIGN, recorded with its numbers: a hard clip guard in
+    // the core (skip the block's adaptation when the mic block holds
+    // clipped samples — the narrowband-guard discipline) was built and
+    // measured across this sweep, and it is HARMFUL at every severity:
+    // 4.4/5.8/6.7/29.0 dB at 48 kHz, 13.0/0.4/0.8/26.4 at 16 kHz.
+    // Two mechanisms, both visible above: (1) clipping concentrates in
+    // exactly the information-bearing blocks (the CSS active segments),
+    // so the freeze starves adaptation of all excitation while Psi_s
+    // was already soft-absorbing the clipping distortion per bin; and
+    // (2) the suppression FLOOR under mic overload is the clipping
+    // distortion in the send path itself, which no adaptation policy
+    // can remove — at 1.8 % clipping every policy converges to ~29 dB
+    // (a perfect filter has the same ceiling). The measured answers:
+    // input gain staging (headroom is a design input in a known-
+    // geometry rig), and transient_floor_ratio 8 for deployments that
+    // expect overload — never negative on this battery and +7.3 dB at
+    // the 16 kHz heavy-clipping point.
+    TEST(OutdoorBaseline, MicClipSeverity) {
+        const std::initializer_list<double> ceilings = {2.2, 3.1, 4.4, 6.2};
+        for (const auto& rs : required_rates()) {
+            size_t i = 0;
+            for (const double ceil : ceilings) {
+                const auto p = make_outdoor_path(rs.fs, rs.taps, -20.0);
+                const auto x = far_end(rs, 8.4);
+
+                double stock = 0.0;
+                for (const bool floor8 : {false, true}) {
+                    auto cfg = chain_config<double>(rs);
+                    if (floor8) {
+                        cfg.canceller.transient_floor_ratio = 8.0;
+                    }
+                    tap::mu::aec_chain<double> chain(cfg);
+                    auto                       sim = make_sim(p, rs.block, ceil);
+                    auto                       r   = run_outdoor(sim, &chain, x, x, nullptr, blocks_at(4.0, rs));
+                    ASSERT_TRUE(r.finite) << "fs " << rs.fs << " ceil " << ceil << " floor8 " << floor8;
+                    if (!floor8) {
+                        stock = r.suppression_db;
+                        EXPECT_GE(stock, at(rs, {20.5, 21.5, 18.0, 26.5}, {11.5, 12.5, 16.0, 24.0}, i))
+                            << "fs " << rs.fs << " ceil " << ceil;
+                    }
+                    else {
+                        EXPECT_GE(r.suppression_db, at(rs, {21.0, 21.5, 18.0, 27.0}, {18.5, 13.0, 16.5, 24.5}, i))
+                            << "fs " << rs.fs << " ceil " << ceil;
+                        // The soft floor never loses to stock (the claim
+                        // that resolved follow-up (c); 1 dB slack for
+                        // trajectory chaos).
+                        EXPECT_GE(r.suppression_db, stock - 1.0) << "fs " << rs.fs << " ceil " << ceil;
+                    }
+                }
+                ++i;
+            }
         }
     }
 

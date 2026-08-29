@@ -680,9 +680,19 @@ shape robust (white noise: 39.03 vs 39.02) and seed/geometry robust
 correctness defect found in the core branch update path;* (b) a device-trained
 nn_suppressor (tools/ml pipeline + outdoor materials: distorted-drive
 datasets, wind) — the chain-minus-raw gap (2..4 dB) is what it must
-widen; (c) a clip guard in the core (freeze adaptation on saturated
-blocks, decay-not-reset release — the narrowband-guard discipline),
-default OFF, preset-enabled; (d) a short-geometry outdoor preset
+widen; (c) a clip guard in the core — *RESOLVED BY MEASUREMENT AS A
+REJECTION (tests/test_outdoor.cpp MicClipSeverity carries the table
+and the mechanism): the hard block-freeze guard was built and
+measured HARMFUL at every clip severity (down to 0.4 dB at 16 kHz /
+16 % clipped) — clipping concentrates in exactly the information-
+bearing blocks, and the suppression floor under overload is the
+clipping distortion in the SEND PATH, which no adaptation policy can
+remove (at 1.8 % clipping every policy converges to ~29 dB; a
+perfect filter has the same ceiling). Psi_s was already soft-
+absorbing the corruption. The measured answers: input gain staging,
+and transient_floor_ratio 8 for overload-prone rigs (never negative
+on the battery, +7.3 dB at the 16 kHz heavy-clipping point — gated).
+The core knob was reverted, not kept;* (d) a short-geometry outdoor preset
 (fewer partitions for the 7 ms path — less null space, the block-128
 family of pathologies never enters); (e) the noise-tracker semantics
 revisit already filed by the TVP/hangover margins, which wind now also
