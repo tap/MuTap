@@ -130,6 +130,16 @@ MutapAec* mutap_aec_create(size_t block_size, size_t partitions, double sample_r
  * with mutap_aec_create's. */
 MutapAec* mutap_aec_create_nn(size_t block_size, size_t partitions, double sample_rate, int comfort_noise,
                               int receive_guard, const char* weights_path);
+/* The OUTDOOR CLOSE-RANGE chain (tap::mu::aec_chain_outdoor_preset):
+ * loudspeaker within an inch of the mic, in the open — short filter
+ * geometry (the preset owns the partition count; the path is ~8 ms by
+ * physics) plus the multi-branch nonlinear-basis canceller that models
+ * the loudspeaker's own distortion (docs/multibranch-canceller.md has
+ * every measured number and the limits: branch calibration is pinned at
+ * a -10 dBm0 far-end operating plane and is level-sensitive off-plane;
+ * notebooks/outdoor_bringup.ipynb is the recalibration recipe). Handles
+ * are interchangeable with mutap_aec_create's. */
+MutapAec* mutap_aec_create_outdoor(size_t block_size, double sample_rate, int comfort_noise, int receive_guard);
 void      mutap_aec_destroy(MutapAec* h);
 
 /* One block: x = far-end reference (to the loudspeaker), y = microphone,

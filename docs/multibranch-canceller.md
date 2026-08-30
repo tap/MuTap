@@ -676,7 +676,28 @@ laws and the DT-immunity of a reference-side statistic also survived.
    row is envelope-wandering material at fixed volume, not steady
    CSS.
 
-**Amended recommendation.** (i) If Stage 6 proceeds: G-FIRST —
+**DISPOSITION (settled with Tim): Stage 6 is DEFERRED, and the
+bring-up recipe replaces its near-term purpose.** The device does not
+exist yet — the "device" is the Rev 6 simulator — so the operative
+gap was never in-field level adaptation but the TRANSFER path: how a
+real rig's constants get derived when it arrives.
+`notebooks/outdoor_bringup.ipynb` (built by
+`tools/notebook/build_outdoor_bringup.py`) is that recipe: it plays a
+full bring-up measurement session against the simulated device
+(quiet sweep, stepped tones, program material), derives the path,
+the nonlinearity model and all five branch constants from those
+recordings alone, verifies end-to-end through the real library via
+the C ABI (`mutap_aec_create_outdoor`), and re-runs unchanged against
+real-device recordings by pointing `MUTAP_BRINGUP_DATA` at them.
+Because §4 of that recipe calibrates AT THE DEVICE'S OWN OPERATING
+PLANE, the audit's level-sensitivity finding is answered at bring-up
+by construction — which is exactly the regime the audit said the
+tracker was over-engineering for. Stage 6 revives only if a shipped
+rig turns out to vary its playback level in service AND cannot
+report it; the G-first API below stays the first move if so.
+
+**Amended recommendation (retained for that contingency).** (i) If
+Stage 6 proceeds: G-FIRST —
 land `set_reference_level(s)` applying the closed-form laws (small
 RT-safe API, deterministic, gated by the identity set_level ≡
 level-matched recalibration), and demote the ŝ tracker to an

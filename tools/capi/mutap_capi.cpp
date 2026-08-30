@@ -283,6 +283,23 @@ MutapAec* mutap_aec_create_nn(size_t block_size, size_t partitions, double sampl
     }
 }
 
+MutapAec* mutap_aec_create_outdoor(size_t block_size, double sample_rate, int comfort_noise, int receive_guard) {
+    try {
+        if (sample_rate <= 0.0) {
+            return nullptr;
+        }
+        auto cfg                     = tap::mu::aec_chain_outdoor_preset<double>(block_size, sample_rate);
+        cfg.postfilter.comfort_noise = comfort_noise != 0;
+        if (receive_guard == 0) {
+            cfg.guard_attenuation_db = 0.0;
+        }
+        return new MutapAec{tap::mu::aec_chain<double>(cfg)};
+    }
+    catch (...) {
+        return nullptr;
+    }
+}
+
 void mutap_aec_destroy(MutapAec* h) {
     delete h;
 }

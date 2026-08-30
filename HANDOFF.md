@@ -661,7 +661,27 @@ ignored: the preset owns the short geometry); @gate/@comfort compose
 unchanged, ignored with a console notice otherwise; maxref, help
 patcher row, README and the attribute-default test updated; MuTap
 submodule re-pinned to this branch's head (re-pin to main tip after
-the MuTap PR rebase-merges, working note 6). ADVERSARIAL AUDIT DONE (Tim's
+the MuTap PR rebase-merges, working note 6). DEVICE BRING-UP RECIPE DELIVERED — the device does not exist yet
+(the "device" is the Rev 6 simulator), so the operative gap was the
+TRANSFER path, not in-field adaptation: `tools/notebook/
+build_outdoor_bringup.py` -> `notebooks/outdoor_bringup.ipynb` plays
+a full bring-up session against the simulated device (quiet sweep,
+stepped tones, program material via the new `bringup_dump`), derives
+the path, the nonlinearity model and all five branch constants from
+those recordings alone, and verifies end-to-end through the real
+library via the C ABI's new `mutap_aec_create_outdoor`. Re-runs
+unchanged on real-device recordings via `MUTAP_BRINGUP_DATA`.
+Measured on the simulator: path support 1.92 ms (fits the 10.7 ms
+preset span), sweep deconvolution -52.9 dB IN-BAND (and -6.8 dB
+above 20 kHz where the sweep has no energy — the recipe reports
+both, since a single full-band figure would mislead), fitted tanh
+knee 2.65 vs truth 2.50, all five constants within 0.01 % of the
+pinned preset, chain 44.4 dB vs the certified chain's 19.3 (the
+gated rows exactly). STAGE 6 (level-adaptive centering) DEFERRED as
+a consequence: the recipe calibrates at the device's own operating
+plane, which answers the audit's level-sensitivity finding at
+bring-up by construction; it revives only for a shipped rig that
+varies playback level in service AND cannot report it. ADVERSARIAL AUDIT DONE (Tim's
 directive, before externals) — full record in the doc's "Stage 5
 (out of order)" section. Code review: 4 findings, all fixed (a
 -Werror CI break; the preset's FALSE "novelty always on" claim at

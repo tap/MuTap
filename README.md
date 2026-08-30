@@ -273,6 +273,25 @@ algorithmically complete. What exists today:
   [`tools/ml/README.md`](tools/ml/README.md) and the executed notebooks
   [`notebooks/ml_aec_comparison.ipynb`](notebooks/ml_aec_comparison.ipynb) /
   [`notebooks/aec_head_to_head.ipynb`](notebooks/aec_head_to_head.ipynb).
+- **Outdoor close-range AEC** — a loudspeaker within an inch of the mic,
+  in the open: negative ERL, no reverb tail, and a transducer that
+  distorts at outdoor levels. `tap::mu::aec_chain_outdoor_preset` pairs
+  the short filter geometry the physics dictates with a **multi-branch
+  nonlinear-basis canceller** that models the loudspeaker's own
+  distortion products — measured against a ~1 % THD speaker, the send
+  residual improves from −18 to −43 dBm0(A), and permanent-double-talk
+  residual echo drops from 20 dB above the near-end talker to the
+  talker's level, at the same CPU cost as the certified chain
+  ([`docs/multibranch-canceller.md`](docs/multibranch-canceller.md) has
+  the design, every measured number, and an adversarial audit of both).
+  The preset is **device-calibrated**, so
+  [`notebooks/outdoor_bringup.ipynb`](notebooks/outdoor_bringup.ipynb) is
+  the transfer recipe: it runs a full bring-up measurement session
+  against the simulated device (sweep → path, stepped tones →
+  nonlinearity model, program material → branch constants, then
+  end-to-end through the C ABI) and **re-runs unchanged against a real
+  device's recordings** by pointing `MUTAP_BRINGUP_DATA` at them.
+  In Max: `mutap.aec~ @postfilter 1 @outdoor 1`.
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
