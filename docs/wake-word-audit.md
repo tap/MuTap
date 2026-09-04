@@ -2,7 +2,10 @@
 
 *Audit, rev 1 — 4 September 2026, of [`wake-word-plan.md`](wake-word-plan.md)
 rev 1 and its companion [briefing](wake-word-briefing.md). Nothing in the plan
-was changed by this audit; every amendment below is a recommendation for rev 2.*
+was changed by this audit; every amendment below is a recommendation for rev 2.
+Rev 2 of the plan, carrying all fourteen, landed alongside this document; its
+milestone numbers shifted (rev 1's M2–M7 are rev 2's M3–M8, and the "M1.5"
+proposed below became M2).*
 
 Formatted version: <https://claude.ai/code/artifact/16e51831-e360-4475-af97-5af77cd3926e>
 

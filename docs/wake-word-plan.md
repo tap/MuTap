@@ -1,8 +1,11 @@
 # Building `mutap.wake~` — implementation proposal
 
-*Proposal, rev 1 — 4 September 2026. **Nothing committed beyond this document:**
+*Proposal, rev 2 — 4 September 2026. **Nothing committed beyond this document:**
 no code written, no repository changed apart from these docs. Background and
-corpus survey in [`wake-word-briefing.md`](wake-word-briefing.md).*
+corpus survey in [`wake-word-briefing.md`](wake-word-briefing.md). Rev 2
+carries every amendment from the [adversarial audit](wake-word-audit.md) of
+rev 1; the audit refers to rev 1's milestone numbers, and the mapping is given
+in §6.*
 
 Formatted version: <https://claude.ai/code/artifact/341309d6-52dc-4d86-896c-2bcdd9534163>
 
@@ -15,362 +18,527 @@ Formatted version: <https://claude.ai/code/artifact/341309d6-52dc-4d86-896c-2bcd
 > and shipping one Max external. No new framework, no TFLite Micro dependency,
 > no new repository until a second consumer justifies one.
 
-The bet behind this plan is that **MuTap has already solved the hard
-infrastructure problem**, and solved it for exactly this shape of task.
-`nn_suppressor.h` is a hand-written, allocation-free, `noexcept` GRU running on
-ERB band energies, with its geometry carried as a value in a versioned weights
-header, a Python trainer whose feature module is the declared single source of
-truth, and a parity test pinning the C++ against it. A keyword spotter is the
-same machine with a different head and a different loss.
+The bet behind this plan, stated as the audit corrected it: **MuTap has
+established the patterns and the rigs, not the oracles.** `nn_suppressor.h` is
+a hand-written, allocation-free, `noexcept` GRU running on ERB band energies,
+with its geometry carried as a value in a versioned weights header and a Python
+feature module declared the single source of truth. Those patterns transfer
+directly. What does *not* transfer — because it was never built for the learned
+path — is the verification around it: the suppressor is instantiated only in
+double everywhere it runs, has never executed on the Cortex-M55 rig, has no
+instruction-count scenario, and its parity script is a hand-run, double-only,
+random-weights check outside CI. A keyword spotter is the same machine with a
+different head and a different loss, *once those oracles exist*. Building them
+is a milestone of its own (M2), and it is worth doing whether or not the
+spotter ships, because it is the verification the suppressor should already
+have.
 
-What does *not* exist yet: a mel/PCEN front end, an int8 or DS-CNN inference
-path, a keyword training corpus, and — the piece that actually decides whether
-this works — an evaluation harness measuring false accepts per hour rather than
-accuracy.
+What does not exist yet at all: a mel/PCEN front end, a policy for the host
+sample rate, a streaming convolutional inference path, a keyword corpus with
+honest splits, and — the piece that actually decides whether this works — an
+evaluation harness measuring false accepts per hour with a pass criterion that
+can fail.
 
-The plan sequences those four, deliberately putting the meter before the model.
+The plan sequences those, deliberately putting the oracles before the refactor
+and the meter before the model.
 
 ## 2. Where it lands
 
 ```
-MuTap-Max     mutap.afc~     mutap.aec~     [mutap.wake~]  ← new, M7
-                                  ↑ submodule pin
-MuTap         fd_kalman.h    nn_suppressor.h    [kws.h]    ← new, M5
-              tools/ml  ─────────────────────  [tools/ml/kws]  ← extended, M3
+MuTap-Max     mutap.afc~     mutap.aec~     [mutap.wake~]  ← new, M8
+                                  ↑ submodule pin (transitive to DspTap)
+MuTap         fd_kalman.h    nn_suppressor.h    [kws.h]    ← new, M6
+              tools/ml  ─────────────────────  [tools/ml/kws]  ← extended, M4
                      │            ↑ submodule pin
                      │ refactored onto
                      ↓
-DspTap        fft.h    yin.h    [log_mel.h]   [nn/]
-                                 ↑ new, M1     ↑ promoted, M2
+DspTap        fft.h    yin.h    [log_mel.h]   [nn/]   [decimate.h]
+                                 ↑ new, M1     ↑ promoted, M3   ↑ new, M1 (if M0 picks it)
 ```
 
-**The load-bearing move is the promotion.** M2 lifts the dense/GRU arithmetic
+**The load-bearing move is the promotion.** M3 lifts the dense/GRU arithmetic
 out of `nn_suppressor.h` into a shared `tap::dsp::nn` and refactors the
-suppressor to consume it — so the spotter inherits kernels a shipping, tested
-object already exercises, and the family gains one inference substrate instead
-of two. This is the same promotion the family has already run three times:
-`fft.h` out of MuTap and AmbiTap's duplicate copies, `sample_traits.h` from
-SampleRateTap, `yin.h` out of the TapTools pitchaccum kernel.
+suppressor to consume it — so the spotter inherits kernels a shipping object
+exercises, and the family gains one inference substrate instead of two. This is
+the same promotion the family has already run three times: `fft.h` out of MuTap
+and AmbiTap's duplicate copies, the FIR substrate from SampleRateTap, `yin.h`
+out of the TapTools pitchaccum kernel.
 
-Two of the three new pieces (M1, M2) belong unambiguously in DspTap, which is
-what makes the repository question for the third low-stakes: M1 and M2 are
-correct under every option, so nothing blocks on deciding where the spotter
-itself lives.
+The promotion implies a three-repo sequence — DspTap PR, MuTap pin bump,
+MuTap-Max pin bump (MuTap-Max reaches DspTap only transitively through MuTap)
+— and an ownership rule: the weights format, its loader and dimension
+validation stay MuTap-owned; DspTap holds only arithmetic over caller-provided
+spans. MUNN0002 images are unaffected.
 
-TapTools is the wrong home and worth ruling out explicitly: its charter is
-musical, object-level kernels, and a keyword spotter is neither.
+M1 and M3 belong unambiguously in DspTap, which is what keeps the repository
+question for the spotter itself low-stakes. TapTools is the wrong home and
+worth ruling out explicitly: its charter is musical, object-level kernels, and a
+keyword spotter is neither.
 
 ## 3. What already exists, and what it saves
 
+Read from the checkouts, with the audit's corrections applied.
+
 | Existing asset | What it does today | Role for the spotter |
 |---|---|---|
-| `nn_suppressor.h` | Dense → GRU → dense, float32, allocation-free, noexcept, geometry carried by the weights | The inference kernels, promoted in M2. The spotter is a different head on the same arithmetic. |
-| `nn_geometry` / MUNN0002 | Model geometry as a value, validated at load; one inference path serves 16 kHz hop-64 and 48 kHz hop-256 | Copy the pattern verbatim for `kws_geometry` and a `MUKW0001` header. Retraining at a new geometry must not require a code change. |
-| `tools/ml/features.py` | Declared single source of truth for band definitions and normalization | The precedent to copy for KWS features — and the discipline that makes the parity test meaningful. |
-| `tools/ml/test_parity.py` | Pins C++ inference against the Python trainer's output | The single most valuable test in the project. A spotter that disagrees with its trainer fails silently and looks like a data problem. |
-| `tools/ml/README.md` | The licensing map and measured benchmark that justified the hybrid design | The template for M3's dataset card. Same question, same rigour, different corpus. |
-| Cortex-M55 QEMU rig + `scripts/icount.py` | On-target test subset in CI, instruction counting via a QEMU plugin | The embedded profile and its performance ratchet come essentially free in M6. |
-| DspTap `fft.h` backend pattern | Ooura golden model; CMSIS-Helium and vDSP float32 backends re-presenting the exact contract | The mel front end's FFT, and the pattern for any future accelerated kernel. |
-| DspTap `sample_traits.h` | float / Q15 / Q31 format core with documented Q-format ladders | Route to a fixed-point front end for M33-class targets, opt-in per existing convention. |
+| `nn_suppressor.h` | Dense → GRU → dense over ERB band energies; allocation-free, noexcept; geometry carried by the weights. **Instantiated only as `<double>`** in its tests, the parity driver and the shipping external. Every dot product accumulates in `Sample`. | The inference kernels, promoted in M3 *after* M2 gives them a float oracle. The spotter is a different head on the same arithmetic. |
+| `nn_geometry` / MUNN0002 | Model geometry as a value, validated at load; 16 kHz hop-64 and 48 kHz hop-256 served by one inference path. **Validator requires a power-of-two hop.** | Copy the geometry-as-value pattern for `kws_geometry` and a `MUKW0001` header; do *not* copy the hop constraint. Retraining at a new geometry must not require a code change. |
+| `tools/ml/features.py` | Declared single source of truth for band definitions and normalization; documents that streaming-state parity depends on frame alignment. | The precedent for `kws_features.py` — with the ownership boundary of §5 so the two sources of truth cannot disagree. |
+| `tools/ml/test_parity.py` | C++ **double** inference against `nn.py`'s numpy reference, **random weights**, legacy 16 kHz geometry, gain path only, hand-run behind `MUTAP_BUILD_ML_TOOLS=OFF`. Not a CI job. | The shape of the test the spotter needs. M2 turns it into one: CI-run, both profiles, exported trainer weights, shipping geometry. |
+| `tools/ml/README.md` | The licensing map and measured benchmark that justified the hybrid design; files "int8 + CMSIS-NN for the M55 path" as next step. | The template for M4's dataset card, and a roadmap this plan must reconcile with (§5, `tap::dsp::nn`). |
+| Cortex-M55 QEMU rig + `scripts/icount.py` | On-target positive-filter test subset in CI; whole-binary instruction count per scenario with a ±3 % drift gate against `bench/baselines.json` (`fdkf`, `chain` at 16 k and 48 k, on m55 and hexagon). **No learned-path scenario; `NnSuppressor` not in the on-target filter.** | The rig the embedded profile runs on, once M2 adds the learned scenarios. The ratchet is a drift gate; the budget is a separate absolute assertion (§7). |
+| DspTap `fft.h` backend pattern | Ooura golden model; CMSIS-Helium and vDSP float32 backends re-presenting the exact contract, certified by parity tests. | The mel front end's FFT, and the rule for any accelerated NN backend: optional, opt-in, parity-pinned against the scalar golden path. |
+| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The material for a polyphase decimator (M1, if M0 picks that route) and the *convention* for any later Q15 front end — not a fixed-point front end in itself. |
 
-**What this rules out:** no TFLite Micro, no CMSIS-NN dependency, no ONNX
-runtime. The family's demonstrated position is hand-written inference against a
-documented numeric contract, and a spotter is small enough — tens of thousands
-of parameters — that this stays the cheaper option. Importing a runtime would
-also break the M55 and Hexagon story MuTap already has working.
+**What this rules out:** TFLite Micro and ONNX runtime as dependencies. The
+family's demonstrated position is hand-written inference against a documented
+numeric contract, and a spotter is small enough — tens of thousands of
+parameters — that this stays the cheaper option. Accelerated backends (CMSIS-NN,
+Helium intrinsics) are *not* ruled out: they follow the `fft.h` rule — a scalar
+golden kernel, an optional backend behind the same contract, parity tests
+between them — which keeps the suppressor's filed int8 + CMSIS-NN follow-up
+reachable rather than foreclosed.
 
 ## 4. Licensing map
 
 Same exercise `tools/ml/README.md` ran for the suppressor, applied to a wake
-word. Comparable conclusion: every input can be MIT, CC0, CC BY or
-self-generated, provided positives are synthesized rather than borrowed.
+word, corrected by the audit. Conclusion, narrowed: every input can be MIT,
+Apache 2.0, CC0 or CC BY, **provided the TTS voices are lineage-verified** —
+synthetic positives are the least clean input, not the cleanest.
 
 | Component | Licence | Role | Shippable? |
 |---|---|---|---|
-| Speech Commands v2 | CC BY 4.0 | Benchmark; harness bring-up | yes, with attribution |
-| MSWC | CC BY 4.0 | Hard negatives, phonetic near-misses | yes, with attribution |
-| Common Voice | CC0 | Bulk negatives | yes |
+| Speech Commands v2 | CC BY 4.0 | Benchmark; harness bring-up (M5 runs on this first) | yes, with attribution |
+| MSWC | CC BY 4.0; no-reidentification term | Hard negatives, phonetic near-misses. **Force-aligned out of Common Voice** — splits must be speaker-disjoint across both. | yes, with attribution |
+| Common Voice | CC0; no-reidentification term | Bulk negatives | yes |
 | AMI Meeting Corpus | CC BY 4.0 | Conversational negatives | yes, with attribution |
-| MUSAN + OpenSLR SLR28 | CC BY / permissive | Noise and RIR augmentation | yes |
-| Piper + piper-sample-generator | MIT | Synthetic positives | code yes — **verify each voice's upstream corpus licence separately** |
-| openWakeWord / microWakeWord | permissive | Pipeline design reference | yes — we reimplement, share no weights |
+| MUSAN | CC BY 4.0 | Additive noise | yes, with attribution |
+| OpenSLR SLR28 | Apache 2.0 (simulated RIRs); real-RIR subset carries RWCP / REVERB / AIR third-party terms | Reverberation augmentation | simulated subset yes; **real subset only after its upstream terms are checked** |
+| Piper + `piper-sample-generator` | MIT (code); **voice models carry their training corpus's terms** — the two voices the generator documents descend from Blizzard 2013 / Lessac, research-only, excluding speech-recognition products | Synthetic positives, TTS-derived | code yes; **each voice lineage-verified at M0, Lessac-free voices chosen** |
+| openWakeWord / microWakeWord | Apache 2.0 (code); models CC BY-NC-SA 4.0; pre-computed feature sets CC BY-NC with WHAM / CHiME-6 upstream | Design reference only | design yes — **no code, models or feature sets imported**; every feature shard regenerated from manifest audio |
 | Hey Snips, Qualcomm KSD | research / NC | Comparison only, if at all | **no** |
+| Recorded hold-out set | ours; consent and permitted use recorded per talker | The evaluation set | committed only with its consent row |
 | PyTorch | BSD-3 | Trainer | never shipped — inference is dependency-free |
-| Trained spotter weights | ours | The deliverable | yes, if every input above holds |
+| Trained spotter weights | ours, derived from CC BY inputs | The deliverable | yes, **with attribution delivered**: a provenance block in the MUKW payload and a notices file in the Max package |
 
-Patent posture is comparable to the suppressor's: the windowed-classifier +
-posterior-smoothing structure is published academic work from 2014 onward with
-permissively licensed implementations, and the shipped inference would be a few
-tens of thousands of parameters implemented from scratch. As before — not a
-legal opinion; a commercial embedded product still warrants a freedom-to-operate
-review.
+Patent posture: the shipped structure is a single-stage, single-channel
+windowed classifier with posterior smoothing, reimplemented from the published
+literature (Chen, Parada & Heigold 2014 onward) with no imported code and hence
+no Apache patent grant to rely on. The 2014-onward publishers are also the
+field's patent holders, so "comparable to the suppressor's" is not claimed. Not
+a legal opinion; a commercial embedded product still warrants a
+freedom-to-operate review.
 
 ## 5. The numeric contracts to pin
 
-House rule: each header documents its geometry, conventions, normalization and
-latency *as numbers*, and the tests pin them. Changing any of the following is a
-breaking change for every consumer and every trained model.
+House rule (DspTap's wording): geometry fixed at construction, every buffer
+allocated there; processing `noexcept` and allocation-free; each header
+documents its packing, conventions, normalization and latency *as numbers*, and
+the tests pin them. Changing a contract point is a breaking change for every
+consumer and every trained model.
+
+**Ownership rule, so two sources of truth cannot disagree.** `log_mel.h` owns
+the *formula-level* contract: mel scale, filter normalization, window, FFT size
+and zero-padding placement, frame alignment, bin-0 policy, pre-emphasis. Every
+parameter a trainer might tune — band count, fmin/fmax, log floor, affine
+normalization, all PCEN parameters — is *runtime geometry* carried by the MUKW
+weights and validated at load. `kws_features.py` is the source of truth for
+the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
 
 ### `tap::dsp::basic_log_mel<Sample>`
 
-- Frame length, hop, window (sqrt-Hann or Hann — stated, not implied), geometry
-  fixed at construction per the `prepare()`-buys-worst-case rule.
-- Mel scale formula, and whether bands are Slaney- or HTK-normalized. These
-  differ *silently*; a model trained against one and run against the other
-  degrades in a way that looks like a data bug.
-- Filter normalization: unit-area or unit-peak triangles.
-- Log floor and any affine output normalization, as literal constants — the
-  suppressor's `k_log_floor` / `k_shift` / `k_scale` is the pattern.
-- Latency in samples, stated.
-- PCEN's smoother coefficient, gain, bias, power and epsilon, each as a number,
-  with the plain-log path available as the default.
+- Internal sample rate, frame length, hop and FFT size **in samples at that
+  rate** (the reference geometry: 16 kHz, 400 / 160 / 512), with the plain
+  statement that frame ≠ 2·hop and the FFT is zero-padded to a power of two
+  at the *end* of the frame.
+- Streaming alignment: frame *t* ends at the newest sample; no centring, no
+  prepended zero frame. Latency in samples = frame length, stated.
+- Window (Hann or sqrt-Hann — stated), pre-emphasis coefficient (or 0, stated).
+- Mel scale formula; Slaney or HTK normalization; unit-area or unit-peak
+  triangles. These differ *silently*.
+- Bin-0 policy: DC excluded (fmin > 0), stated as a number.
+- Log floor **relative to the sample format**, and the affine normalization —
+  the suppressor's `k_log_floor` / `k_shift` / `k_scale` is the pattern — as
+  runtime parameters with defaults.
+- PCEN: smoother coefficient, gain, bias, power and epsilon as runtime
+  parameters; initial smoother state and `reset()` semantics as a contract
+  point; plain-log as the default path.
+- Float/double cross-precision tolerance as a **measured** number, on a test
+  signal that excites every band.
+
+### `tap::dsp::decimate` *(only if M0 picks the fixed-internal-rate route)*
+
+- Integer ratios 2, 3, 6 (32 k, 48 k, 96 k → 16 k); Kaiser-designed polyphase
+  FIR from `kaiser.h` over `fir_kernels.h`; stopband attenuation, transition
+  band and group delay as numbers; latency in samples at the host rate.
 
 ### `tap::dsp::nn`
 
 - Weight layout and gate ordering per layer, matching PyTorch's, exactly as
   `nn_suppressor_weights` already documents it.
-- Which accumulations run in double even in the float profile, and why — the
-  family's existing convention for numerically fragile recursions.
-- For any int8 path: per-channel vs per-tensor scales, the single rounding
-  point, and saturation behaviour, as `sample_traits.h` already sets out for
-  Q15/Q31.
+- Accumulator precision per kernel, stated: today every dense and GRU dot
+  product accumulates in `Sample`, and M3 preserves that. Any later change is
+  a documented contract change with a parity delta.
+- Streaming convolution: the activation cache's size and the causal delay per
+  layer as numbers; equivalence to the non-streaming forward pass pinned by a
+  torch-versus-streaming fixture.
+- The `fft.h` backend rule: scalar golden kernel; any accelerated backend is
+  opt-in and must re-present the exact contract, parity-tested. For an int8
+  backend: per-channel vs per-tensor scales, the single rounding point,
+  saturation — in the manner `sample_traits.h` sets out for Q15/Q31.
 
 ### `tap::mu::kws`
 
-- Geometry as a value, carried by the weights and validated at load.
+- Geometry as a value, carried by the weights and validated at load; the
+  validator accepts any hop ≥ 1, not only powers of two.
+- Label form the model was trained with (clip-level with tracked endpoint,
+  frame-aligned, or alignment-free) and the head shape (single-class or
+  per-word) — decided in M4, recorded in the header.
 - Posterior smoothing window, confidence window, combination rule, refractory
-  period — all as numbers, all settable, all defaulted.
-- The declared operating point: threshold, and the recall / false-accepts-per-hour
-  pair it was measured at, on a named evaluation set.
-- Honest limits stated in the header, per house rule: the phrase it was trained
-  on, the distances and SNRs it was evaluated over, and that it is a
-  single-channel detector with no beamforming.
+  period — all as numbers, all settable, all defaulted, **all carried in the
+  MUKW payload** alongside the threshold, so a retrain updates one place and
+  the Max `@threshold` default reads from the model.
+- Detection latency: hops from phrase end to the bang, as a number.
+- Streaming-state policy (reset per window or carried) if a recurrent layer is
+  present.
+- The declared operating point: threshold, and the recall / false-accepts-per-
+  hour pair it was measured at, on a **named** evaluation set — measured on the
+  C++ engine through the C ABI, never on the Python model.
+- Honest limits stated in the header: the phrase, the internal rate and host
+  rates supported, the distances and SNRs evaluated over, single-channel, no
+  beamforming, no pre-roll, no VAD gating.
 
 ## 6. Milestones
 
-Staged in the HANDOFF.md manner: each stage has a crisp pass criterion and a
-committed regression fixture, so a failure is caught at the layer that caused
-it. The one ordering choice worth defending is **M4 before M5** — the harness
-before the model — the same call HANDOFF.md's M2 made when it declared the
-closed-loop simulator a deliverable in its own right.
+Staged in the HANDOFF.md manner: each stage has a pass criterion that *can
+fail* and a committed regression fixture. Rev 1's M2–M7 are rev 2's M3–M8; M2
+is new.
 
-### M0 — Settle the home and the phrase *(decision)*
+### M0 — Decisions *(nothing built)*
 
-Two decisions, both cheap now and expensive later: which repository owns the
-spotter (§9), and what the wake phrase actually is. The phrase is a technical
-decision, not a branding one — three or four syllables, unusual phonotactics,
-distinctive stress, not a substring of common speech. A poorly chosen phrase
-costs a permanent penalty on the DET curve that no amount of training recovers.
+Five decisions, each cheap now and expensive later.
 
-**Pass:** phrase chosen, with its phonetic-confusability shortlist written down;
-repository decision recorded in HANDOFF.md.
+1. **Repository.** MuTap with a widened charter (§9) or a new sibling. Affects
+   M4/M5 file placement, so it blocks at M4, not M6.
+2. **Host-rate policy.** Either (a) the spotter runs at a fixed internal
+   16 kHz and `mutap.wake~` owns the conversion — integer ratios via a new
+   DspTap decimator in M1, 44.1 kHz via RatioTap or deferred; or (b) a model
+   per host rate on spectrally upsampled corpora, the suppressor's route,
+   accepting that bands above 8 kHz are never excited in training and that
+   44.1 kHz needs a third model. Recommendation in §9.
+3. **Release shape.** Runtime-first (a user-supplied model, no bundled phrase)
+   or bundled weights. Decides whether the phrase blocks anything (§9).
+4. **The wake phrase**, if bundled: three or four syllables, unusual
+   phonotactics, distinctive stress, not a substring of common English. A
+   poorly chosen phrase costs a permanent penalty on the DET curve that no
+   training recovers.
+5. **TTS voice lineage.** Each Piper voice's training corpus and its terms,
+   written down; Lessac-derived voices excluded.
 
-### M1 — The mel front end *(DspTap)*
+**Pass:** all five recorded in HANDOFF.md, with the phonetic-confusability
+shortlist if a phrase is chosen, and the compute budget of M4 named (where
+training runs, and a per-run time target).
 
-`include/tap/dsp/log_mel.h` — `basic_log_mel<Sample>` with the double golden
-model and float32 embedded profile, geometry fixed at construction, `noexcept`
-and allocation-free processing, riding the existing `real_fft`. PCEN as a
-documented option on the same object.
+### M1 — The mel front end, and the decimator *(DspTap)*
 
-Typed GoogleTest battery pinning every contract point above, plus float/double
-cross-precision agreement. C ABI exposure in `tools/capi` and the `dsptap_py`
-bridge, so the notebooks measure the shipping C++ rather than a Python
-restatement.
+`include/tap/dsp/log_mel.h` — `basic_log_mel<Sample>` per the §5 contract, with
+the double golden model and float32 embedded profile, riding the existing
+`real_fft` with the FFT size decoupled from the hop. PCEN as a documented option
+on the same object. If M0 chose route (a), `decimate.h` beside it.
 
-**Pass:** agreement with a reference mel implementation at a stated tolerance on
-a fixed test signal, with the tolerance committed. PCEN's gain-tracking pinned
-on a level-stepped input. README section added and the primitive count bumped,
-per the existing checklist.
+**Before the header:** a throwaway numpy mel in `tools/ml/kws_features.py`,
+written first and committed, is the reference M1 is scored against — the
+family has no reference mel today, and M1's pass needs one that exists before
+the C++ does.
 
-### M2 — Promote the inference kernels *(DspTap · MuTap)*
+Typed GoogleTest battery pinning every §5 contract point; float/double
+agreement measured, not assumed; C ABI exposure in `tools/capi` and the
+`dsptap_py` bridge; README section and primitive count per the DspTap
+checklist; `.clang-tidy` clean under the clang front end.
 
-Lift the dense and GRU arithmetic out of `nn_suppressor.h` into `tap::dsp::nn`,
-add depthwise-separable convolution and a streaming activation cache, and
-refactor `nn_suppressor` to consume the promoted kernels. Pure refactor on
-MuTap's side — no behaviour change intended.
+**Pass:** agreement with the committed numpy reference at a committed tolerance
+on a fixed multi-band test signal; PCEN gain-tracking pinned on a level-stepped
+input; PCEN reset semantics pinned; streaming output identical to whole-signal
+output frame for frame (the alignment contract); decimator passband ripple,
+stopband attenuation and latency pinned if built.
 
-This milestone most repays being done early and most punishes being done late:
-every subsequent stage builds on kernels a shipping, tested object already
-exercises.
+### M2 — Oracles for the learned path *(MuTap)* — new in rev 2
 
-**Pass:** `test_nn_suppressor.cpp` and `tools/ml/test_parity.py` pass unchanged,
-and the M55 instruction count for the suppressor does not regress. A behaviour
-change here shows up as a parity failure, which is exactly what that test is
-for.
+Build the verification the suppressor should already have, before anything
+refactors it:
 
-### M3 — Corpus and dataset builder *(tools/ml)*
+- `nn_suppressor<float>` typed tests with a float/double cross-precision pin,
+  and its entry in `test_float32.cpp`.
+- `NnSuppressor` patterns added to both on-target positive filters (M55 and
+  Hexagon).
+- An `nn_suppressor` scenario in `bench/icount` at both shipping geometries,
+  baselines seeded on m55 and hexagon.
+- `test_parity.py` promoted to a CI job: both profiles, **exported trainer
+  weights** (`pretrained/suppressor_v2_48k.munn`) at the shipping 48 kHz
+  geometry as well as random weights, run under `MUTAP_BUILD_ML_TOOLS=ON` in
+  `ci.yml`.
 
-A `kws_features.py` declared as source of truth alongside the existing
-`features.py`; TTS positive synthesis via Piper; augmentation over MUSAN and
-SLR28; hard-negative mining from MSWC by phonetic edit distance; bulk negatives
-from Common Voice and AMI. One command rebuilds the dataset from a committed
-manifest.
+**Pass:** every item above green in CI on the *unmodified* suppressor, and the
+accumulator-precision contract of §5 written down as the observed behaviour.
+This milestone is worth doing even if the project stops here.
 
-Deliverable alongside the code: a **dataset card** in the shape of the existing
-licensing map — per-corpus counts, hours, licences and attribution text.
+### M3 — Promote the inference kernels *(DspTap · MuTap)*
 
-**Pass:** dataset rebuilds reproducibly from the manifest on a clean checkout,
-and the card accounts for every hour of audio with a licence. Recorded hold-out
-set collected separately and never seen by training.
+Lift the dense and GRU arithmetic — only those — out of `nn_suppressor.h` into
+`tap::dsp::nn`, and refactor `nn_suppressor` to consume it. Pure refactor on
+MuTap's side; the float profile is now observed, so "no behaviour change" is
+testable in both profiles. Full DspTap checklist for the new header.
+Depthwise-separable convolution and the streaming activation cache arrive in
+M6 with their consumer and their torch-versus-streaming fixture, not here.
 
-### M4 — The evaluation harness, before any model *(tools/ml · tests)*
+**Pass:** the M2 battery passes unchanged in both profiles; the CI parity job
+passes at float tolerance on exported weights; the `nn_suppressor` icount
+scenario is within the drift gate on both targets; DspTap's typed battery for
+`tap::dsp::nn` pins layout, gate order and accumulator precision; MuTap and
+MuTap-Max pins bumped.
 
-DET curve tooling: false-rejection rate against false-accepts-per-hour over
-hundreds of hours of negatives, with the per-utterance / per-hour asymmetry
-built into the meter rather than bolted on. Threshold sweep, refractory
-handling, committed report format.
+### M4 — Corpus, splits and dataset builder *(tools/ml/kws)*
 
-Proven out against a deliberately trivial baseline — a band-energy threshold —
-so the meter is known to work before it judges anything that matters.
+`kws_features.py` as source of truth for the feature *values* (the M1 numpy
+reference, now the real thing); Piper synthesis over lineage-verified voices;
+augmentation over MUSAN and the SLR28 simulated subset; hard-negative mining
+from MSWC by phonetic edit distance; bulk negatives from Common Voice and AMI.
+One command rebuilds the dataset from a committed manifest.
 
-**Pass:** the harness produces a sane DET curve for the trivial baseline:
-near-total recall at an absurd false-accept rate, collapsing to zero recall as
-the threshold tightens. If that curve looks wrong, the meter is wrong, and
-finding out here is the entire point of the milestone.
+Decided here, because the loss depends on it: the **label form** — clip-level
+with a tracked keyword endpoint, frame/word-aligned, or alignment-free — and the
+endpoint tolerance under RIR and tempo augmentation. Recorded in the manifest
+and the MUKW header.
 
-### M5 — The spotter *(MuTap)*
+**Splits:** train / dev / eval, speaker-disjoint, with MSWC clips assigned by
+their Common Voice client id so the two corpora cannot leak into each other.
+The eval negative set is named and never trained on; it is the FA/hour
+denominator for every number in this plan.
 
-`kws.h` — streaming DS-CNN or dilated TDNN over the M1 features and M2 kernels,
-with `kws_geometry` carried in a `MUKW0001` weights header, posterior smoothing
-and confidence combination as documented constants, and a refractory period.
-PyTorch trainer and exporter beside the existing ones; parity test against the
-trainer.
+**Manifest schema:** corpus release ids, archive checksums, decoder versions,
+`kws_features.py` contract version, split assignment, augmentation seeds.
+**Feature store:** a named location outside git (derived features for 300 h are
+≈ 17 GB float32); the repo carries manifests and the builder only.
 
-Architecture choice deferred to here rather than decided up front: with M4 in
-place it becomes a measurement rather than an argument.
+**Hold-out specification:** N talkers (target ≥ 10), distance × SNR condition
+matrix, owner, consent and permitted-use row per talker, target ≥ 200
+utterances. Committed as a fixture with provenance, as the RIR fixtures are.
 
-**Pass:** parity with the trainer to float tolerance, and a stated operating
-point measured on the *recorded* hold-out set — not the synthetic one —
-committed as a regression baseline the way the RIR fixtures are. Target to aim
-at: ≥ 95 % recall at ≤ 1 false accept per hour. Whatever is actually achieved is
-what gets written down.
+**Compute:** the trainer gains a `--device` path; a 50 h development negative
+set serves architecture selection, the full corpus only the final DET.
 
-### M6 — Embedded profile and the ratchet *(DspTap · MuTap)*
+Deliverable alongside the code: a **dataset card** — per-corpus counts, hours,
+licences, attribution text, the no-reidentification terms, and the voice
+lineage table.
 
-Front end and inference through the bare-metal M55 QEMU rig already in CI;
-instruction count per 10 ms hop measured with `scripts/icount.py` and committed
-as a budget CI ratchets against. Q15 front-end profile via `sample_traits.h` if
-the M33 class is a real target; int8 inference path if the budget demands it.
+**Pass:** dataset rebuilds from the manifest on a clean checkout with the feature
+store mounted; every hour of audio accounted for with a licence; splits verified
+speaker-disjoint by script; hold-out fixture committed with its consent rows.
 
-**Pass:** on-target subset green under QEMU, instruction budget committed, and
-any fixed-point profile agreeing with the float golden model within a stated,
-tested tolerance.
+### M5 — The evaluation harness, before any model *(tools/ml · tests)*
 
-### M7 — `mutap.wake~` *(MuTap-Max)*
+DET curve tooling: false-rejection rate against false-accepts-per-hour, with the
+scoring semantics **defined as numbers**: hit window around each positive's
+endpoint, one hit per utterance, false-accept merging under the refractory
+period, the hours denominator from the eval negative set. Threshold sweep and a
+committed report format.
 
-One external, matching the sibling naming convention. Signal inlet; bang outlet
-on detection; confidence float outlet for metering and threshold-setting by ear.
-Attributes for threshold, refractory period, model path. Reference page and help
-patcher demonstrating live detection with a visible confidence meter, so a user
-can see the margin rather than guess at it.
+Brought up on **Speech Commands** (`marvin` / `sheila` as name-shaped
+positives) so it precedes M0's phrase and M4's corpus, then pointed at M4's
+splits. Runs the engine through the C ABI so it measures shipping code; the
+Python model is for training-time validation only.
+
+**Pass — a test that can fail:** a planted-event oracle. Synthetic streams with
+known positive endpoints and known false-accept placements, scored by the
+harness against hand-computed recall and FA/hour, exact to the utterance; a
+deliberately mis-accounted variant must be rejected. The trivial band-energy
+baseline is run as a sanity curve, not as the pass. Harness↔`kws.h` decision
+stage parity pinned on the same streams.
+
+### M6 — The spotter *(MuTap)*
+
+`kws.h` per the §5 contract, over the M1 features and M3 kernels, with the
+DS-conv / activation-cache kernels landing in `tap::dsp::nn` now, alongside
+their consumer and a torch-versus-streaming fixture. `kws_geometry` in a
+`MUKW0001` payload that also carries the decision-stage constants, threshold and
+declared operating point. PyTorch trainer and exporter beside the existing
+ones; `kws_infer.cpp` parity driver and CMake target; `mutap_kws_*` C ABI
+(create-from-weights, push block, posterior and confidence readout, detection
+events with sample timestamps) and its `mutap_ffi` binding; `tools/ml/README.md`
+re-scoped to two tasks.
+
+Architecture — DS-CNN, dilated TDNN, or GRU — decided here by measurement on
+**two axes**: the M5 DET on the development set, and cost against the §7
+ceilings.
+
+**Pass:** parity with the trainer to float tolerance in both profiles, CI-run;
+the streaming fixture passes; a stated operating point measured **through the
+C ABI on the recorded hold-out set** and committed as a regression baseline;
+attribution block present in the exporter output. Target to aim at: ≥ 95 %
+recall at ≤ 1 false accept per hour on the named eval negative set — a
+first-release target, looser than the briefing's product figure. Whatever is
+achieved is what gets written down.
+
+### M7 — Embedded profile and the budget *(DspTap · MuTap)*
+
+Front end, decimator (if any) and spotter through the M55 and Hexagon rigs;
+`kws` scenarios added to `bench/icount` at the shipping geometry, baselines
+seeded on both targets; the per-hop figure derived by dividing the scenario's
+count by its hop count. The §7 ceilings asserted as absolute checks beside the
+drift gate. Int8 backend only if the measured cost demands it *and* the M6
+architecture admits it; Q15 front end deferred until an M33-class target is
+named (a new Q-format design, since DspTap has no fixed-point FFT).
+
+**Pass:** on-target subsets green on both rigs; both scenarios within the
+drift gate and under the absolute ceilings; any accelerated or fixed-point
+backend agreeing with the scalar golden path within a stated, tested tolerance.
+
+### M8 — `mutap.wake~` *(MuTap-Max)*
+
+One external on the `mutap.aec~` pattern: signal inlet; bang outlet on
+detection; confidence float outlet; attributes for threshold (defaulting from
+the loaded model), refractory period and model path; host-rate handling per
+M0's decision, refusing rather than warning on an unsupported rate; a no-model
+state that meters and never fires, for the runtime-first shape. Reference page
+and help patcher with a visible confidence meter. Package-level notices file
+carrying the dataset card's attribution text.
+
+"Ship" means what it means for the family today: source build and a Packages
+symlink. A downloadable, signed package is a separate deliverable (tagged
+build, artifact upload, macOS notarization) taken on only if wanted.
+
+The customary docs stage: a book chapter for the spotter with numbers only from
+the DET notebook and the tests; a MuTap README status row; a MuTap-Max README
+roadmap row.
 
 **Pass:** loads and behaves correctly in Max on both platforms, macOS binary
-universal, and validated against a live microphone at conversational distance —
-not only against files.
+universal; validated against a live microphone at conversational distance at
+48 kHz, not only against files; the help patcher's displayed threshold equals
+the model's declared operating point.
 
-> **Sequencing note.** M1 and M2 are worth doing regardless of whether the wake
-> word ships. A mel front end is a primitive several Tap libraries would use,
-> and consolidating the inference kernels removes a duplication that will
-> otherwise appear the moment any second learned object is added. If the project
-> stops after M2, the family is still better off — a useful property for a
-> speculative effort to have.
+> **Sequencing note.** M1, M2 and M3 are worth doing regardless of whether the
+> wake word ships. A mel front end is a primitive several Tap libraries would
+> use; the learned suppressor gains the float, on-target and CI-parity
+> verification it lacks today; and consolidating the inference kernels removes a
+> duplication that will otherwise appear the moment any second learned object
+> is added. If the project stops after M3, the family is still better off.
 
-## 7. CI and the ratchet
+## 7. CI, the ratchet and the ceilings
 
-Four gates, three of which already exist and need only extending:
+Four gates. Two exist and need extending; two are built in M2 and M5.
 
-- **Contract tests** — typed GoogleTest batteries in DspTap, Catch2 in MuTap.
-- **Python↔C++ parity** — trainer and shipping inference agree to float
-  tolerance on committed fixture input. Catches the entire class of bug where a
-  feature definition drifts between the two sides and the model quietly
-  degrades.
-- **On-target subset under QEMU** — the M55 rig MuTap already runs, extended to
-  the front end and spotter.
-- **Instruction-count ratchet** — a committed budget per 10 ms hop enforced by
-  `scripts/icount.py`, so an innocuous-looking change that doubles the always-on
-  cost is caught in review rather than on hardware.
+- **Contract tests** — typed GoogleTest batteries in DspTap *and* MuTap
+  (MuTap-Max reaches Catch2 only through min-api).
+- **Python↔C++ parity** — built as a CI job in M2 for the suppressor, extended
+  to the spotter in M6: both profiles, exported weights, shipping geometry.
+- **On-target subsets** — the M55 and Hexagon rigs, with the learned path added
+  in M2 and the front end and spotter in M7.
+- **Cost** — `scripts/icount.py` is a ±3 % *drift gate* against seeded
+  baselines; it catches an innocuous change that doubles the always-on cost.
+  It is not a budget. The budget is a separate absolute assertion on the same
+  counts, with these **targets set now and ratified against the first M7
+  measurement** (they are not measurements):
+
+  | Ceiling | Target |
+  |---|---|
+  | Instructions per 10 ms hop, front end + spotter, scalar float on M55 | ≤ 150 k |
+  | Weights | ≤ 64 KB |
+  | Activation and streaming state | ≤ 32 KB |
+  | Detection latency after phrase end | ≤ 20 hops (200 ms) |
 
 Deliberately *not* in CI: the DET evaluation. It needs hundreds of hours of
 audio and a trained model, so it belongs in the notebook verification layer —
-executed, committed, re-executed when behaviour changes, exactly as
-`notebooks/pitchshift.ipynb` is. The standing promise applies: every performance
-claim measured, not remembered, traceable to the cell that produced it.
+executed and committed, built by script in MuTap's convention, re-executed when
+behaviour changes. It runs the C++ engine through the C ABI, and the standing
+promise applies: every performance claim measured, not remembered, traceable to
+the cell that produced it.
 
 ## 8. Risks, honestly
 
 **The synthetic-positive gap.** The most likely failure is a model that scores
 beautifully on TTS positives and disappoints on a real talker across a room.
-Mitigation is structural rather than clever: the recorded hold-out set in M3,
-and M5's pass criterion measured on it. If the gap is large, the answer is more
-augmentation realism and more real recordings — both slow, neither surprising.
+Mitigation is structural: the specified, consented, recorded hold-out set in
+M4, and M6's pass criterion measured on it. If the gap is large, the answer is
+more augmentation realism and more real recordings — both slow, neither
+surprising.
 
-**The negative corpus is a storage and time problem.** Hundreds of hours of
-negatives is hundreds of gigabytes decoded, and the remote development
-containers already have limited disk and a network policy that blocks some
-dataset hosts — the RIR-fixture note in HANDOFF.md hit exactly this. Assume
-corpus assembly happens locally and enters the repo as manifests and derived
-features, not audio.
+**The corpus is a disk, compute and time problem.** Hundreds of hours of
+negatives is hundreds of gigabytes decoded and tens of gigabytes of features;
+the reference trainer is CPU-only and took hours per hour of audio; TTS
+synthesis is a PyTorch pipeline of its own. Corpus assembly and training happen
+on named hardware (M0), the feature store lives outside git (M4), and the repo
+carries manifests, the builder, and the executed notebook.
 
-**Charter drift.** MuTap's stated charter is adaptive filters for audio
-cleaning, and its name is literally the LMS step size. A keyword spotter is
-neither an adaptive filter nor audio cleaning. The counter-argument: MuTap is
-already the family's speech library, already contains a learned non-adaptive
-component, and already has the embedded rigs — and a second repository would
-either duplicate that or pin MuTap anyway. Worth deciding on purpose rather than
-by drift; see §9.
+**Charter drift.** MuTap's charter is adaptive filters for audio cleaning, and
+its name is literally the LMS step size. A keyword spotter is neither. The
+counter-argument: MuTap is already the family's speech library, already contains
+a learned non-adaptive component, and already has the embedded rigs — a second
+repository would either duplicate that or pin MuTap anyway. Worth deciding on
+purpose rather than by drift; see §9. A widened charter also implies README and
+description edits, listed in M8.
 
 **Scope creep toward speaker verification.** Tier 3 of the cascade usually
-carries speaker ID, and it is tempting. It is a separate project with its own
-corpora, enrolment UX and privacy posture. Recommend explicitly out of scope.
+carries speaker ID, and it is tempting. Separate project, separate corpora,
+enrolment UX and privacy posture. Explicitly out of scope, as are pre-roll
+buffering, VAD gating and multi-keyword models — named in the header's limits.
 
-**The plan's own weakest estimate.** M5's architecture and training loop is the
-only milestone with genuine unknowns in it — everything else is either a known
-refactor or a known harness. If a schedule is needed, treat M1–M4 as reasonably
-estimable and M5 as the one to time-box with a decision point rather than
-estimate.
+**The plan's own weakest estimate.** M6's architecture and training loop is the
+only milestone with genuine unknowns. M1–M5 are known refactors and known
+harnesses. If a schedule is needed, treat M6 as the one to time-box with a
+decision point rather than estimate.
 
 ## 9. Open decisions
 
 **Which repository owns the spotter.** MuTap with a widened charter, or a new
-sibling library pinning DspTap. M1 and M2 are correct under both, so this does
-not block until M5.
-*Recommend MuTap, charter restated as portable speech DSP for embedded targets.
-Revisit only if a second consumer for keyword spotting appears in the family —
-at which point the promotion pattern makes moving it cheap.*
+sibling library pinning DspTap. M1–M3 are correct under both; blocks at M4.
+*Recommend MuTap, charter restated as portable speech DSP for embedded targets —
+alongside, not replacing, its adaptive-filter core. Revisit only if a second
+consumer for keyword spotting appears in the family.*
 
-**The wake phrase.** Needed at M0 and genuinely load-bearing: syllable count and
-phonetic distinctiveness set a ceiling on the achievable DET curve.
-*Yours to choose. Technical constraints: three to four syllables, unusual
-phonotactics, not a substring of common English.*
+**Host-rate policy.** Route (a), fixed internal 16 kHz with the external
+converting, or route (b), a model per host rate.
+*Recommend (a). One model, one corpus geometry, one FFT size, and the front end
+never sees bands the training data cannot excite. Cost: a small polyphase
+decimator in DspTap for 32 / 48 / 96 kHz, and 44.1 kHz handled by RatioTap or
+declared unsupported in the first release — which HANDOFF already records as an
+open slot for the suppressor.*
 
-**Model architecture.** DS-CNN, dilated TDNN, or a small GRU reusing the
-promoted kernels directly.
-*Defer to M5 and decide by measurement. The GRU path is cheapest to reach
-because M2 delivers it; DS-CNN is the stronger default on microcontroller-class
-targets. With M4 in place this is a measurement, not an argument.*
+**Release shape.** Runtime-first, or bundled weights.
+*Recommend runtime-first for the first release. This is a shortening, not a
+reorder: it removes the phrase as a blocking decision, the shipped dataset
+card, the recorded hold-out set and the declared operating point from the
+critical path, and adds a no-model state to the external and threshold
+semantics without a measured FA/hour. M4's builder and M5's harness remain the
+product a user trains with. A bundled phrase follows once a recorded
+evaluation set exists.*
 
-**Fixed-point front end.** Whether M6 includes a Q15 mel profile — real work,
-and only pays off on M33-class parts without usable float.
-*Defer until a target is named. The M55 has float; the existing `sample_traits`
-convention makes this opt-in per primitive precisely so it can wait.*
+**The wake phrase.** Load-bearing only under bundled weights.
+*Yours to choose, when needed. Three to four syllables, unusual phonotactics,
+not a substring of common English.*
 
-**Whether to ship weights at all.** An alternative shape: ship `mutap.wake~` as
-a runtime that loads a user-supplied model, with a documented training pipeline
-and no bundled phrase. Sidesteps corpus assembly entirely and suits a Max
-audience who may want their own phrase.
-*Worth considering seriously as a first release, with a bundled model following
-once the recorded evaluation set exists. It reorders the plan rather than
-shortening it — M4 still has to happen before anyone can tell whether a trained
-model is any good.*
+**Model architecture.** DS-CNN, dilated TDNN, or a small GRU on the promoted
+kernels.
+*Defer to M6 and decide by measurement on both axes. The GRU is cheapest to
+reach; DS-CNN is the stronger default on microcontroller-class targets and the
+easier one to quantize if int8 is ever needed.*
+
+**Compute.** Where training runs.
+*Yours to name at M0. The plan assumes a GPU-equipped local machine or rented
+hours; the remote containers are for the C++ and the harness, not the corpus.*
 
 ---
 
 ### Provenance
 
 - Proposal only — no code written, no repository changed apart from these docs.
-- Milestone pass criteria state **targets, not measurements**. No number in this
-  document is a measured result.
+- Milestone pass criteria and the §7 ceilings state **targets, not
+  measurements**. No number in this document is a measured result.
 - Existing-asset descriptions were read from the working checkouts of DspTap,
-  MuTap, TapTools and TapTools-Max on 4 September 2026.
-- Corpus licences summarized from the companion briefing and require
-  verification at the point of use.
+  MuTap and MuTap-Max on 4 September 2026 and re-verified by the audit; TapTools
+  and TapTools-Max were not available to the audit and are cited only for the
+  promotion precedent.
+- Corpus licences summarized from the companion briefing and the audit's
+  licensing lens, with limited network access, and require verification at the
+  point of use.
+- Rev 2 supersedes rev 1; the audit's issue numbers refer to rev 1's sections
+  and milestones.
