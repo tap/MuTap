@@ -425,16 +425,27 @@ M6 architecture admits it (a Q15 front end is a new Q-format design, since
 DspTap has no fixed-point FFT).
 
 **On hardware — the named M33 target is the Raspberry Pi Pico 2 W.**
-`examples/pico2w/` in MuTap: a Pico SDK application, built out of tree against
-the SDK (not in CI; CI is the QEMU leg), reading a MEMS microphone (PDM or I²S
-through PIO) at 16 kHz, running the front end and spotter on one of the two
-cores, pulsing a GPIO on detection and streaming the confidence over UART. Its
-per-hop cycle count from the core's cycle counter is recorded beside the QEMU
-instruction count. The board's radio is unused by the plan; a detection-over-
-Wi-Fi demo is a natural follow-up, not a deliverable.
+`examples/pico2w/` in MuTap: a Pico SDK application reading a MEMS microphone
+(PDM or I²S through PIO) at 16 kHz, running the front end and spotter on one
+of the two cores, pulsing a GPIO on detection and streaming the confidence over
+UART. Its per-hop cycle count from the core's cycle counter is recorded beside
+the QEMU instruction count. The board's radio is unused by the plan; a
+detection-over-Wi-Fi demo is a natural follow-up, not a deliverable.
+
+**Built in CI.** A `pico2w` job beside the QEMU legs: the `arm-none-eabi-gcc`
+the M33/M55 legs already install, a Pico SDK checkout pinned by tag and
+commit, `PICO_BOARD=pico2_w` and `PICO_PLATFORM=rp2350-arm-s`; it builds the
+example, uploads the `.uf2` as a workflow artifact, and asserts the flash and
+RAM footprint from the linker map against the §7 ceilings, so a change that
+no longer fits the part fails in review. QEMU has no RP2350 board model, so
+CI proves the build and the footprint; detection on the board is the bench
+step of the pass criterion, and its cycle count is committed by hand. The UF2
+is the family's first CI-produced binary deliverable, which is a precedent the
+M8 release question can reuse.
 
 **Pass:** on-target subsets green on all three rigs; both scenarios within the
-drift gate and under the absolute ceilings on every target; the Pico 2 W
+drift gate and under the absolute ceilings on every target; the `pico2w` job
+green with its UF2 uploaded and its footprint under the ceilings; the Pico 2 W
 example detects at conversational distance from its own microphone, with the
 hardware cycle count committed beside the QEMU figure; any accelerated or
 fixed-point backend agreeing with the scalar golden path within a stated,
@@ -487,7 +498,7 @@ the product's primary document.
 | Max reference and help | `docs/mutap.wake~.maxref.xml`, `help/mutap.wake~.maxhelp` | M8 | Attributes, both host-rate patches, a tab pointing at the training guide |
 | README status rows | MuTap, MuTap-Max | M8 | Status, roadmap, charter sentence |
 | Package notices | MuTap-Max `NOTICES.md` | M8 | The dataset card's attribution text, where a user of the external sees it |
-| Pico 2 W example README | `examples/pico2w/README.md` | M7 | Wiring, build against the Pico SDK, the measured cycle count |
+| Pico 2 W example README | `examples/pico2w/README.md` | M7 | Wiring, flashing the CI-built UF2, building locally against the Pico SDK, the measured cycle count |
 | HANDOFF | `HANDOFF.md` | M0, M8 | The five decisions; end state for the next session |
 
 > **Sequencing note.** M1, M2 and M3 are worth doing regardless of whether the
@@ -505,8 +516,11 @@ Four gates. Two exist and need extending; two are built in M2 and M5.
   (MuTap-Max reaches Catch2 only through min-api).
 - **Python↔C++ parity** — built as a CI job in M2 for the suppressor, extended
   to the spotter in M6: both profiles, exported weights, shipping geometry.
-- **On-target subsets** — the M55 and Hexagon rigs, with the learned path added
-  in M2 and the front end and spotter in M7.
+- **On-target subsets** — the M33, M55 and Hexagon rigs, with the learned path
+  added in M2 and the front end and spotter in M7.
+- **Pico 2 W build** — the `pico2w` job of M7: build, UF2 artifact, and a
+  footprint assertion from the linker map against the weight and state
+  ceilings below.
 - **Cost** — `scripts/icount.py` is a ±3 % *drift gate* against seeded
   baselines; it catches an innocuous change that doubles the always-on cost.
   It is not a budget. The budget is a separate absolute assertion on the same
@@ -529,7 +543,7 @@ family already runs elsewhere:
 | Embedded, emulated in CI | Cortex-M55 (QEMU mps3-an547): FP32 + FP64 + Helium | float32 | On-target subset, icount ratchet, absolute ceilings |
 | Embedded, emulated in CI | Qualcomm Hexagon (qemu-hexagon, HVX auto-vectorized) | float32 | On-target full suite, icount ratchet |
 | Embedded, emulated in CI *(new, M2)* | Cortex-M33 (QEMU mps2-an505): FP32 only, no FP64, no MVE — the RP2350 class | float32 | Float-profile subset, icount ratchet, absolute ceilings |
-| Embedded, on hardware *(M7)* | **Raspberry Pi Pico 2 W** (RP2350: 2 × Cortex-M33 at 150 MHz, 520 KB SRAM, 4 MB flash) | float32 | `examples/pico2w/`, hardware cycle count beside the QEMU figure |
+| Embedded, on hardware *(M7)* | **Raspberry Pi Pico 2 W** (RP2350: 2 × Cortex-M33 at 150 MHz, 520 KB SRAM, 4 MB flash) | float32 | CI: `pico2w` job builds `examples/pico2w/` against a pinned Pico SDK, uploads the UF2, asserts flash and RAM footprint. Bench: detection, hardware cycle count beside the QEMU figure |
 
 Deliberately *not* in CI: the DET evaluation. It needs hundreds of hours of
 audio and a trained model, so it belongs in the notebook verification layer —
