@@ -53,7 +53,7 @@ MuTap         fd_kalman.h    nn_suppressor.h    [kws.h]    ← new, M6
                      │ refactored onto
                      ↓
 DspTap        fft.h    yin.h    [log_mel.h]   [nn/]   [decimate.h]
-                                 ↑ new, M1     ↑ promoted, M3   ↑ new, M1 (home per M0)
+                                 ↑ new, M1     ↑ promoted, M3   ↑ new, M1 (DspTap, per M0)
 RatioTap      44.1 ↔ 48 only — composed by mutap.wake~ for 44.1 kHz hosts
 ```
 
@@ -117,7 +117,7 @@ synthetic positives are the least clean input, not the cleanest.
 | MUSAN | CC BY 4.0 | Additive noise; its music partition also serves as **evaluation negatives** — a Max user's room has music in it | yes, with attribution |
 | Free Music Archive (CC BY / CC0 subset only) | per track | Bulk music negatives beyond MUSAN's ~42 h, filtered to permissive tracks by the manifest | yes, with attribution per track |
 | OpenSLR SLR28 | Apache 2.0 (simulated RIRs); real-RIR subset carries RWCP / REVERB / AIR third-party terms | Reverberation augmentation | simulated subset yes; **real subset only after its upstream terms are checked** |
-| Piper + `piper-sample-generator` | MIT (code); **voice models carry their training corpus's terms** — the two voices the generator documents descend from Blizzard 2013 / Lessac, research-only, excluding speech-recognition products | Synthetic positives, TTS-derived | code yes; **each voice lineage-verified at M0, Lessac-free voices chosen** |
+| Piper + `piper-sample-generator` | MIT (code); **voice models carry their training corpus's terms**. Verified at M0 from the per-voice model cards: most English Piper voices — `libritts_r`, `vctk`, `arctic`, `l2arctic`, `joe`, `kusal`, and the whole en_GB set except `cori` — are *fine-tuned from* the Lessac voice and inherit its research-only lineage; `hfc_*` and `semaine` are on NC datasets; `bryce`, `danny`, `kathleen`, `amy` have unverifiable base voices | Synthetic positives, TTS-derived | code yes, with the sample generator's own LibriTTS-R `.pt` generator **excluded** (base unverified); voices: **`en_US-libritts-high`** (from scratch, LibriTTS train-clean-360, CC BY 4.0, 904 speakers), **`en_US-kristin-medium`** (from scratch, LibriVox, public domain), **`en_US-john-medium`** (fine-tuned from Kristin), **`en_GB-cori-high`** (from scratch, LibriVox, public domain) |
 | openWakeWord / microWakeWord | Apache 2.0 (code); models CC BY-NC-SA 4.0; pre-computed feature sets CC BY-NC with WHAM / CHiME-6 upstream | Design reference only | design yes — **no code, models or feature sets imported**; every feature shard regenerated from manifest audio |
 | Hey Snips, Qualcomm KSD | research / NC | Comparison only, if at all | **no** |
 | Recorded hold-out set | ours; consent and permitted use recorded per talker | The evaluation set | committed only with its consent row |
@@ -185,7 +185,7 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
   near-unity async — so the integer-ratio decimator is new work (M1), built
   on the same DspTap substrate RatioTap uses.
 
-### `tap::dsp::decimate` *(home per M0: DspTap primitive, or a RatioTap sibling)*
+### `tap::dsp::decimate` *(DspTap, decided at M0)*
 
 - Ratios 2, 3, 6 as compile-time types, RatioTap's pattern; Kaiser-designed
   polyphase FIR from `kaiser.h` over `fir_kernels.h`; stopband attenuation,
@@ -273,6 +273,37 @@ Five decisions, each cheap now and expensive later.
 **Pass:** all five recorded in HANDOFF.md, with the phonetic-confusability
 shortlist if a phrase is chosen, and the compute budget of M4 named (where
 training runs, and a per-run time target).
+
+**Decided, 4 September 2026** — recorded in HANDOFF.md; the arguments stay in
+§9.
+
+1. **Repository: MuTap**, charter restated as portable speech DSP for embedded
+   targets alongside its adaptive-filter core.
+2. **Host rate: fixed internal 16 kHz**; `kws.h` refuses other rates;
+   `@resample` on `mutap.wake~` backed by a **DspTap `decimate.h`** (ratios 2,
+   3, 6 as types, RatioTap's design path), composed with RatioTap for 44.1 kHz.
+3. **Release shape: runtime-first**, no bundled phrase; the training guide is
+   the primary document.
+4. **Wake phrase: none shipped.** Development phrase for M4–M7 is a name-shaped
+   Speech Commands word (`marvin`, with `sheila` as the near-miss check) for
+   M5 bring-up, then a synthesized four-syllable phrase once Piper is in place
+   at M4 — chosen then, recorded in the manifest, never shipped.
+5. **TTS voices, lineage-verified from the Piper model cards:**
+   `en_US-libritts-high` (trained from scratch on LibriTTS train-clean-360,
+   CC BY 4.0, 904 speakers — the primary voice, because speaker diversity is
+   the property that matters), `en_US-kristin-medium` and `en_GB-cori-high`
+   (trained from scratch on LibriVox, public domain), `en_US-john-medium`
+   (fine-tuned from Kristin). Excluded: every voice fine-tuned from Lessac
+   (`libritts_r`, `vctk`, `arctic`, `l2arctic`, `joe`, `kusal`, `alan`,
+   `alba`, `aru`, `northern_english_male`, `semaine`), the NC-dataset voices
+   (`hfc_*`, `semaine`), the voices with unverifiable base models (`bryce`,
+   `danny`, `kathleen`, `amy`), and the sample generator's bundled LibriTTS-R
+   `.pt` generator until its base voice is verified. Attribution text for
+   LibriTTS goes in the dataset card.
+
+**Compute:** an Apple Silicon Mac; the trainer gains `--device mps`; per-run
+target under an hour on the 50 h development set. The remote containers are
+for the C++ and the harness, never the corpus.
 
 ### M1 — The mel front end, and the decimator *(DspTap)*
 
@@ -620,7 +651,10 @@ only milestone with genuine unknowns. M1–M5 are known refactors and known
 harnesses. If a schedule is needed, treat M6 as the one to time-box with a
 decision point rather than estimate.
 
-## 9. Open decisions
+## 9. Decisions, with the arguments
+
+All of these were decided on 4 September 2026; the record is in M0 and in
+HANDOFF.md. The arguments are kept here.
 
 **Which repository owns the spotter.** MuTap with a widened charter, or a new
 sibling library pinning DspTap. M1–M3 are correct under both; blocks at M4.
