@@ -114,7 +114,8 @@ synthetic positives are the least clean input, not the cleanest.
 | MSWC | CC BY 4.0; no-reidentification term | Hard negatives, phonetic near-misses. **Force-aligned out of Common Voice** — splits must be speaker-disjoint across both. | yes, with attribution |
 | Common Voice | CC0; no-reidentification term | Bulk negatives | yes |
 | AMI Meeting Corpus | CC BY 4.0 | Conversational negatives | yes, with attribution |
-| MUSAN | CC BY 4.0 | Additive noise | yes, with attribution |
+| MUSAN | CC BY 4.0 | Additive noise; its music partition also serves as **evaluation negatives** — a Max user's room has music in it | yes, with attribution |
+| Free Music Archive (CC BY / CC0 subset only) | per track | Bulk music negatives beyond MUSAN's ~42 h, filtered to permissive tracks by the manifest | yes, with attribution per track |
 | OpenSLR SLR28 | Apache 2.0 (simulated RIRs); real-RIR subset carries RWCP / REVERB / AIR third-party terms | Reverberation augmentation | simulated subset yes; **real subset only after its upstream terms are checked** |
 | Piper + `piper-sample-generator` | MIT (code); **voice models carry their training corpus's terms** — the two voices the generator documents descend from Blizzard 2013 / Lessac, research-only, excluding speech-recognition products | Synthetic positives, TTS-derived | code yes; **each voice lineage-verified at M0, Lessac-free voices chosen** |
 | openWakeWord / microWakeWord | Apache 2.0 (code); models CC BY-NC-SA 4.0; pre-computed feature sets CC BY-NC with WHAM / CHiME-6 upstream | Design reference only | design yes — **no code, models or feature sets imported**; every feature shard regenerated from manifest audio |
@@ -220,6 +221,11 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
   period — all as numbers, all settable, all defaulted, **all carried in the
   MUKW payload** alongside the threshold, so a retrain updates one place and
   the Max `@threshold` default reads from the model.
+- The **front-end contract version** — the `log_mel` formula-contract version
+  the model was trained against — carried in the MUKW payload and checked at
+  load; a mismatch is refused with a message naming both versions. Under the
+  runtime-first release users train against a pipeline that will move, and
+  this is what keeps an old model from silently degrading on a new external.
 - Detection latency: hops from phrase end to the bang, as a number.
 - Streaming-state policy (reset per window or carried) if a recurrent layer is
   present.
@@ -227,8 +233,12 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
   hour pair it was measured at, on a **named** evaluation set — measured on the
   C++ engine through the C ABI, never on the Python model.
 - Honest limits stated in the header: the phrase, the internal rate and host
-  rates supported, the distances and SNRs evaluated over, single-channel, no
-  beamforming, no pre-roll, no VAD gating.
+  rates supported, the distances and SNRs evaluated over, the microphone path
+  the operating point was measured through, single-channel, no beamforming, no
+  pre-roll, no VAD gating, no low-power tier.
+- A privacy statement, in the header and repeated in the help patcher and the
+  Pico README: audio is processed in place and never stored or transmitted; the
+  only outputs are the bang and the confidence value.
 
 ## 6. Milestones
 
@@ -347,7 +357,10 @@ and the MUKW header.
 **Splits:** train / dev / eval, speaker-disjoint, with MSWC clips assigned by
 their Common Voice client id so the two corpora cannot leak into each other.
 The eval negative set is named and never trained on; it is the FA/hour
-denominator for every number in this plan.
+denominator for every number in this plan. It carries a **music share** —
+MUSAN's music partition and permissively licensed Free Music Archive tracks,
+never used in training — because a Max user's room has music playing in it
+and a false-accept rate measured on speech alone says nothing about that.
 
 **Manifest schema:** corpus release ids, archive checksums, decoder versions,
 `kws_features.py` contract version, split assignment, augmentation seeds.
@@ -356,7 +369,10 @@ denominator for every number in this plan.
 
 **Hold-out specification:** N talkers (target ≥ 10), distance × SNR condition
 matrix, owner, consent and permitted-use row per talker, target ≥ 200
-utterances. Committed as a fixture with provenance, as the RIR fixtures are.
+utterances. Recorded through **two microphone paths** — a host audio interface
+and the Pico 2 W example's own MEMS microphone — so both M6's and M7's
+operating points are measured on the path they ship on. Committed as a
+fixture with provenance, as the RIR fixtures are.
 
 **Compute:** the trainer gains a `--device` path; a 50 h development negative
 set serves architecture selection, the full corpus only the final DET.
@@ -375,7 +391,8 @@ DET curve tooling: false-rejection rate against false-accepts-per-hour, with the
 scoring semantics **defined as numbers**: hit window around each positive's
 endpoint, one hit per utterance, false-accept merging under the refractory
 period, the hours denominator from the eval negative set. Threshold sweep and a
-committed report format.
+committed report format that reports false accepts per hour **separately on
+speech and on music**.
 
 Brought up on **Speech Commands** (`marvin` / `sheila` as name-shaped
 positives) so it precedes M0's phrase and M4's corpus, then pointed at M4's
@@ -394,9 +411,11 @@ stage parity pinned on the same streams.
 `kws.h` per the §5 contract, over the M1 features and M3 kernels, with the
 DS-conv / activation-cache kernels landing in `tap::dsp::nn` now, alongside
 their consumer and a torch-versus-streaming fixture. `kws_geometry` in a
-`MUKW0001` payload that also carries the decision-stage constants, threshold and
-declared operating point. PyTorch trainer and exporter beside the existing
-ones; `kws_infer.cpp` parity driver and CMake target; `mutap_kws_*` C ABI
+`MUKW0001` payload that also carries the decision-stage constants, threshold,
+declared operating point and front-end contract version. PyTorch trainer and
+exporter beside the existing ones, the exporter emitting both the `.mukw`
+file and a C header of the same image for flash-resident targets, as
+MuTap-Max's default-weights header already does for the suppressor; `kws_infer.cpp` parity driver and CMake target; `mutap_kws_*` C ABI
 (create-from-weights, push block, posterior and confidence readout, detection
 events with sample timestamps) and its `mutap_ffi` binding; `tools/ml/README.md`
 re-scoped to two tasks.
@@ -409,9 +428,9 @@ ceilings.
 the streaming fixture passes; a stated operating point measured **through the
 C ABI on the recorded hold-out set** and committed as a regression baseline;
 attribution block present in the exporter output. Target to aim at: ≥ 95 %
-recall at ≤ 1 false accept per hour on the named eval negative set — a
-first-release target, looser than the briefing's product figure. Whatever is
-achieved is what gets written down.
+recall at ≤ 1 false accept per hour on the named eval negative set, on its
+speech and its music share alike — a first-release target, looser than the
+briefing's product figure. Whatever is achieved is what gets written down.
 
 ### M7 — Embedded profile and the budget *(DspTap · MuTap)*
 
@@ -425,12 +444,24 @@ M6 architecture admits it (a Q15 front end is a new Q-format design, since
 DspTap has no fixed-point FFT).
 
 **On hardware — the named M33 target is the Raspberry Pi Pico 2 W.**
-`examples/pico2w/` in MuTap: a Pico SDK application reading a MEMS microphone
-(PDM or I²S through PIO) at 16 kHz, running the front end and spotter on one
+`examples/pico2w/` in MuTap: a Pico SDK application reading an **I²S MEMS
+microphone through PIO** at 16 kHz, running the front end and spotter on one
 of the two cores, pulsing a GPIO on detection and streaming the confidence over
-UART. Its per-hop cycle count from the core's cycle counter is recorded beside
-the QEMU instruction count. The board's radio is unused by the plan; a
-detection-over-Wi-Fi demo is a natural follow-up, not a deliverable.
+UART. I²S rather than PDM on purpose: a PDM microphone needs its own
+demodulation filter from a megahertz bitstream down to 16 kHz, and on an M33
+that filter can cost more than the front end and spotter together. PDM support
+is a follow-up with its own line in the §7 ceilings, not a free alternative.
+The per-hop cycle count from the core's cycle counter is recorded beside the
+QEMU instruction count. The board's radio is unused by the plan; a
+detection-over-Wi-Fi demo is a natural follow-up, not a deliverable — and one
+that must share the RP2350's three PIO blocks between the I²S microphone and
+the wireless chip's PIO-driven SPI.
+
+**Bench protocol, so the hardware pass can fail.** The recorded hold-out set
+(its Pico-microphone path) and one hour of the eval negatives, speech and
+music, played through a loudspeaker at a stated distance and level, with the
+board's bang line logged; hits and false accepts counted by the M5 harness's
+own scoring rules; recall and FA/hour committed beside the host figures.
 
 **Built in CI.** A `pico2w` job beside the QEMU legs: the `arm-none-eabi-gcc`
 the M33/M55 legs already install, a Pico SDK checkout pinned by tag and
@@ -446,8 +477,8 @@ M8 release question can reuse.
 **Pass:** on-target subsets green on all three rigs; both scenarios within the
 drift gate and under the absolute ceilings on every target; the `pico2w` job
 green with its UF2 uploaded and its footprint under the ceilings; the Pico 2 W
-example detects at conversational distance from its own microphone, with the
-hardware cycle count committed beside the QEMU figure; any accelerated or
+example's recall and FA/hour under the bench protocol committed, with the
+hardware cycle count beside the QEMU figure; any accelerated or
 fixed-point backend agreeing with the scalar golden path within a stated,
 tested tolerance.
 
@@ -459,7 +490,10 @@ the loaded model), refractory period, model path and `@resample`; with
 `@resample` on, decimates 32 / 48 / 96 kHz hosts to the model's rate and
 composes RatioTap for 44.1 kHz, reporting the added latency; with it off, or
 at any other rate, refuses rather than warns; a no-model state that meters and
-never fires, for the runtime-first shape. Reference page and help patcher with
+never fires, for the runtime-first shape; model loading off the audio thread —
+a new model may change geometry and so re-prepare the front end, which
+allocates, so the object is built on the main thread and swapped in by
+pointer, as `mutap.aec~` does for its weights. Reference page and help patcher with
 a visible confidence meter, demonstrating both a 16 kHz patch and a 48 kHz
 patch with `@resample`. Package-level notices file
 carrying the dataset card's attribution text.
@@ -492,7 +526,7 @@ the product's primary document.
 | DspTap README | `README.md` | M1, M3 | A section per primitive, count bumped, per the checklist |
 | Dataset card | `tools/ml/kws/DATASET.md` | M4 | Counts, hours, licences, attribution text, no-reidentification terms, voice lineage table |
 | Pipeline reference | `tools/ml/README.md`, re-scoped | M6 | Both tasks; the spotter's benchmark beside the suppressor's |
-| **Training guide** | `book/src/train-your-own-phrase.md` + `tools/ml/kws/README.md` | draft M6, final M8 | Choosing a phrase (syllables, confusables); verifying a voice's lineage; synthesizing positives; which negatives and how many; running the splits; training on a named device; reading a DET curve and choosing a threshold; exporting MUKW; loading it in `mutap.wake~`; recording a small hold-out of your own voice. **Its commands are a script, and CI runs that script on a toy corpus**, so the guide cannot drift from the pipeline. |
+| **Training guide** | `book/src/train-your-own-phrase.md` + `tools/ml/kws/README.md` | draft M6, final M8 | Choosing a phrase (syllables, confusables); verifying a voice's lineage; synthesizing positives; which negatives and how many; running the splits; training on a named device; reading a DET curve and choosing a threshold; exporting MUKW; loading it in `mutap.wake~`; recording a small hold-out of your own voice. **Its commands are a script, and CI runs that script on a toy corpus**, so the guide cannot drift from the pipeline. The toy run installs torch and one lineage-cleared Piper voice in its job, synthesizes a handful of clips, uses a committed tiny negative set rather than downloading any corpus, and has a stated time budget. |
 | Executed DET notebook | `notebooks/`, script-built | M5 onward | The performance record, through the C ABI |
 | Book chapter | `book/src/wake-word.md` | M8 | The spotter's design and measured numbers |
 | Max reference and help | `docs/mutap.wake~.maxref.xml`, `help/mutap.wake~.maxhelp` | M8 | Attributes, both host-rate patches, a tab pointing at the training guide |
