@@ -198,7 +198,9 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
   `nn_suppressor_weights` already documents it.
 - Accumulator precision per kernel, stated: today every dense and GRU dot
   product accumulates in `Sample`, and M3 preserves that. Any later change is
-  a documented contract change with a parity delta.
+  a documented contract change with a parity delta. **No double anywhere in
+  the hot path**, in any header on the spotter's route: the RP2350's Cortex-M33
+  has a single-precision FPU only, so double is soft-float there.
 - Streaming convolution: the activation cache's size and the causal delay per
   layer as numbers; equivalence to the non-streaming forward pass pinned by a
   torch-versus-streaming fixture.
@@ -295,10 +297,16 @@ refactors it:
 
 - `nn_suppressor<float>` typed tests with a float/double cross-precision pin,
   and its entry in `test_float32.cpp`.
-- `NnSuppressor` patterns added to both on-target positive filters (M55 and
+- A Cortex-M33 leg ported from RatioTap (`cmake/arm-cortex-m33-mps2.cmake`,
+  `platform/mps2_an505`, `armv8m_startup.c`, the CI job and ratchet step),
+  running the float-profile on-target subset under QEMU's mps2-an505 — the
+  Raspberry Pi Pico 2 class of core, single-precision FPU, no FP64, no MVE —
+  with its own `bench/baselines.json` entries. RatioTap has run this rig since
+  its v0.1, so it is a port, not a design.
+- `NnSuppressor` patterns added to every on-target positive filter (M33, M55,
   Hexagon).
 - An `nn_suppressor` scenario in `bench/icount` at both shipping geometries,
-  baselines seeded on m55 and hexagon.
+  baselines seeded on m33, m55 and hexagon.
 - `test_parity.py` promoted to a CI job: both profiles, **exported trainer
   weights** (`pretrained/suppressor_v2_48k.munn`) at the shipping 48 kHz
   geometry as well as random weights, run under `MUTAP_BUILD_ML_TOOLS=ON` in
@@ -407,17 +415,30 @@ achieved is what gets written down.
 
 ### M7 — Embedded profile and the budget *(DspTap · MuTap)*
 
-Front end and spotter through the M55 and Hexagon rigs;
-`kws` scenarios added to `bench/icount` at the shipping geometry, baselines
-seeded on both targets; the per-hop figure derived by dividing the scenario's
-count by its hop count. The §7 ceilings asserted as absolute checks beside the
-drift gate. Int8 backend only if the measured cost demands it *and* the M6
-architecture admits it; Q15 front end deferred until an M33-class target is
-named (a new Q-format design, since DspTap has no fixed-point FFT).
+Front end and spotter through the M33, M55 and Hexagon rigs; `kws` scenarios
+added to `bench/icount` at the shipping geometry, baselines seeded on all
+three; the per-hop figure derived by dividing the scenario's count by its hop
+count. The §7 ceilings asserted as absolute checks beside the drift gate.
+Float32 is the profile on every target, the RP2350 included; an int8 backend
+or a Q15 front end only if the measured M33 count misses the ceiling *and* the
+M6 architecture admits it (a Q15 front end is a new Q-format design, since
+DspTap has no fixed-point FFT).
 
-**Pass:** on-target subsets green on both rigs; both scenarios within the
-drift gate and under the absolute ceilings; any accelerated or fixed-point
-backend agreeing with the scalar golden path within a stated, tested tolerance.
+**On hardware — the named M33 target is the Raspberry Pi Pico 2 W.**
+`examples/pico2w/` in MuTap: a Pico SDK application, built out of tree against
+the SDK (not in CI; CI is the QEMU leg), reading a MEMS microphone (PDM or I²S
+through PIO) at 16 kHz, running the front end and spotter on one of the two
+cores, pulsing a GPIO on detection and streaming the confidence over UART. Its
+per-hop cycle count from the core's cycle counter is recorded beside the QEMU
+instruction count. The board's radio is unused by the plan; a detection-over-
+Wi-Fi demo is a natural follow-up, not a deliverable.
+
+**Pass:** on-target subsets green on all three rigs; both scenarios within the
+drift gate and under the absolute ceilings on every target; the Pico 2 W
+example detects at conversational distance from its own microphone, with the
+hardware cycle count committed beside the QEMU figure; any accelerated or
+fixed-point backend agreeing with the scalar golden path within a stated,
+tested tolerance.
 
 ### M8 — `mutap.wake~` *(MuTap-Max)*
 
@@ -445,6 +466,30 @@ universal; validated against a live microphone at conversational distance both n
 at 16 kHz and at 48 kHz through `@resample`, not only against files; the help patcher's displayed threshold equals
 the model's declared operating point.
 
+### The documentation, across the milestones
+
+Every effort in this family ends under HANDOFF's honesty rule: no number in
+the book that a test or notebook does not measure, no attribute described
+that does not exist. The spotter's documentation is spread over the
+milestones rather than left to the end, and one surface is new to the family:
+a **user guide to training a phrase**, which under the runtime-first release is
+the product's primary document.
+
+| Surface | Where | Milestone | Content |
+|---|---|---|---|
+| Header docstrings | `log_mel.h`, `decimate.h`, `nn/`, `kws.h` | M1, M3, M6 | Every §5 contract point as a number; the honest-limits block |
+| DspTap README | `README.md` | M1, M3 | A section per primitive, count bumped, per the checklist |
+| Dataset card | `tools/ml/kws/DATASET.md` | M4 | Counts, hours, licences, attribution text, no-reidentification terms, voice lineage table |
+| Pipeline reference | `tools/ml/README.md`, re-scoped | M6 | Both tasks; the spotter's benchmark beside the suppressor's |
+| **Training guide** | `book/src/train-your-own-phrase.md` + `tools/ml/kws/README.md` | draft M6, final M8 | Choosing a phrase (syllables, confusables); verifying a voice's lineage; synthesizing positives; which negatives and how many; running the splits; training on a named device; reading a DET curve and choosing a threshold; exporting MUKW; loading it in `mutap.wake~`; recording a small hold-out of your own voice. **Its commands are a script, and CI runs that script on a toy corpus**, so the guide cannot drift from the pipeline. |
+| Executed DET notebook | `notebooks/`, script-built | M5 onward | The performance record, through the C ABI |
+| Book chapter | `book/src/wake-word.md` | M8 | The spotter's design and measured numbers |
+| Max reference and help | `docs/mutap.wake~.maxref.xml`, `help/mutap.wake~.maxhelp` | M8 | Attributes, both host-rate patches, a tab pointing at the training guide |
+| README status rows | MuTap, MuTap-Max | M8 | Status, roadmap, charter sentence |
+| Package notices | MuTap-Max `NOTICES.md` | M8 | The dataset card's attribution text, where a user of the external sees it |
+| Pico 2 W example README | `examples/pico2w/README.md` | M7 | Wiring, build against the Pico SDK, the measured cycle count |
+| HANDOFF | `HANDOFF.md` | M0, M8 | The five decisions; end state for the next session |
+
 > **Sequencing note.** M1, M2 and M3 are worth doing regardless of whether the
 > wake word ships. A mel front end is a primitive several Tap libraries would
 > use; the learned suppressor gains the float, on-target and CI-parity
@@ -470,10 +515,21 @@ Four gates. Two exist and need extending; two are built in M2 and M5.
 
   | Ceiling | Target |
   |---|---|
-  | Instructions per 10 ms hop, front end + spotter, scalar float on M55 | ≤ 150 k |
+  | Instructions per 10 ms hop, front end + spotter, scalar float, per target | ≤ 150 k on M55 and on M33 (10 % of one RP2350 core at 150 MHz) |
   | Weights | ≤ 64 KB |
   | Activation and streaming state | ≤ 32 KB |
   | Detection latency after phrase end | ≤ 20 hops (200 ms) |
+
+**Targets.** The plan inherits MuTap's target set and adds the M33 leg the
+family already runs elsewhere:
+
+| Tier | Target | Profile | Verified by |
+|---|---|---|---|
+| Host, the shipping consumer | macOS universal (arm64 + x86_64), Windows; Linux in MuTap's CI matrix | double golden, float32 | Full batteries, sanitizers, MuTap-Max universal-binary check |
+| Embedded, emulated in CI | Cortex-M55 (QEMU mps3-an547): FP32 + FP64 + Helium | float32 | On-target subset, icount ratchet, absolute ceilings |
+| Embedded, emulated in CI | Qualcomm Hexagon (qemu-hexagon, HVX auto-vectorized) | float32 | On-target full suite, icount ratchet |
+| Embedded, emulated in CI *(new, M2)* | Cortex-M33 (QEMU mps2-an505): FP32 only, no FP64, no MVE — the RP2350 class | float32 | Float-profile subset, icount ratchet, absolute ceilings |
+| Embedded, on hardware *(M7)* | **Raspberry Pi Pico 2 W** (RP2350: 2 × Cortex-M33 at 150 MHz, 520 KB SRAM, 4 MB flash) | float32 | `examples/pico2w/`, hardware cycle count beside the QEMU figure |
 
 Deliberately *not* in CI: the DET evaluation. It needs hundreds of hours of
 audio and a trained model, so it belongs in the notebook verification layer —
@@ -546,8 +602,8 @@ reorder: it removes the phrase as a blocking decision, the shipped dataset
 card, the recorded hold-out set and the declared operating point from the
 critical path, and adds a no-model state to the external and threshold
 semantics without a measured FA/hour. M4's builder and M5's harness remain the
-product a user trains with. A bundled phrase follows once a recorded
-evaluation set exists.*
+product a user trains with, and the training guide in §6 becomes its primary
+document. A bundled phrase follows once a recorded evaluation set exists.*
 
 **The wake phrase.** Load-bearing only under bundled weights.
 *Yours to choose, when needed. Three to four syllables, unusual phonotactics,
