@@ -52,8 +52,9 @@ MuTap         fd_kalman.h    nn_suppressor.h    [kws.h]    ← new, M6
                      │            ↑ submodule pin
                      │ refactored onto
                      ↓
-DspTap        fft.h    yin.h    [log_mel.h]   [nn/]
-                                 ↑ new, M1     ↑ promoted, M3
+DspTap        fft.h    yin.h    [log_mel.h]   [nn/]   [decimate.h]
+                                 ↑ new, M1     ↑ promoted, M3   ↑ new, M1 (home per M0)
+RatioTap      44.1 ↔ 48 only — composed by mutap.wake~ for 44.1 kHz hosts
 ```
 
 **The load-bearing move is the promotion.** M3 lifts the dense/GRU arithmetic
@@ -88,7 +89,8 @@ Read from the checkouts, with the audit's corrections applied.
 | `tools/ml/README.md` | The licensing map and measured benchmark that justified the hybrid design; files "int8 + CMSIS-NN for the M55 path" as next step. | The template for M4's dataset card, and a roadmap this plan must reconcile with (§5, `tap::dsp::nn`). |
 | Cortex-M55 QEMU rig + `scripts/icount.py` | On-target positive-filter test subset in CI; whole-binary instruction count per scenario with a ±3 % drift gate against `bench/baselines.json` (`fdkf`, `chain` at 16 k and 48 k, on m55 and hexagon). **No learned-path scenario; `NnSuppressor` not in the on-target filter.** | The rig the embedded profile runs on, once M2 adds the learned scenarios. The ratchet is a drift gate; the budget is a separate absolute assertion (§7). |
 | DspTap `fft.h` backend pattern | Ooura golden model; CMSIS-Helium and vDSP float32 backends re-presenting the exact contract, certified by parity tests. | The mel front end's FFT, and the rule for any accelerated NN backend: optional, opt-in, parity-pinned against the scalar golden path. |
-| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The *convention* for any later Q15 front end — not a fixed-point front end in itself — and the material for a polyphase decimator should an embedded target with a fixed ADC clock ever need one (not the Max consumer; see M0). |
+| RatioTap | Synchronous 44.1 ↔ 48 kHz, one rational pair by charter ("no other ratios"), compile-time direction type, Kaiser prototype over the DspTap substrate, instruction-count ratchet on M33/M55/Hexagon. SampleRateTap beside it is near-unity async only. | Composed by `mutap.wake~` for 44.1 kHz hosts (44.1 → 48, then 3:1 to 16 kHz), and the *design template* for the decimator: fixed ratios as types, speed-first profiles, ratchet-gated. |
+| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The *convention* for any later Q15 front end — not a fixed-point front end in itself — and the substrate the integer-ratio decimator of M1 is built on, exactly as RatioTap builds on it. |
 
 **What this rules out:** TFLite Micro and ONNX runtime as dependencies. The
 family's demonstrated position is hand-written inference against a documented
@@ -168,15 +170,27 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
 
 ### Host rate
 
-- The spotter runs at one internal rate, 16 kHz, and `kws` and `mutap.wake~`
-  **refuse** any other rate rather than warning and proceeding. Rate
-  conversion is the host's job: Max runs its DSP at whatever the audio driver
-  offers, so a patch can run at 16 kHz outright where the interface supports
-  it, and otherwise `poly~ @down N` (N = 2, 3, 6 for 32 / 48 / 96 kHz) gives
-  a 16 kHz subpatch with Max's own resampling filter. The header states this,
-  and states that 44.1 kHz has no integer path and is unsupported until a
-  rational converter (RatioTap) is wired in. A DspTap decimator is deferred
-  until an embedded target with a fixed ADC clock needs one.
+- The spotter runs at one internal rate, 16 kHz. `kws.h` knows nothing about
+  any other rate and **refuses** one rather than warning and proceeding; rate
+  conversion is never at the MuTap level.
+- Conversion lives in the Max layer as an option on `mutap.wake~`
+  (`@resample`, on by default): when the host runs at 32 / 48 / 96 kHz the
+  external decimates by 2 / 3 / 6 in front of the spotter; at 44.1 kHz it
+  composes RatioTap's 44.1 → 48 with the 3:1 stage; at 16 kHz it passes
+  through. Any other rate is refused. Where the interface supports 16 kHz,
+  running the patch there costs nothing and the option is a no-op.
+- None of the family's converters covers this today — `poly~` resamples by
+  powers of two only, RatioTap is 44.1 ↔ 48 by charter, SampleRateTap is
+  near-unity async — so the integer-ratio decimator is new work (M1), built
+  on the same DspTap substrate RatioTap uses.
+
+### `tap::dsp::decimate` *(home per M0: DspTap primitive, or a RatioTap sibling)*
+
+- Ratios 2, 3, 6 as compile-time types, RatioTap's pattern; Kaiser-designed
+  polyphase FIR from `kaiser.h` over `fir_kernels.h`; stopband attenuation,
+  passband edge and group delay as numbers per profile; latency in samples at
+  the host rate; float golden model pinned against a committed scipy
+  reference, as RatioTap's is.
 
 ### `tap::dsp::nn`
 
@@ -227,13 +241,14 @@ Five decisions, each cheap now and expensive later.
 1. **Repository.** MuTap with a widened charter (§9) or a new sibling. Affects
    M4/M5 file placement, so it blocks at M4, not M6.
 2. **Host-rate policy.** Either (a) the spotter runs at a fixed internal
-   16 kHz and refuses other rates, leaving conversion to the host — Max can
-   run its DSP at 16 kHz where the interface supports it, and `poly~ @down N`
-   covers 32 / 48 / 96 kHz otherwise; or (b) a model per host rate on
-   spectrally upsampled corpora, the suppressor's route, accepting that bands
-   above 8 kHz are never excited in training and that 44.1 kHz needs a third
-   model. Under (a) 44.1 kHz stays unsupported until RatioTap is wired in.
-   Recommendation in §9.
+   16 kHz, `kws.h` refuses other rates, and `mutap.wake~` offers conversion
+   as an option in the Max layer — a new integer-ratio decimator for 32 / 48 /
+   96 kHz, composed with RatioTap for 44.1 kHz; or (b) a model per host rate
+   on spectrally upsampled corpora, the suppressor's route, accepting that
+   bands above 8 kHz are never excited in training and that 44.1 kHz needs a
+   third model. Under (a), a sub-decision: the decimator's home — a DspTap
+   primitive, or a sibling of RatioTap on the same substrate (RatioTap itself
+   refuses other ratios by charter). Recommendation in §9.
 3. **Release shape.** Runtime-first (a user-supplied model, no bundled phrase)
    or bundled weights. Decides whether the phrase blocks anything (§9).
 4. **The wake phrase**, if bundled: three or four syllables, unusual
@@ -247,12 +262,14 @@ Five decisions, each cheap now and expensive later.
 shortlist if a phrase is chosen, and the compute budget of M4 named (where
 training runs, and a per-run time target).
 
-### M1 — The mel front end *(DspTap)*
+### M1 — The mel front end, and the decimator *(DspTap)*
 
 `include/tap/dsp/log_mel.h` — `basic_log_mel<Sample>` per the §5 contract, with
 the double golden model and float32 embedded profile, riding the existing
 `real_fft` with the FFT size decoupled from the hop. PCEN as a documented option
-on the same object.
+on the same object. Under route (a), `decimate.h` beside it — ratios 2, 3
+and 6 as types, RatioTap's design path (Kaiser prototype, committed scipy
+reference vectors, C ABI), in whichever home M0 chose.
 
 **Before the header:** a throwaway numpy mel in `tools/ml/kws_features.py`,
 written first and committed, is the reference M1 is scored against — the
@@ -267,7 +284,9 @@ checklist; `.clang-tidy` clean under the clang front end.
 **Pass:** agreement with the committed numpy reference at a committed tolerance
 on a fixed multi-band test signal; PCEN gain-tracking pinned on a level-stepped
 input; PCEN reset semantics pinned; streaming output identical to whole-signal
-output frame for frame (the alignment contract).
+output frame for frame (the alignment contract); decimator passband ripple,
+stopband attenuation and latency pinned per ratio against the committed
+reference, if built.
 
 ### M2 — Oracles for the learned path *(MuTap)* — new in rev 2
 
@@ -404,11 +423,13 @@ backend agreeing with the scalar golden path within a stated, tested tolerance.
 
 One external on the `mutap.aec~` pattern: signal inlet; bang outlet on
 detection; confidence float outlet; attributes for threshold (defaulting from
-the loaded model), refractory period and model path; runs only at the model's
-rate and refuses, rather than warns, on any other; a no-model state that meters
-and never fires, for the runtime-first shape. Reference page and help patcher
-with a visible confidence meter, demonstrating both a 16 kHz patch and the
-`poly~ @down 3` wrapper at 48 kHz. Package-level notices file
+the loaded model), refractory period, model path and `@resample`; with
+`@resample` on, decimates 32 / 48 / 96 kHz hosts to the model's rate and
+composes RatioTap for 44.1 kHz, reporting the added latency; with it off, or
+at any other rate, refuses rather than warns; a no-model state that meters and
+never fires, for the runtime-first shape. Reference page and help patcher with
+a visible confidence meter, demonstrating both a 16 kHz patch and a 48 kHz
+patch with `@resample`. Package-level notices file
 carrying the dataset card's attribution text.
 
 "Ship" means what it means for the family today: source build and a Packages
@@ -421,7 +442,7 @@ roadmap row.
 
 **Pass:** loads and behaves correctly in Max on both platforms, macOS binary
 universal; validated against a live microphone at conversational distance both natively
-at 16 kHz and inside `poly~ @down 3` at 48 kHz, not only against files; the help patcher's displayed threshold equals
+at 16 kHz and at 48 kHz through `@resample`, not only against files; the help patcher's displayed threshold equals
 the model's declared operating point.
 
 > **Sequencing note.** M1, M2 and M3 are worth doing regardless of whether the
@@ -503,15 +524,21 @@ sibling library pinning DspTap. M1–M3 are correct under both; blocks at M4.
 alongside, not replacing, its adaptive-filter core. Revisit only if a second
 consumer for keyword spotting appears in the family.*
 
-**Host-rate policy.** Route (a), fixed internal 16 kHz with the host
-converting, or route (b), a model per host rate.
+**Host-rate policy.** Route (a), fixed internal 16 kHz with conversion as an
+option in the Max layer, or route (b), a model per host rate.
 *Recommend (a). One model, one corpus geometry, one FFT size, and the front end
-never sees bands the training data cannot excite. Max already provides the
-conversion — its DSP runs at whatever the driver offers, so 16 kHz outright on
-interfaces that support it, and `poly~ @down N` for 32 / 48 / 96 kHz on those
-that do not — so no DspTap decimator is needed for this consumer. 44.1 kHz has
-no integer path and is declared unsupported in the first release, which HANDOFF
-already records as an open slot for the suppressor.*
+never sees bands the training data cannot excite. Where the interface offers
+16 kHz the patch can simply run there; otherwise `@resample` on `mutap.wake~`
+does the work, never `kws.h`. The conversion has to be built: `poly~` is
+powers of two only, RatioTap is 44.1 ↔ 48 by charter, SampleRateTap is
+near-unity async. The missing piece is small — an integer-ratio decimator for
+2, 3 and 6 — and 44.1 kHz falls out by composing RatioTap's 44.1 → 48 in front
+of the 3:1 stage, so no rational 441:160 design is needed. For its home,
+recommend a DspTap primitive built on the substrate RatioTap already uses,
+with RatioTap's design path as the template; widening RatioTap would contradict
+its stated identity, and a third converter repository is more than three
+ratios warrant. The decimator is also the piece an embedded target with a
+fixed ADC clock would need, so it is not Max-only work.*
 
 **Release shape.** Runtime-first, or bundled weights.
 *Recommend runtime-first for the first release. This is a shortening, not a
