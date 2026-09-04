@@ -52,8 +52,8 @@ MuTap         fd_kalman.h    nn_suppressor.h    [kws.h]    ← new, M6
                      │            ↑ submodule pin
                      │ refactored onto
                      ↓
-DspTap        fft.h    yin.h    [log_mel.h]   [nn/]   [decimate.h]
-                                 ↑ new, M1     ↑ promoted, M3   ↑ new, M1 (if M0 picks it)
+DspTap        fft.h    yin.h    [log_mel.h]   [nn/]
+                                 ↑ new, M1     ↑ promoted, M3
 ```
 
 **The load-bearing move is the promotion.** M3 lifts the dense/GRU arithmetic
@@ -88,7 +88,7 @@ Read from the checkouts, with the audit's corrections applied.
 | `tools/ml/README.md` | The licensing map and measured benchmark that justified the hybrid design; files "int8 + CMSIS-NN for the M55 path" as next step. | The template for M4's dataset card, and a roadmap this plan must reconcile with (§5, `tap::dsp::nn`). |
 | Cortex-M55 QEMU rig + `scripts/icount.py` | On-target positive-filter test subset in CI; whole-binary instruction count per scenario with a ±3 % drift gate against `bench/baselines.json` (`fdkf`, `chain` at 16 k and 48 k, on m55 and hexagon). **No learned-path scenario; `NnSuppressor` not in the on-target filter.** | The rig the embedded profile runs on, once M2 adds the learned scenarios. The ratchet is a drift gate; the budget is a separate absolute assertion (§7). |
 | DspTap `fft.h` backend pattern | Ooura golden model; CMSIS-Helium and vDSP float32 backends re-presenting the exact contract, certified by parity tests. | The mel front end's FFT, and the rule for any accelerated NN backend: optional, opt-in, parity-pinned against the scalar golden path. |
-| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The material for a polyphase decimator (M1, if M0 picks that route) and the *convention* for any later Q15 front end — not a fixed-point front end in itself. |
+| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The *convention* for any later Q15 front end — not a fixed-point front end in itself — and the material for a polyphase decimator should an embedded target with a fixed ADC clock ever need one (not the Max consumer; see M0). |
 
 **What this rules out:** TFLite Micro and ONNX runtime as dependencies. The
 family's demonstrated position is hand-written inference against a documented
@@ -166,11 +166,17 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
 - Float/double cross-precision tolerance as a **measured** number, on a test
   signal that excites every band.
 
-### `tap::dsp::decimate` *(only if M0 picks the fixed-internal-rate route)*
+### Host rate
 
-- Integer ratios 2, 3, 6 (32 k, 48 k, 96 k → 16 k); Kaiser-designed polyphase
-  FIR from `kaiser.h` over `fir_kernels.h`; stopband attenuation, transition
-  band and group delay as numbers; latency in samples at the host rate.
+- The spotter runs at one internal rate, 16 kHz, and `kws` and `mutap.wake~`
+  **refuse** any other rate rather than warning and proceeding. Rate
+  conversion is the host's job: Max runs its DSP at whatever the audio driver
+  offers, so a patch can run at 16 kHz outright where the interface supports
+  it, and otherwise `poly~ @down N` (N = 2, 3, 6 for 32 / 48 / 96 kHz) gives
+  a 16 kHz subpatch with Max's own resampling filter. The header states this,
+  and states that 44.1 kHz has no integer path and is unsupported until a
+  rational converter (RatioTap) is wired in. A DspTap decimator is deferred
+  until an embedded target with a fixed ADC clock needs one.
 
 ### `tap::dsp::nn`
 
@@ -221,11 +227,13 @@ Five decisions, each cheap now and expensive later.
 1. **Repository.** MuTap with a widened charter (§9) or a new sibling. Affects
    M4/M5 file placement, so it blocks at M4, not M6.
 2. **Host-rate policy.** Either (a) the spotter runs at a fixed internal
-   16 kHz and `mutap.wake~` owns the conversion — integer ratios via a new
-   DspTap decimator in M1, 44.1 kHz via RatioTap or deferred; or (b) a model
-   per host rate on spectrally upsampled corpora, the suppressor's route,
-   accepting that bands above 8 kHz are never excited in training and that
-   44.1 kHz needs a third model. Recommendation in §9.
+   16 kHz and refuses other rates, leaving conversion to the host — Max can
+   run its DSP at 16 kHz where the interface supports it, and `poly~ @down N`
+   covers 32 / 48 / 96 kHz otherwise; or (b) a model per host rate on
+   spectrally upsampled corpora, the suppressor's route, accepting that bands
+   above 8 kHz are never excited in training and that 44.1 kHz needs a third
+   model. Under (a) 44.1 kHz stays unsupported until RatioTap is wired in.
+   Recommendation in §9.
 3. **Release shape.** Runtime-first (a user-supplied model, no bundled phrase)
    or bundled weights. Decides whether the phrase blocks anything (§9).
 4. **The wake phrase**, if bundled: three or four syllables, unusual
@@ -239,12 +247,12 @@ Five decisions, each cheap now and expensive later.
 shortlist if a phrase is chosen, and the compute budget of M4 named (where
 training runs, and a per-run time target).
 
-### M1 — The mel front end, and the decimator *(DspTap)*
+### M1 — The mel front end *(DspTap)*
 
 `include/tap/dsp/log_mel.h` — `basic_log_mel<Sample>` per the §5 contract, with
 the double golden model and float32 embedded profile, riding the existing
 `real_fft` with the FFT size decoupled from the hop. PCEN as a documented option
-on the same object. If M0 chose route (a), `decimate.h` beside it.
+on the same object.
 
 **Before the header:** a throwaway numpy mel in `tools/ml/kws_features.py`,
 written first and committed, is the reference M1 is scored against — the
@@ -259,8 +267,7 @@ checklist; `.clang-tidy` clean under the clang front end.
 **Pass:** agreement with the committed numpy reference at a committed tolerance
 on a fixed multi-band test signal; PCEN gain-tracking pinned on a level-stepped
 input; PCEN reset semantics pinned; streaming output identical to whole-signal
-output frame for frame (the alignment contract); decimator passband ripple,
-stopband attenuation and latency pinned if built.
+output frame for frame (the alignment contract).
 
 ### M2 — Oracles for the learned path *(MuTap)* — new in rev 2
 
@@ -381,7 +388,7 @@ achieved is what gets written down.
 
 ### M7 — Embedded profile and the budget *(DspTap · MuTap)*
 
-Front end, decimator (if any) and spotter through the M55 and Hexagon rigs;
+Front end and spotter through the M55 and Hexagon rigs;
 `kws` scenarios added to `bench/icount` at the shipping geometry, baselines
 seeded on both targets; the per-hop figure derived by dividing the scenario's
 count by its hop count. The §7 ceilings asserted as absolute checks beside the
@@ -397,10 +404,11 @@ backend agreeing with the scalar golden path within a stated, tested tolerance.
 
 One external on the `mutap.aec~` pattern: signal inlet; bang outlet on
 detection; confidence float outlet; attributes for threshold (defaulting from
-the loaded model), refractory period and model path; host-rate handling per
-M0's decision, refusing rather than warning on an unsupported rate; a no-model
-state that meters and never fires, for the runtime-first shape. Reference page
-and help patcher with a visible confidence meter. Package-level notices file
+the loaded model), refractory period and model path; runs only at the model's
+rate and refuses, rather than warns, on any other; a no-model state that meters
+and never fires, for the runtime-first shape. Reference page and help patcher
+with a visible confidence meter, demonstrating both a 16 kHz patch and the
+`poly~ @down 3` wrapper at 48 kHz. Package-level notices file
 carrying the dataset card's attribution text.
 
 "Ship" means what it means for the family today: source build and a Packages
@@ -412,8 +420,8 @@ the DET notebook and the tests; a MuTap README status row; a MuTap-Max README
 roadmap row.
 
 **Pass:** loads and behaves correctly in Max on both platforms, macOS binary
-universal; validated against a live microphone at conversational distance at
-48 kHz, not only against files; the help patcher's displayed threshold equals
+universal; validated against a live microphone at conversational distance both natively
+at 16 kHz and inside `poly~ @down 3` at 48 kHz, not only against files; the help patcher's displayed threshold equals
 the model's declared operating point.
 
 > **Sequencing note.** M1, M2 and M3 are worth doing regardless of whether the
@@ -495,13 +503,15 @@ sibling library pinning DspTap. M1–M3 are correct under both; blocks at M4.
 alongside, not replacing, its adaptive-filter core. Revisit only if a second
 consumer for keyword spotting appears in the family.*
 
-**Host-rate policy.** Route (a), fixed internal 16 kHz with the external
+**Host-rate policy.** Route (a), fixed internal 16 kHz with the host
 converting, or route (b), a model per host rate.
 *Recommend (a). One model, one corpus geometry, one FFT size, and the front end
-never sees bands the training data cannot excite. Cost: a small polyphase
-decimator in DspTap for 32 / 48 / 96 kHz, and 44.1 kHz handled by RatioTap or
-declared unsupported in the first release — which HANDOFF already records as an
-open slot for the suppressor.*
+never sees bands the training data cannot excite. Max already provides the
+conversion — its DSP runs at whatever the driver offers, so 16 kHz outright on
+interfaces that support it, and `poly~ @down N` for 32 / 48 / 96 kHz on those
+that do not — so no DspTap decimator is needed for this consumer. 44.1 kHz has
+no integer path and is declared unsupported in the first release, which HANDOFF
+already records as an open slot for the suppressor.*
 
 **Release shape.** Runtime-first, or bundled weights.
 *Recommend runtime-first for the first release. This is a shortening, not a
