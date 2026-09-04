@@ -314,10 +314,13 @@ on the same object. Under route (a), `decimate.h` beside it — ratios 2, 3
 and 6 as types, RatioTap's design path (Kaiser prototype, committed scipy
 reference vectors, C ABI), in whichever home M0 chose.
 
-**Before the header:** a throwaway numpy mel in `tools/ml/kws_features.py`,
-written first and committed, is the reference M1 is scored against — the
-family has no reference mel today, and M1's pass needs one that exists before
-the C++ does.
+**Before the header:** a numpy restatement of the contract, written first and
+committed, is the reference M1 is scored against — the family has no
+reference mel today, and M1's pass needs one that exists before the C++ does.
+*As built:* it lives in DspTap as `tools/reference/make_frontend_reference.py`
+(numpy only, generating `tests/reference/frontend_vectors.h`), not in MuTap,
+so there is exactly one numpy copy of the formulas in the family; M4's
+`kws_features.py` imports it through the submodule rather than restating it.
 
 Typed GoogleTest battery pinning every §5 contract point; float/double
 agreement measured, not assumed; C ABI exposure in `tools/capi` and the
@@ -330,6 +333,19 @@ input; PCEN reset semantics pinned; streaming output identical to whole-signal
 output frame for frame (the alignment contract); decimator passband ripple,
 stopband attenuation and latency pinned per ratio against the committed
 reference, if built.
+
+**Done, 4 September 2026** (DspTap branch `claude/mutap-wake-word-plan-2i63pe`).
+Measured, not estimated: C++ vs numpy on the reference signal — double
+1.5e-14 (log) / 3.4e-14 (PCEN), float 6.7e-7 / 5.3e-6, pinned at 1e-13 and
+1.2e-5; float vs double 6.7e-7 / 5.3e-6, pinned at 2×; decimator float vs numpy
+under 3e-5 for all six ratio × profile cases, Q15 vs float 1.6e-4 at half
+scale, pinned at 3.2e-4. Tap counts searched and pinned: economy 81 / 121 / 239,
+transparent 259 / 389 / 773. Contract version 1. Both primitives are in the C
+ABI and the `dsptap_py` bridge (`LogMel`, `Decimator`); the bridge reproduces
+the numpy reference to 1.5e-14. 139 DspTap tests green, clang-format and
+clang-tidy clean. One correction to §5 discovered in testing: PCEN's steady
+state keeps a deliberate E^(1−α) level dependence, so "gain tracking" is
+pinned to the closed form (E/(ε+E)^α + δ)^r − δ^r rather than to unity.
 
 ### M2 — Oracles for the learned path *(MuTap)* — new in rev 2
 
