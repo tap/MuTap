@@ -4,6 +4,8 @@
     "chain_48k": 470317154,
     "fdkf_16k": 92600036,
     "fdkf_48k": 162071335,
+    "nn_suppressor_16k": 465537141,
+    "nn_suppressor_48k": 154160506,
     "shadow_16k": 57863067,
     "shadow_48k": 57863050,
     "suppressor_16k": 255190544,

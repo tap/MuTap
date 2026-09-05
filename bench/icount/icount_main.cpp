@@ -93,12 +93,14 @@ namespace {
         const float* yb(std::size_t i) const noexcept { return &y[(i % blocks) * block]; }
     };
 
-    auto preset() {
+    // Each binary is one scenario, so the helper the other layers use is
+    // unreferenced in some of them by design.
+    [[maybe_unused]] auto preset() {
         return tap::mu::aec_chain_preset<float>(k_geo.block, k_geo.partitions, k_geo.fs);
     }
 
     // Deterministic weights at the scenario's trained geometry (layer 4).
-    tap::mu::nn_suppressor_weights nn_weights() {
+    [[maybe_unused]] tap::mu::nn_suppressor_weights nn_weights() {
 #if MUTAP_SC_RATE == 0
         const tap::mu::nn_geometry g{48000.0, 256, 26, 64, 96};
 #else
