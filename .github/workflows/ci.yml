@@ -181,6 +181,39 @@ jobs:
       - name: Test under emulation (Ooura FFT fallback)
         run: ctest --test-dir build-ooura --output-on-failure
 
+  # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
+  # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
+  # embedded target. Same Armv8-M startup as the M55 leg, Ooura float32 FFT
+  # (no Helium here), the M55's float-profile selection minus the long float
+  # PEM scenarios (their test harness simulates the room in double: soft-float
+  # here, ~17 min for one of them — see tests/bare_metal_main.cpp). Ported
+  # from RatioTap's cortex-m33-qemu job.
+  cortex-m33-qemu:
+    name: Cortex-M33 cross (QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          submodules: recursive
+
+      - name: Install toolchain and QEMU
+        run: >
+          sudo apt-get update -q &&
+          sudo apt-get install -y -q gcc-arm-none-eabi qemu-system-arm
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_BUILD_TYPE=MinSizeRel
+          -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m33-mps2.cmake
+
+      - name: Build
+        run: cmake --build build -j 4
+
+      - name: Test under emulation
+        run: ctest --test-dir build --output-on-failure
+
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
   # user-mode emulation: the third target of the one-core/three-targets
@@ -362,6 +395,26 @@ jobs:
           python3 scripts/icount.py --target m55
           --build-dir build-m55 --plugin /tmp/libinsncount.so
 
+      # Release (-O2) M33 workloads on the MPS2+ AN505 model: the Pico 2 W
+      # class core, Ooura float32 FFT (the toolchain file pins CMSIS off —
+      # no Helium). bench/baselines.json m33 was seeded from this exact
+      # toolchain/QEMU pair (gcc-arm-none-eabi 13.2.rel1, QEMU 8.2.2).
+      - name: Build M33 workloads
+        if: ${{ !cancelled() }}
+        run: >
+          cmake -B build-m33
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m33-mps2.cmake
+          -DMUTAP_BUILD_TESTS=OFF
+          -DMUTAP_BUILD_ICOUNT_BENCH=ON
+          && cmake --build build-m33 -j 4
+
+      - name: Ratchet M33
+        if: ${{ !cancelled() }}
+        run: >
+          python3 scripts/icount.py --target m33
+          --build-dir build-m33 --plugin /tmp/libinsncount.so
+
       # qemu-system-arm's plugins cover M55; qemu-hexagon must be built with
       # --enable-plugins (linux-user only, ~4 min, cached thereafter).
       - name: Cache plugin-enabled qemu-hexagon
@@ -426,6 +479,42 @@ jobs:
           fi
           python3 scripts/icount.py --target hexagon \
             --build-dir build-hex --plugin /tmp/libinsncount.so
+
+  # Python <-> C++ parity of the learned suppressor (tools/ml/test_parity.py):
+  # the C++ inference against the numpy reference, in BOTH numeric profiles,
+  # on random weights at both trained geometries and on the shipping
+  # pretrained model. Previously a hand-run script; a feature definition
+  # drifting between features.py and nn_suppressor.h now fails here, not in
+  # a quietly degraded model (wake-word plan, M2).
+  nn-parity:
+    name: Suppressor Python/C++ parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          submodules: recursive
+
+      - name: Install numpy
+        run: sudo apt-get update -q && sudo apt-get install -y -q python3-numpy
+
+      - name: Build the parity driver
+        run: >
+          cmake -B build-ml -DCMAKE_BUILD_TYPE=Release
+          -DMUTAP_BUILD_TESTS=OFF -DMUTAP_BUILD_ML_TOOLS=ON
+          && cmake --build build-ml -j 4 --target nn_infer
+
+      - name: Parity, double profile
+        run: |
+          python3 tools/ml/test_parity.py --build-dir build-ml --profile double --geometry 16k
+          python3 tools/ml/test_parity.py --build-dir build-ml --profile double --geometry 48k
+          python3 tools/ml/test_parity.py --build-dir build-ml --profile double --weights tools/ml/pretrained/suppressor_v2_48k.munn
+
+      - name: Parity, float profile
+        run: |
+          python3 tools/ml/test_parity.py --build-dir build-ml --profile float --geometry 16k
+          python3 tools/ml/test_parity.py --build-dir build-ml --profile float --geometry 48k
+          python3 tools/ml/test_parity.py --build-dir build-ml --profile float --weights tools/ml/pretrained/suppressor_v2_48k.munn
 
   clang-format:
     name: clang-format

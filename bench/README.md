@@ -112,7 +112,9 @@ stale, too-high baseline can never let a future regression hide in the
 slack — the winning commit must re-record).
 
 Scenarios mirror the wall-clock layers — `fdkf`, `suppressor`, `shadow`,
-`chain` — at both certified geometries (`_48k`, `_16k`), all **float32**
+`chain` — plus `nn_suppressor` (the learned post engine at its two trained
+geometries, hop 256 at 48 kHz and hop 64 at 16 kHz) at both certified
+geometries (`_48k`, `_16k`), all **float32**
 (the deployment precision; double is soft-float on the M55 and not the
 optimization target — the float32 parity gates in
 [`tests/test_float32.cpp`](../tests/test_float32.cpp) are the correctness
@@ -141,6 +143,9 @@ cmake --build build-m55 -j
 python3 scripts/icount.py --target m55 \
     --build-dir build-m55 --plugin /tmp/libinsncount.so
 ```
+
+Targets: `m55` (MPS3 AN547, CMSIS Helium FFT), `m33` (MPS2+ AN505 — the
+Raspberry Pi Pico 2 W class, Ooura FFT, no MVE) and `hexagon`.
 
 **Seeding / re-recording:** a new target starts with an empty dict, so the
 job reports each scenario's count and fails with `NO BASELINE`. Capture

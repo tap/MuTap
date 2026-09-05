@@ -85,7 +85,14 @@ def band_edges_hz(num_bands: int, fmax: float) -> np.ndarray:
     erb_rate = lambda f: 21.4 * np.log10(1.0 + 0.00437 * f)  # noqa: E731
     inv = lambda r: (10.0 ** (r / 21.4) - 1.0) / 0.00437  # noqa: E731
     r = np.linspace(0.0, erb_rate(fmax), num_bands + 2)
-    return inv(r)
+    edges = inv(r)
+    # The top edge is fmax EXACTLY, never the ERB round trip of it: that
+    # round trip lands a few 1e-12 above fmax at 16 kHz and below it at
+    # 48 kHz (and differs between numpy and libm), which used to decide
+    # whether the Nyquist bin was covered at all. Coverage is a contract,
+    # not a rounding accident — see band_matrix().
+    edges[-1] = fmax
+    return edges
 
 
 def band_matrix(geom: Geometry = GEOM16) -> np.ndarray:
@@ -100,6 +107,7 @@ def band_matrix(geom: Geometry = GEOM16) -> np.ndarray:
         w[b, up] = (freqs[up] - lo) / max(mid - lo, 1e-9)
         w[b, down] = (hi - freqs[down]) / max(hi - mid, 1e-9)
     w[0, 0] = 1.0  # DC belongs to the first band
+    w[-1, -1] = 1.0  # and the Nyquist bin to the last (a triangle's weight is 0 at its edge)
     return w
 
 

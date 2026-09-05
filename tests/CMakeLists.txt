@@ -56,6 +56,11 @@ if(MUTAP_BARE_METAL)
     # not reliably propagate exit codes through the emulator.
     target_sources(mutap_tests PRIVATE bare_metal_main.cpp)
     target_link_libraries(mutap_tests PRIVATE GTest::gtest)
+    if(MUTAP_ON_TARGET_SOFT_FP64)
+        # No FP64 hardware (Cortex-M33): bare_metal_main.cpp drops the long
+        # float PEM scenarios, whose test harness simulates the room in double.
+        target_compile_definitions(mutap_tests PRIVATE MUTAP_ON_TARGET_SOFT_FP64=1)
+    endif()
     add_test(NAME mutap_tests_emulated COMMAND mutap_tests)
     set_tests_properties(mutap_tests_emulated PROPERTIES
         PASS_REGULAR_EXPRESSION "MUTAP_TESTS_COMPLETE rc=0"
@@ -74,7 +79,7 @@ else()
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:CertifiedGeometries/fft_backend_parity.*:fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*")
+            "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:CertifiedGeometries/fft_backend_parity.*:fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)

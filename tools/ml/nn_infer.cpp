@@ -4,12 +4,16 @@
 // Offline driver for tap::mu::nn_suppressor — the C++ half of the parity
 // test (tools/ml/test_parity.py): reads a MUNN0001 weights file plus raw
 // float64 e / yhat streams, processes block-by-block, writes the cleaned
-// stream. Double instantiation, so parity with the float64 numpy reference
-// is tight.
+// stream. Double instantiation by default (parity with the float64 numpy
+// reference is tight); `--float` runs the float32 embedded profile through
+// the same I/O so its depth is measured and pinned too.
 //
-// Usage: nn_infer <weights.munn> <e.f64> <yhat.f64> <out.f64>
+// Usage: nn_infer <weights.munn> <e.f64> <yhat.f64> <out.f64> [--float]
 
+#include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -37,26 +41,33 @@ namespace {
 
 } // namespace
 
+template <typename Sample>
+std::vector<double> run(const char* weights, const std::vector<double>& e, const std::vector<double>& yhat) {
+    const auto                                      n = std::min(e.size(), yhat.size());
+    typename tap::mu::nn_suppressor<Sample>::config cfg;
+    cfg.weights = tap::mu::load_nn_suppressor_weights(weights);
+    // The parity reference (tools/ml/features.py + nn.py) models the gain
+    // path alone; comfort noise would add tracked-floor fill on top.
+    cfg.comfort_noise = false;
+    tap::mu::nn_suppressor<Sample> sup(std::move(cfg));
+    const size_t                   b = sup.block_size();
+    std::vector<Sample>            es(e.begin(), e.begin() + static_cast<std::ptrdiff_t>(n));
+    std::vector<Sample>            ys(yhat.begin(), yhat.begin() + static_cast<std::ptrdiff_t>(n));
+    std::vector<Sample>            os(n, Sample(0));
+    for (size_t i = 0; i + b <= n; i += b) {
+        sup.process_block(&es[i], &ys[i], &os[i]);
+    }
+    return std::vector<double>(os.begin(), os.end());
+}
+
 int main(int argc, char** argv) {
-    if (argc != 5) {
-        std::fprintf(stderr, "usage: %s <weights.munn> <e.f64> <yhat.f64> <out.f64>\n", argv[0]);
+    if (argc != 5 && !(argc == 6 && std::strcmp(argv[5], "--float") == 0)) {
+        std::fprintf(stderr, "usage: %s <weights.munn> <e.f64> <yhat.f64> <out.f64> [--float]\n", argv[0]);
         return 1;
     }
     const auto e    = read_f64(argv[2]);
     const auto yhat = read_f64(argv[3]);
-    const auto n    = std::min(e.size(), yhat.size());
-
-    tap::mu::nn_suppressor<double>::config cfg;
-    cfg.weights = tap::mu::load_nn_suppressor_weights(argv[1]);
-    // The parity reference (tools/ml/features.py + nn.py) models the gain
-    // path alone; comfort noise would add tracked-floor fill on top.
-    cfg.comfort_noise = false;
-    tap::mu::nn_suppressor<double> sup(std::move(cfg));
-    const size_t                   b = sup.block_size();
-    std::vector<double>            out(n, 0.0);
-    for (size_t i = 0; i + b <= n; i += b) {
-        sup.process_block(&e[i], &yhat[i], &out[i]);
-    }
+    const auto out  = argc == 6 ? run<float>(argv[1], e, yhat) : run<double>(argv[1], e, yhat);
 
     std::FILE* f = std::fopen(argv[4], "wb");
     if (f == nullptr) {
