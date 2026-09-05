@@ -389,7 +389,18 @@ nothing in the float profile touches double. The M33 leg is ported from RatioTap
 (`cmake/arm-cortex-m33-mps2.cmake`, `platform/mps2_an505.ld`, the shared
 `armv8m_startup.c`, a `cortex-m33-qemu` CI job with the Ooura float32 FFT
 pinned since there is no MVE) and the on-target filter on every leg carries the
-float `nn_suppressor` suite, the cross-precision pin and the chain test. Layer 4
+float `nn_suppressor` suite, the cross-precision pin and the chain test. One
+honest limit of the M33 leg, found by running it: the long float PEM
+scenarios are driven by a test harness that simulates the room in double on
+purpose (the closed-loop convolution and the MSG bisection), and the speech
+predictor's pitch search accumulates in double — hardware on the M55,
+software on the M33 — so the tonal PEM headline alone took 1030 s under qemu
+mps2-an505 against 84 s on mps3-an547. The M33 selection
+(`MUTAP_ON_TARGET_SOFT_FP64`) drops those four scenarios, which the M55 and
+Hexagon legs and every host still run. That is also the first concrete cost
+figure for "double on the RP2350" in this plan, and the reason §5's rule that
+nothing on the wake-word path touches double is a budget rule, not a style
+rule. Layer 4
 of `bench/icount` is the suppressor at both trained geometries with xorshift
 weights; baselines seeded locally on m55 and m33 (the local ratchet reproduces
 every committed m55 baseline to 0.00 %, so local seeding is trustworthy; CI
