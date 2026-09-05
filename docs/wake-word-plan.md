@@ -392,10 +392,10 @@ pinned since there is no MVE) and the on-target filter on every leg carries the
 float `nn_suppressor` suite, the cross-precision pin and the chain test. Layer 4
 of `bench/icount` is the suppressor at both trained geometries with xorshift
 weights; baselines seeded locally on m55 and m33 (the local ratchet reproduces
-every committed m55 baseline to 0.00 %, so local seeding is trustworthy) and
-**not yet on hexagon** — the first CI run of the icount job reports the two
-missing counts as `NO BASELINE`, and they are committed from that log per the
-seeding procedure in `bench/README.md`. Per-hop cost of the *existing* GRU
+every committed m55 baseline to 0.00 %, so local seeding is trustworthy; CI
+then reproduced both the m55 and the m33 sets at +0.00 %) and on hexagon from
+the first CI run's `NO BASELINE` report, per the seeding procedure in
+`bench/README.md`. Per-hop cost of the *existing* GRU
 suppressor, whole-binary count divided by hops processed (setup included, so an
 upper bound): m55 ≈ 383 k instructions/hop at 48 kHz (hop 256) and ≈ 271 k at
 16 kHz (hop 64); m33 ≈ 711 k and ≈ 491 k. Against the wake-word ceiling of
