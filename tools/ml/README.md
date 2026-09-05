@@ -159,6 +159,27 @@ engine ships in `mutap.aec~` as `@postfilter 2` (embedded default
 weights; `@model` loads alternatives), composed in the library as
 `tap::mu::aec_chain_nn` (`nn_chain.h`).
 
+## Parity, in CI
+
+`test_parity.py` drives the same signals through the numpy reference and
+the C++ inference (`nn_infer`, built with `-DMUTAP_BUILD_ML_TOOLS=ON`) and
+is a CI job (`nn-parity`): both numeric profiles, random weights at both
+trained geometries, and the shipping v2 model. Measured depths (relative to
+the output peak) are pinned at 1e-6 for both profiles — double 1.6e-8 to
+2.9e-8, float 2.0e-7 to 2.9e-7.
+
+It was promoted to CI in the wake-word plan's M2 and immediately earned its
+place: at 48 kHz the two sides disagreed by 3e-2 (random weights) and 8e-3
+(the v2 model) in *both* profiles. Root cause was a rounding accident in the
+band definition — the ERB round trip of fs/2 lands 2e-11 below fs/2 in libm
+and 4e-12 above it in numpy, and a strict `f < hi` test then decided whether
+the Nyquist bin was covered by any band: the C++ notched it at 48 kHz while
+the reference kept it. The contract is now explicit on both sides
+(`band_edges_hz` / `nn_suppressor::build_bands`): the top edge is fs/2
+exactly, and the Nyquist bin belongs to the last band as DC belongs to the
+first. The shipping v2 model had been deployed with that notch; the
+difference is one bin at 24 kHz.
+
 ## The pipeline
 
 ```

@@ -9,7 +9,9 @@ set(_mutap_icount_scenarios
     shadow_48k:2:0
     shadow_16k:2:1
     chain_48k:3:0
-    chain_16k:3:1)
+    chain_16k:3:1
+    nn_suppressor_48k:4:0
+    nn_suppressor_16k:4:1)
 
 foreach(_sc IN LISTS _mutap_icount_scenarios)
     string(REPLACE ":" ";" _parts "${_sc}")

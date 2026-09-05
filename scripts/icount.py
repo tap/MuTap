@@ -4,7 +4,7 @@
 Runs every mutap_icount_* binary in a build directory under QEMU with the
 instruction-counting plugin, then compares against bench/baselines.json.
 
-  icount.py --target {hexagon,m55} --build-dir DIR --plugin LIB [--update]
+  icount.py --target {hexagon,m55,m33} --build-dir DIR --plugin LIB [--update]
             [--baselines bench/baselines.json] [--tolerance 0.03]
 
 The gate is two-sided: exit nonzero if any scenario regresses beyond
@@ -33,6 +33,10 @@ def qemu_cmd(target: str, plugin: str, binary: str) -> list[str]:
         return ["qemu-system-arm", "-M", "mps3-an547", "-nographic",
                 "-semihosting", "-d", "plugin", "-plugin", plugin,
                 "-kernel", binary]
+    if target == "m33":
+        return ["qemu-system-arm", "-M", "mps2-an505", "-nographic",
+                "-semihosting", "-d", "plugin", "-plugin", plugin,
+                "-kernel", binary]
     raise SystemExit(f"unknown target {target}")
 
 
@@ -55,7 +59,7 @@ def measure(target: str, plugin: str, binary: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--target", required=True, choices=["hexagon", "m55"])
+    ap.add_argument("--target", required=True, choices=["hexagon", "m55", "m33"])
     ap.add_argument("--build-dir", required=True)
     ap.add_argument("--plugin", required=True)
     ap.add_argument("--baselines", default="bench/baselines.json")

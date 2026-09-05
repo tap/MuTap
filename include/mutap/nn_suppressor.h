@@ -82,7 +82,16 @@ namespace tap::mu {
     ///
     /// The analysis/synthesis and the network mirror tools/ml/features.py
     /// and tools/ml/nn.py to float precision (tools/ml/test_parity.py
-    /// drives both on the same signals). The gain path is E-only: the
+    /// drives both on the same signals, in both profiles, in CI).
+    ///
+    /// Numeric contract: every dot product (dense_in, the GRU gates,
+    /// dense_out) and every band energy accumulates in Sample. Double is
+    /// the golden model; the float profile contains NO double arithmetic,
+    /// so it runs natively on parts without FP64 (the Cortex-M33 of the
+    /// RP2350 included) and never falls into soft-float. The float-tracks-
+    /// double depth is pinned by tests/test_nn_suppressor.cpp
+    /// (NnSuppressorCrossPrecision) and the promotion of these kernels into
+    /// DspTap must keep it unchanged. The gain path is E-only: the
     /// echo estimate Yhat feeds the FEATURES, never the signal path, so
     /// the worst a bad prediction can do is mis-gain a band — the
     /// structural safety that motivates learning gains instead of a
@@ -260,6 +269,11 @@ namespace tap::mu {
             for (size_t i = 0; i < edges.size(); ++i) {
                 edges[i] = erb_inv(top * static_cast<double>(i) / static_cast<double>(bands + 1));
             }
+            // The top edge is fs/2 EXACTLY (features.py band_edges_hz): the ERB
+            // round trip lands ~1e-11 below it at 48 kHz and above it at 16 kHz,
+            // and used to decide whether the Nyquist bin was covered at all —
+            // notching it at 48 kHz in C++ while the Python reference kept it.
+            edges.back() = m_g.sample_rate / 2.0;
             m_bmat.assign(bands * bins, Sample(0));
             for (size_t b = 0; b < bands; ++b) {
                 const double lo  = edges[b];
@@ -277,7 +291,8 @@ namespace tap::mu {
                     m_bmat[b * bins + k] = static_cast<Sample>(w);
                 }
             }
-            m_bmat[0] = Sample(1); // DC belongs to the first band
+            m_bmat[0]                             = Sample(1); // DC belongs to the first band
+            m_bmat[(bands - 1) * bins + bins - 1] = Sample(1); // and the Nyquist bin to the last
             m_bnorm.assign(bins, Sample(0));
             for (size_t k = 0; k < bins; ++k) {
                 Sample s = Sample(0);

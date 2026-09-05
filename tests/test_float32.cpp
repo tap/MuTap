@@ -38,12 +38,14 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "mutap/fd_kalman.h"
+#include "mutap/nn_chain.h"
 #include "mutap/postfilter.h"
 #include "support/echo_scenario.h"
 #include "support/itu_chain.h"
@@ -244,6 +246,83 @@ namespace {
             c.narrowband_hold_blocks = 0;
             EXPECT_THROW(fdkf{c}, std::invalid_argument);
         }
+    }
+
+    // The learned chain (raw FD-Kalman + nn_suppressor) in the float32
+    // profile, on the same synthetic echo the instruction-count workloads
+    // use, with a live deterministic network: finite output, the canceller
+    // still cancels through the learned post (output energy well below the
+    // microphone's), and float tracks the double golden model at a measured,
+    // pinned depth: -91.4 dB measured 2026-09 (the canceller's float state
+    // dominates; the suppressor alone tracks at -129 dB), pinned at -85 dB. The wake-word plan's M2: the learned path
+    // had never run in float, on target, before this test.
+    TEST(NnChainFloat32, TracksDoubleOnASyntheticEcho) {
+        constexpr size_t block = 64, partitions = 4, blocks = 300;
+        constexpr double fs = 16000.0;
+
+        tap::mu::nn_suppressor_weights w;
+        {
+            std::uint32_t s    = 0x2545F491u;
+            auto          fill = [&s](std::vector<float>& v, size_t n) {
+                v.resize(n);
+                for (auto& x : v) {
+                    s ^= s << 13;
+                    s ^= s >> 17;
+                    s ^= s << 5;
+                    x = (static_cast<float>(s) / 2147483648.0f - 1.0f) * 0.3f;
+                }
+            };
+            const auto& g = w.geometry; // default: 16 kHz / hop 64 / 22 bands
+            fill(w.dense_in_w, g.dense * g.features());
+            fill(w.dense_in_b, g.dense);
+            fill(w.gru_w_ih, 3 * g.gru * g.dense);
+            fill(w.gru_w_hh, 3 * g.gru * g.gru);
+            fill(w.gru_b_ih, 3 * g.gru);
+            fill(w.gru_b_hh, 3 * g.gru);
+            fill(w.dense_out_w, g.bands * g.gru);
+            fill(w.dense_out_b, g.bands);
+        }
+        tap::mu::aec_chain_nn<double> cd(tap::mu::aec_chain_nn_preset<double>(block, partitions, fs, w));
+        tap::mu::aec_chain_nn<float>  cf(tap::mu::aec_chain_nn_preset<float>(block, partitions, fs, w));
+
+        // Synthetic echo: xorshift far end, sparse 3-tap path, tiny near floor.
+        const size_t        n = blocks * block;
+        std::vector<double> x(n), y(n);
+        std::uint32_t       s    = 0x9E3779B9u;
+        auto                next = [&s]() {
+            s ^= s << 13;
+            s ^= s >> 17;
+            s ^= s << 5;
+            return (static_cast<double>(s) / 2147483648.0 - 1.0) * 0.1;
+        };
+        for (auto& v : x) {
+            v = next();
+        }
+        for (size_t i = 0; i < n; ++i) {
+            const auto at = [&](size_t d) { return i >= d ? x[i - d] : 0.0; };
+            y[i]          = 0.25 * at(block / 2) - 0.12 * at(block) + 0.06 * at(3 * block / 2) + 0.001 * next();
+        }
+        std::vector<float>  xf(x.begin(), x.end()), yf(y.begin(), y.end()), ef(block);
+        std::vector<double> ed(block);
+        double              err = 0.0, ref = 0.0, mic = 0.0, out = 0.0;
+        for (size_t b = 0; b < blocks; ++b) {
+            cd.process_block(&x[b * block], &y[b * block], ed.data());
+            cf.process_block(&xf[b * block], &yf[b * block], ef.data());
+            if (b >= blocks / 2) {
+                for (size_t i = 0; i < block; ++i) {
+                    ASSERT_TRUE(std::isfinite(ef[i]));
+                    const double d = ed[i] - static_cast<double>(ef[i]);
+                    err += d * d;
+                    ref += ed[i] * ed[i];
+                    out += static_cast<double>(ef[i]) * static_cast<double>(ef[i]);
+                    mic += y[b * block + i] * y[b * block + i];
+                }
+            }
+        }
+        EXPECT_LT(10.0 * std::log10(out / mic), -20.0) << "the learned chain must still cancel";
+        const double rel_db = 10.0 * std::log10(err / ref);
+        RecordProperty("float_vs_double_db", rel_db);
+        EXPECT_LT(rel_db, -85.0) << "float chain drifts from the double golden model";
     }
 
 } // namespace

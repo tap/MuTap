@@ -1,7 +1,8 @@
 # Building `mutap.wake~` — implementation proposal
 
-*Proposal, rev 2 — 4 September 2026. **Nothing committed beyond this document:**
-no code written, no repository changed apart from these docs. Background and
+*Proposal, rev 2 — 4 September 2026; **in progress**: M0 decided, M1 done
+(DspTap) and M2 done (MuTap), each with a dated record of measured numbers
+under its milestone in §6. Background and
 corpus survey in [`wake-word-briefing.md`](wake-word-briefing.md). Rev 2
 carries every amendment from the [adversarial audit](wake-word-audit.md) of
 rev 1; the audit refers to rev 1's milestone numbers, and the mapping is given
@@ -82,12 +83,12 @@ Read from the checkouts, with the audit's corrections applied.
 
 | Existing asset | What it does today | Role for the spotter |
 |---|---|---|
-| `nn_suppressor.h` | Dense → GRU → dense over ERB band energies; allocation-free, noexcept; geometry carried by the weights. **Instantiated only as `<double>`** in its tests, the parity driver and the shipping external. Every dot product accumulates in `Sample`. | The inference kernels, promoted in M3 *after* M2 gives them a float oracle. The spotter is a different head on the same arithmetic. |
+| `nn_suppressor.h` | Dense → GRU → dense over ERB band energies; allocation-free, noexcept; geometry carried by the weights. Every dot product accumulates in `Sample`. ~~Instantiated only as `<double>`~~ — *M2 typed its tests over float and double, pinned float vs double at −120 dB, and put the float profile on-target on M33, M55 and Hexagon.* | The inference kernels, promoted in M3 *after* M2 gives them a float oracle. The spotter is a different head on the same arithmetic. |
 | `nn_geometry` / MUNN0002 | Model geometry as a value, validated at load; 16 kHz hop-64 and 48 kHz hop-256 served by one inference path. **Validator requires a power-of-two hop.** | Copy the geometry-as-value pattern for `kws_geometry` and a `MUKW0001` header; do *not* copy the hop constraint. Retraining at a new geometry must not require a code change. |
 | `tools/ml/features.py` | Declared single source of truth for band definitions and normalization; documents that streaming-state parity depends on frame alignment. | The precedent for `kws_features.py` — with the ownership boundary of §5 so the two sources of truth cannot disagree. |
-| `tools/ml/test_parity.py` | C++ **double** inference against `nn.py`'s numpy reference, **random weights**, legacy 16 kHz geometry, gain path only, hand-run behind `MUTAP_BUILD_ML_TOOLS=OFF`. Not a CI job. | The shape of the test the spotter needs. M2 turns it into one: CI-run, both profiles, exported trainer weights, shipping geometry. |
+| `tools/ml/test_parity.py` | C++ inference against `nn.py`'s numpy reference, gain path only. ~~Double only, random weights, legacy 16 kHz geometry, hand-run, not a CI job~~ — *since M2 a CI job (`nn-parity`): both profiles, random weights at 16 k and 48 k plus the exported v2 weights, pinned at 1e-6.* | The shape of the test the spotter needs. M2 turns it into one: CI-run, both profiles, exported trainer weights, shipping geometry. |
 | `tools/ml/README.md` | The licensing map and measured benchmark that justified the hybrid design; files "int8 + CMSIS-NN for the M55 path" as next step. | The template for M4's dataset card, and a roadmap this plan must reconcile with (§5, `tap::dsp::nn`). |
-| Cortex-M55 QEMU rig + `scripts/icount.py` | On-target positive-filter test subset in CI; whole-binary instruction count per scenario with a ±3 % drift gate against `bench/baselines.json` (`fdkf`, `chain` at 16 k and 48 k, on m55 and hexagon). **No learned-path scenario; `NnSuppressor` not in the on-target filter.** | The rig the embedded profile runs on, once M2 adds the learned scenarios. The ratchet is a drift gate; the budget is a separate absolute assertion (§7). |
+| Cortex-M55 QEMU rig + `scripts/icount.py` | On-target positive-filter test subset in CI; whole-binary instruction count per scenario with a ±3 % drift gate against `bench/baselines.json` (`fdkf`, `chain` at 16 k and 48 k, on m55 and hexagon). ~~No learned-path scenario; `NnSuppressor` not in the on-target filter~~ — *M2 added the `nn_suppressor` scenario at both geometries, the M33 leg, and the float suppressor suite to every on-target filter.* | The rig the embedded profile runs on, once M2 adds the learned scenarios. The ratchet is a drift gate; the budget is a separate absolute assertion (§7). |
 | DspTap `fft.h` backend pattern | Ooura golden model; CMSIS-Helium and vDSP float32 backends re-presenting the exact contract, certified by parity tests. | The mel front end's FFT, and the rule for any accelerated NN backend: optional, opt-in, parity-pinned against the scalar golden path. |
 | RatioTap | Synchronous 44.1 ↔ 48 kHz, one rational pair by charter ("no other ratios"), compile-time direction type, Kaiser prototype over the DspTap substrate, instruction-count ratchet on M33/M55/Hexagon. SampleRateTap beside it is near-unity async only. | Composed by `mutap.wake~` for 44.1 kHz hosts (44.1 → 48, then 3:1 to 16 kHz), and the *design template* for the decimator: fixed ratios as types, speed-first profiles, ratchet-gated. |
 | DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The *convention* for any later Q15 front end — not a fixed-point front end in itself — and the substrate the integer-ratio decimator of M1 is built on, exactly as RatioTap builds on it. |
@@ -372,6 +373,46 @@ refactors it:
 **Pass:** every item above green in CI on the *unmodified* suppressor, and the
 accumulator-precision contract of §5 written down as the observed behaviour.
 This milestone is worth doing even if the project stops here.
+
+**Done, 5 September 2026** (MuTap branch `claude/mutap-wake-word-plan-2i63pe`).
+Measured, not estimated. `nn_suppressor` is now a typed suite over float and
+double (unit-gain transparency pinned at −140 dB double / −120 dB float, the
+comfort floor, echo-explained tracking at 1e-6 / 1e-4, the shipping 48 kHz
+geometry, the chain composition); float vs double on the suppressor −129.4 dB,
+pinned at −120; the learned chain in `test_float32.cpp` −91.4 dB, pinned at −85.
+The parity driver runs both profiles (`nn_infer … --float`) and the CI job runs
+six cases — random 16 k, random 48 k and the exported `suppressor_v2_48k.munn`,
+each in double and float: double 1.6e-8 / 2.0e-8 / 2.9e-8, float 2.5e-7 /
+2.0e-7 / 2.9e-7, both pinned at 1e-6. The accumulator contract is written into
+the header docstring as observed: every dot product accumulates in `Sample`,
+nothing in the float profile touches double. The M33 leg is ported from RatioTap
+(`cmake/arm-cortex-m33-mps2.cmake`, `platform/mps2_an505.ld`, the shared
+`armv8m_startup.c`, a `cortex-m33-qemu` CI job with the Ooura float32 FFT
+pinned since there is no MVE) and the on-target filter on every leg carries the
+float `nn_suppressor` suite, the cross-precision pin and the chain test. Layer 4
+of `bench/icount` is the suppressor at both trained geometries with xorshift
+weights; baselines seeded locally on m55 and m33 (the local ratchet reproduces
+every committed m55 baseline to 0.00 %, so local seeding is trustworthy) and
+**not yet on hexagon** — the first CI run of the icount job reports the two
+missing counts as `NO BASELINE`, and they are committed from that log per the
+seeding procedure in `bench/README.md`. Per-hop cost of the *existing* GRU
+suppressor, whole-binary count divided by hops processed (setup included, so an
+upper bound): m55 ≈ 383 k instructions/hop at 48 kHz (hop 256) and ≈ 271 k at
+16 kHz (hop 64); m33 ≈ 711 k and ≈ 491 k. Against the wake-word ceiling of
+150 k/hop in §7 that is the number M6's spotter has to beat by 2–5×, which is
+why the spotter is a depthwise-separable head and not this GRU.
+
+One contract defect found by the oracles, fixed on both sides: the ERB band
+edges are built from `erb_inv(erb_rate(fs/2))`, and at 48 kHz that round trip
+lands 2.2e-11 *below* fs/2 in libm (above it at 16 kHz; above at both in numpy),
+so the strict `f < hi` band test dropped the Nyquist bin from the last band —
+the C++ suppressor notched bin N/2 at 48 kHz while the numpy reference did
+not. Before the fix the 48 kHz parity cases disagreed by 3e-2 (random) and
+8e-3 (v2 model) in both profiles, and the shipping-geometry test read −27.9 dB
+on unit gains. The top edge is now fs/2 exactly and the Nyquist bin belongs
+to the last band, in `nn_suppressor.h` and `features.py` alike; this is the
+kind of finding the audit predicted an oracle-less learned path would carry
+unseen, and the reason §5's ownership rule exists.
 
 ### M3 — Promote the inference kernels *(DspTap · MuTap)*
 

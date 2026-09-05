@@ -4,7 +4,9 @@
 // the float32 typed suites (the embedded profile this target exists for),
 // the double FFT (small; exercises the soft-float path), the LP /
 // conditioning suite, the float closed-loop scenarios including the PEM
-// canceller's tonal headline, and the float-tracks-double oracle check.
+// canceller's tonal headline, the float-tracks-double oracle check, and
+// the learned suppressor's float profile with its own oracle check (the
+// wake-word plan's M2: the learned path had never run on target before).
 //
 // Excluded: the double-typed adaptive suites and the double closed-loop
 // scenarios — minutes-to-hours of soft-float virtual audio validating
@@ -26,7 +28,8 @@ int main() {
         "Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:"
         "pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:"
         "closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:"
-        "AdaptationControlConfigValidation.*";
+        "AdaptationControlConfigValidation.*:"
+        "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
