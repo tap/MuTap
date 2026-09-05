@@ -56,11 +56,6 @@ if(MUTAP_BARE_METAL)
     # not reliably propagate exit codes through the emulator.
     target_sources(mutap_tests PRIVATE bare_metal_main.cpp)
     target_link_libraries(mutap_tests PRIVATE GTest::gtest)
-    if(MUTAP_ON_TARGET_SOFT_FP64)
-        # No FP64 hardware (Cortex-M33): bare_metal_main.cpp drops the long
-        # float PEM scenarios, whose test harness simulates the room in double.
-        target_compile_definitions(mutap_tests PRIVATE MUTAP_ON_TARGET_SOFT_FP64=1)
-    endif()
     add_test(NAME mutap_tests_emulated COMMAND mutap_tests)
     set_tests_properties(mutap_tests_emulated PROPERTIES
         PASS_REGULAR_EXPRESSION "MUTAP_TESTS_COMPLETE rc=0"

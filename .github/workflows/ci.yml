@@ -184,10 +184,10 @@ jobs:
   # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
   # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
   # embedded target. Same Armv8-M startup as the M55 leg, Ooura float32 FFT
-  # (no Helium here), the M55's float-profile selection minus the long float
-  # PEM scenarios (their test harness simulates the room in double: soft-float
-  # here, ~17 min for one of them — see tests/bare_metal_main.cpp). Ported
-  # from RatioTap's cortex-m33-qemu job.
+  # (no Helium here), the same float-profile selection as the M55 leg (about
+  # 3 minutes of emulation once the speech predictor's pitch search stopped
+  # accumulating in double — see tests/bare_metal_main.cpp). Ported from
+  # RatioTap's cortex-m33-qemu job.
   cortex-m33-qemu:
     name: Cortex-M33 cross (QEMU)
     runs-on: ubuntu-latest

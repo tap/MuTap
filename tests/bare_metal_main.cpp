@@ -13,16 +13,13 @@
 // target-independent math already covered on every host platform — and the
 // bisection-heavy ASG measurements beyond the float ones kept.
 //
-// MUTAP_ON_TARGET_SOFT_FP64 (the Cortex-M33 leg: single-precision FPU, no
-// FP64) additionally drops the long float PEM scenarios. Their cost is not
-// the canceller: the closed-loop and echo harnesses simulate the room in
-// double on purpose (tests/support/closed_loop.h convolves the feedback
-// path in double per sample; the MSG bisection measures in double), and the
-// speech predictor's pitch search accumulates in double (lpc.h). That is
-// hardware on the M55 and software on the M33: the tonal PEM headline alone
-// measured 1030 s under qemu mps2-an505 against 84 s on mps3-an547. Those
-// scenarios stay covered on the M55 and Hexagon legs and every host; the
-// M33 leg exists for the pure-float32 paths and the learned suppressor.
+// The same selection runs on the Cortex-M33 leg (single-precision FPU, no
+// FP64). It once could not: the speech predictor's pitch search accumulated
+// in double, which is hardware on the M55 and software on the M33, and the
+// tonal PEM headline alone took 1085 s under qemu mps2-an505 (84 s on
+// mps3-an547) — the selection timed out. With the search accumulating in
+// Sample (lpc.h) the whole selection runs in ~3 minutes there; the test
+// harnesses' deliberate double room simulation costs little by comparison.
 // SPDX-License-Identifier: MIT
 // Copyright 2026 MuTap contributors
 #include <cstdio>
@@ -40,10 +37,7 @@ int main() {
         "PemAfcConfigValidation.*:PemAfcRtContract.*:"
         "closed_loop_test/0.*:"
         "AdaptationControlConfigValidation.*:"
-#ifndef MUTAP_ON_TARGET_SOFT_FP64
-        // The long float PEM scenarios (double harness), see the header comment.
         "kalman_loop_test/0.*:pem_afc_test/0.*:burst_test/0.*:aec_test/0.*:"
-#endif
         "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();

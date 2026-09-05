@@ -41,7 +41,3 @@ set(TAP_DSP_FFT_CMSIS OFF CACHE BOOL "No MVE on the Cortex-M33: Ooura float32 FF
 
 # One-shot CTest mode (no argv on bare metal; see tests/CMakeLists.txt).
 set(MUTAP_BARE_METAL ON)
-# Single-precision FPU only: the on-target selection drops the long float
-# PEM scenarios, whose test harness simulates the room in double (soft-float
-# here; ~17 min for one of them under QEMU). See tests/bare_metal_main.cpp.
-set(MUTAP_ON_TARGET_SOFT_FP64 ON)

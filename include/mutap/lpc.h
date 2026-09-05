@@ -400,30 +400,42 @@ namespace tap::mu {
             if (n < 2 * m_cfg.min_lag) {
                 return;
             }
+            // Numeric contract: the correlation sums accumulate in Sample.
+            // The float profile therefore contains no double arithmetic
+            // here (on a single-precision core such as the Cortex-M33 this
+            // search was the canceller's dominant soft-float cost: ~1 M
+            // double operations per 64-sample block at the default lag
+            // range); a normalized correlation over at most
+            // analysis_capacity samples loses ~1e-6 relative in float,
+            // which is far below the voicing decision's resolution. The
+            // double profile is unchanged.
             const size_t max_lag = (m_cfg.max_lag < n / 2) ? m_cfg.max_lag : n / 2;
-            double       best    = 0.0;
+            Sample       best    = Sample(0);
             for (size_t lag = m_cfg.min_lag; lag <= max_lag; ++lag) {
-                double cross = 0.0;
-                double e_now = 0.0;
-                double e_lag = 0.0;
+                Sample cross = Sample(0);
+                Sample e_now = Sample(0);
+                Sample e_lag = Sample(0);
                 for (size_t i = lag; i < n; ++i) {
-                    const double x0 = static_cast<double>(m_residual[i]);
-                    const double x1 = static_cast<double>(m_residual[i - lag]);
+                    const Sample x0 = m_residual[i];
+                    const Sample x1 = m_residual[i - lag];
                     cross += x0 * x1;
                     e_now += x0 * x0;
                     e_lag += x1 * x1;
                 }
-                if (e_now <= 0.0 || e_lag <= 0.0) {
+                if (!(e_now > Sample(0)) || !(e_lag > Sample(0))) {
                     continue;
                 }
-                const double rho = cross / std::sqrt(e_now * e_lag);
+                const Sample denom = std::sqrt(e_now * e_lag);
+                if (!(denom > Sample(0))) { // product underflow on a near-silent residual
+                    continue;
+                }
+                const Sample rho = cross / denom;
                 if (rho > best) {
                     best = rho;
-                    if (rho > static_cast<double>(m_cfg.voicing_threshold)) {
-                        const double beta = cross / e_lag;
+                    if (rho > m_cfg.voicing_threshold) {
+                        const Sample beta = cross / e_lag;
                         m_lag             = lag;
-                        m_beta            = static_cast<Sample>(std::clamp(beta, -static_cast<double>(m_cfg.max_gain),
-                                                                           static_cast<double>(m_cfg.max_gain)));
+                        m_beta            = std::clamp(beta, -m_cfg.max_gain, m_cfg.max_gain);
                     }
                 }
             }
