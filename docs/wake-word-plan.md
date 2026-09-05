@@ -1,8 +1,8 @@
 # Building `mutap.wake~` — implementation proposal
 
 *Proposal, rev 2 — 4 September 2026; **in progress**: M0 decided, M1 done
-(DspTap) and M2 done (MuTap), each with a dated record of measured numbers
-under its milestone in §6. Background and
+(DspTap), M2 done (MuTap) and M3 done (DspTap · MuTap), each with a dated
+record of measured numbers under its milestone in §6. Background and
 corpus survey in [`wake-word-briefing.md`](wake-word-briefing.md). Rev 2
 carries every amendment from the [adversarial audit](wake-word-audit.md) of
 rev 1; the audit refers to rev 1's milestone numbers, and the mapping is given
@@ -389,18 +389,25 @@ nothing in the float profile touches double. The M33 leg is ported from RatioTap
 (`cmake/arm-cortex-m33-mps2.cmake`, `platform/mps2_an505.ld`, the shared
 `armv8m_startup.c`, a `cortex-m33-qemu` CI job with the Ooura float32 FFT
 pinned since there is no MVE) and the on-target filter on every leg carries the
-float `nn_suppressor` suite, the cross-precision pin and the chain test. One
-honest limit of the M33 leg, found by running it: the long float PEM
-scenarios are driven by a test harness that simulates the room in double on
-purpose (the closed-loop convolution and the MSG bisection), and the speech
-predictor's pitch search accumulates in double — hardware on the M55,
-software on the M33 — so the tonal PEM headline alone took 1030 s under qemu
-mps2-an505 against 84 s on mps3-an547. The M33 selection
-(`MUTAP_ON_TARGET_SOFT_FP64`) drops those four scenarios, which the M55 and
-Hexagon legs and every host still run. That is also the first concrete cost
-figure for "double on the RP2350" in this plan, and the reason §5's rule that
-nothing on the wake-word path touches double is a budget rule, not a style
-rule. Layer 4
+float `nn_suppressor` suite, the cross-precision pin and the chain test. The
+M33 leg also produced the first concrete cost figure for "double on the
+RP2350" in this plan: the tonal PEM headline took 1085 s under qemu
+mps2-an505 against 84 s on mps3-an547 and the selection timed out, so M2
+first shipped with the four long float PEM scenarios excluded there. An
+experiment then separated the two suspects — with the test harness's
+deliberate double room simulation switched to float the scenario still took
+772 s, so the harness was a third of the cost and the library two thirds: the
+speech predictor's pitch search accumulated its normalized correlation in
+double for every lag from 32 to 400 over a 1024-sample window, about a
+million software double operations per 64-sample block on that core. The
+follow-up landed with M3: the search accumulates in `Sample` (`lpc.h`), the
+double profile is bit-for-bit unchanged, the float rows' measured numbers
+are unchanged to the bisection's 0.5 dB quantum (kalman-loop tonal ASG
++7.81 dB before and after; PEM tonal +10.84 → +11.13; ERLE and misalignment
+identical), and the full float selection now runs on the M33 in 174 s (the
+tonal headline 31 s), so the exclusion is gone and the M33 leg runs exactly
+the M55's selection. That is the reason §5's rule that nothing on the
+wake-word path touches double is a budget rule, not a style rule. Layer 4
 of `bench/icount` is the suppressor at both trained geometries with xorshift
 weights; baselines seeded locally on m55 and m33 (the local ratchet reproduces
 every committed m55 baseline to 0.00 %, so local seeding is trustworthy; CI
@@ -439,6 +446,27 @@ passes at float tolerance on exported weights; the `nn_suppressor` icount
 scenario is within the drift gate on both targets; DspTap's typed battery for
 `tap::dsp::nn` pins layout, gate order and accumulator precision; MuTap and
 MuTap-Max pins bumped.
+
+**Done, 5 September 2026** (DspTap and MuTap branches
+`claude/mutap-wake-word-plan-2i63pe`; tap/DspTap#15). DspTap's seventh
+primitive, `include/tap/dsp/nn.h`: `basic_dense<Sample>` (row-major
+`[out x in]`, linear / tanh / sigmoid) and `basic_gru<Sample>` (PyTorch
+`nn.GRU` convention, gates r, z, n), contract version 1, weights stored as
+float32 and converted to `Sample` at the point of use, bias-first ascending
+accumulation in `Sample`, moved-in owned weights, noexcept processing.
+Measured: the GRU against an independent long-double restatement summing in
+the opposite order 2.2e-16 double / 1.0e-7 float (pinned 1e-14 / 1e-6);
+float vs double at the suppressor geometry 6.3e-7 state / 2.5e-7 gains
+(pinned 3e-6 / 1e-6); 156 DspTap tests, warnings as errors, clang-tidy
+clean. MuTap's `nn_suppressor` consumes the kernels (its weight arrays are
+moved into them at construction, one copy in memory) and the promotion is
+**bit-identical** in both profiles on the shipping v2 model against the
+pre-refactor binary; the six parity cases pass at the M2 depths; the M2
+battery passes unchanged; the `nn_suppressor` ratchet moved −0.12 % / −0.10 %
+on m55 and −0.19 % / −0.11 % on m33 (16 k / 48 k), inside the gate, with
+every other scenario unchanged to the instruction. Pins: MuTap's DspTap pin
+points at the M3 tree (repointed at the identical tree on `main` once
+tap/DspTap#15 merges); MuTap-Max's MuTap pin follows once MuTap's PR merges.
 
 ### M4 — Corpus, splits and dataset builder *(tools/ml/kws)*
 

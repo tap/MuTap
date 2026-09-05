@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "mutap/fft.h"
+#include "tap/dsp/nn.h"
 
 namespace tap::mu {
 
@@ -88,10 +89,13 @@ namespace tap::mu {
     /// dense_out) and every band energy accumulates in Sample. Double is
     /// the golden model; the float profile contains NO double arithmetic,
     /// so it runs natively on parts without FP64 (the Cortex-M33 of the
-    /// RP2350 included) and never falls into soft-float. The float-tracks-
-    /// double depth is pinned by tests/test_nn_suppressor.cpp
-    /// (NnSuppressorCrossPrecision) and the promotion of these kernels into
-    /// DspTap must keep it unchanged. The gain path is E-only: the
+    /// RP2350 included) and never falls into soft-float. Since the
+    /// wake-word plan's M3 the network layers are DspTap's tap::dsp::nn
+    /// (basic_dense / basic_gru, contract version 1, whose loop order is
+    /// exactly the one this header carried before, so the promotion was
+    /// bit-identical); the float-tracks-double depth is pinned by
+    /// tests/test_nn_suppressor.cpp (NnSuppressorCrossPrecision) and the
+    /// Python parity job. The gain path is E-only: the
     /// echo estimate Yhat feeds the FEATURES, never the signal path, so
     /// the worst a bad prediction can do is mis-gain a band — the
     /// structural safety that motivates learning gains instead of a
@@ -118,14 +122,21 @@ namespace tap::mu {
             Sample floor_bias      = Sample(4);
             /// One-pole smoothing of the echo_explained() accumulators.
             Sample explained_smoothing = Sample(0.95);
-            /// The trained model.
+            /// The trained model. Its weight arrays are moved into the
+            /// inference kernels at construction (one copy in memory).
             nn_suppressor_weights weights;
         };
 
         explicit nn_suppressor(config cfg)
             : m_cfg(validated(std::move(cfg)))
             , m_g(m_cfg.weights.geometry)
-            , m_fft(m_g.frame()) {
+            , m_fft(m_g.frame())
+            , m_dense_in(std::move(m_cfg.weights.dense_in_w), std::move(m_cfg.weights.dense_in_b), m_g.dense,
+                         m_g.features(), tap::dsp::nn::activation::tanh)
+            , m_gru(std::move(m_cfg.weights.gru_w_ih), std::move(m_cfg.weights.gru_w_hh),
+                    std::move(m_cfg.weights.gru_b_ih), std::move(m_cfg.weights.gru_b_hh), m_g.gru, m_g.dense)
+            , m_dense_out(std::move(m_cfg.weights.dense_out_w), std::move(m_cfg.weights.dense_out_b), m_g.bands,
+                          m_g.gru, tap::dsp::nn::activation::sigmoid) {
             build_bands();
             const size_t f = m_g.frame();
             m_window.resize(f);
@@ -142,10 +153,7 @@ namespace tap::mu {
             m_time.resize(f);
             m_bin_pow.assign(m_g.bins(), Sample(0));
             m_feat.assign(m_g.features(), Sample(0));
-            m_dense.assign(m_g.dense, Sample(0));
-            m_gates.assign(3 * m_g.gru, Sample(0));
-            m_gates_h.assign(3 * m_g.gru, Sample(0));
-            m_state.assign(m_g.gru, Sample(0));
+            m_hidden.assign(m_g.dense, Sample(0));
             m_gains.assign(m_g.bands, Sample(0));
             m_bin_gain.assign(m_g.bins(), Sample(0));
             m_floor.assign(m_g.bins(), Sample(0));
@@ -170,7 +178,7 @@ namespace tap::mu {
             std::fill(m_prev_e.begin(), m_prev_e.end(), Sample(0));
             std::fill(m_prev_yhat.begin(), m_prev_yhat.end(), Sample(0));
             std::fill(m_overlap.begin(), m_overlap.end(), Sample(0));
-            std::fill(m_state.begin(), m_state.end(), Sample(0));
+            m_gru.reset();
             std::fill(m_gains.begin(), m_gains.end(), Sample(0));
             std::fill(m_bin_gain.begin(), m_bin_gain.end(), Sample(0));
             std::fill(m_floor.begin(), m_floor.end(), Sample(0));
@@ -255,8 +263,6 @@ namespace tap::mu {
             }
             return cfg;
         }
-
-        static Sample sigmoid(Sample x) noexcept { return Sample(1) / (Sample(1) + std::exp(-x)); }
 
         /// ERB-spaced triangular band weights (features.py band_matrix()).
         void build_bands() {
@@ -406,74 +412,42 @@ namespace tap::mu {
             }
         }
 
-        /// dense(tanh) -> GRU (PyTorch r,z,n convention) -> dense(sigmoid).
+        /// dense(tanh) -> GRU (PyTorch r,z,n convention) -> dense(sigmoid),
+        /// on tap::dsp::nn's kernels.
         void infer() noexcept {
-            const nn_suppressor_weights& w  = m_cfg.weights;
-            const size_t                 nf = m_g.features();
-            const size_t                 nd = m_g.dense;
-            const size_t                 ng = m_g.gru;
-            for (size_t i = 0; i < nd; ++i) {
-                Sample acc = static_cast<Sample>(w.dense_in_b[i]);
-                for (size_t j = 0; j < nf; ++j) {
-                    acc += static_cast<Sample>(w.dense_in_w[i * nf + j]) * m_feat[j];
-                }
-                m_dense[i] = std::tanh(acc);
-            }
-            for (size_t i = 0; i < 3 * ng; ++i) {
-                Sample acc = static_cast<Sample>(w.gru_b_ih[i]);
-                for (size_t j = 0; j < nd; ++j) {
-                    acc += static_cast<Sample>(w.gru_w_ih[i * nd + j]) * m_dense[j];
-                }
-                m_gates[i] = acc;
-                acc        = static_cast<Sample>(w.gru_b_hh[i]);
-                for (size_t j = 0; j < ng; ++j) {
-                    acc += static_cast<Sample>(w.gru_w_hh[i * ng + j]) * m_state[j];
-                }
-                m_gates_h[i] = acc;
-            }
-            for (size_t i = 0; i < ng; ++i) {
-                const Sample r = sigmoid(m_gates[i] + m_gates_h[i]);
-                const Sample z = sigmoid(m_gates[ng + i] + m_gates_h[ng + i]);
-                const Sample n = std::tanh(m_gates[2 * ng + i] + r * m_gates_h[2 * ng + i]);
-                m_state[i]     = (Sample(1) - z) * n + z * m_state[i];
-            }
-            for (size_t b = 0; b < m_g.bands; ++b) {
-                Sample acc = static_cast<Sample>(w.dense_out_b[b]);
-                for (size_t j = 0; j < ng; ++j) {
-                    acc += static_cast<Sample>(w.dense_out_w[b * ng + j]) * m_state[j];
-                }
-                m_gains[b] = sigmoid(acc);
-            }
+            m_dense_in.apply(m_feat.data(), m_hidden.data());
+            m_gru.step(m_hidden.data());
+            m_dense_out.apply(m_gru.state(), m_gains.data());
         }
 
-        config                 m_cfg;
-        nn_geometry            m_g;
-        basic_real_fft<Sample> m_fft;
-        std::vector<Sample>    m_window;
-        std::vector<Sample>    m_bmat;  ///< [bands x bins] triangular weights
-        std::vector<Sample>    m_bnorm; ///< per-bin 1/sum(band weights)
-        std::vector<Sample>    m_prev_e;
-        std::vector<Sample>    m_prev_yhat;
-        std::vector<Sample>    m_overlap;
-        std::vector<Sample>    m_spec_e;
-        std::vector<Sample>    m_spec_y;
-        std::vector<Sample>    m_time;
-        std::vector<Sample>    m_bin_pow; ///< current frame per-bin |E|^2
-        std::vector<Sample>    m_scratch_pow = std::vector<Sample>(m_g.bins());
-        std::vector<Sample>    m_feat;
-        std::vector<Sample>    m_dense;
-        std::vector<Sample>    m_gates;
-        std::vector<Sample>    m_gates_h;
-        std::vector<Sample>    m_state;
-        std::vector<Sample>    m_gains;
-        std::vector<Sample>    m_bin_gain;
-        std::vector<Sample>    m_floor;    ///< smoothed per-bin E PSD
-        std::vector<Sample>    m_min_cur;  ///< running half-window minimum
-        std::vector<Sample>    m_min_prev; ///< completed half-window minimum
-        size_t                 m_min_count = 0;
-        Sample                 m_syy       = Sample(0);
-        Sample                 m_sdd       = Sample(0);
-        std::uint32_t          m_rng       = 0x2545F491U;
+        config                            m_cfg;
+        nn_geometry                       m_g;
+        basic_real_fft<Sample>            m_fft;
+        tap::dsp::nn::basic_dense<Sample> m_dense_in;
+        tap::dsp::nn::basic_gru<Sample>   m_gru;
+        tap::dsp::nn::basic_dense<Sample> m_dense_out;
+        std::vector<Sample>               m_window;
+        std::vector<Sample>               m_bmat;  ///< [bands x bins] triangular weights
+        std::vector<Sample>               m_bnorm; ///< per-bin 1/sum(band weights)
+        std::vector<Sample>               m_prev_e;
+        std::vector<Sample>               m_prev_yhat;
+        std::vector<Sample>               m_overlap;
+        std::vector<Sample>               m_spec_e;
+        std::vector<Sample>               m_spec_y;
+        std::vector<Sample>               m_time;
+        std::vector<Sample>               m_bin_pow; ///< current frame per-bin |E|^2
+        std::vector<Sample>               m_scratch_pow = std::vector<Sample>(m_g.bins());
+        std::vector<Sample>               m_feat;
+        std::vector<Sample>               m_hidden; ///< dense_in output, the GRU's input
+        std::vector<Sample>               m_gains;
+        std::vector<Sample>               m_bin_gain;
+        std::vector<Sample>               m_floor;    ///< smoothed per-bin E PSD
+        std::vector<Sample>               m_min_cur;  ///< running half-window minimum
+        std::vector<Sample>               m_min_prev; ///< completed half-window minimum
+        size_t                            m_min_count = 0;
+        Sample                            m_syy       = Sample(0);
+        Sample                            m_sdd       = Sample(0);
+        std::uint32_t                     m_rng       = 0x2545F491U;
     };
 
     /// Parse weights from an in-memory MUNN image (the format
