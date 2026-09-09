@@ -1,0 +1,8 @@
+{
+ "rule": "R4",
+ "clips": [
+  "ami/ES2002a/seg-0001",
+  "ami/ES2002b/seg-0001",
+  "ami/IS1000b/seg-0001"
+ ]
+}

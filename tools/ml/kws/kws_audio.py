@@ -103,6 +103,26 @@ def rir_onset(h: np.ndarray, db: float = 40.0) -> int:
     return int(np.argmax(a >= a.max() * 10.0 ** (-db / 20.0)))
 
 
+def rt60_t20(h: np.ndarray, fs: int = RATE) -> float | None:
+    """RT60 by Schroeder backward integration, T20 extrapolated (3 x the -5 to -25 dB decay time).
+
+    The builder records it per RIR (`extra.rt60_s`) and the augment policy's `rt60_s` range selects the
+    pool from it; the toy fixture is cut by the same rule. None when the decay never reaches -25 dB.
+    Rounded to 1 us so the value is a function of two sample indices, not of the platform's log10.
+    """
+    h = np.asarray(h, dtype=np.float64)
+    energy = h * h
+    if not np.any(energy > 0.0):
+        return None
+    edc = np.cumsum(energy[::-1])[::-1]
+    db = 10.0 * np.log10(np.maximum(edc / edc[0], 1e-300))
+    t5 = np.nonzero(db <= -5.0)[0]
+    t25 = np.nonzero(db <= -25.0)[0]
+    if t5.size == 0 or t25.size == 0:
+        return None
+    return round(3.0 * float(t25[0] - t5[0]) / fs, 6)
+
+
 # ---------------------------------------------------------------- deterministic draws
 
 
@@ -161,13 +181,23 @@ def crop_or_tile(noise: np.ndarray, n: int, rng: np.random.Generator) -> np.ndar
     return tiled[start:start + n]
 
 
-def mix_snr(x: np.ndarray, noise: np.ndarray, snr_db: float, rng: np.random.Generator) -> np.ndarray:
-    """x plus noise scaled to the requested SNR (RMS over the whole of x against RMS of the noise segment)."""
+def mix_snr(x: np.ndarray, noise: np.ndarray, snr_db: float, rng: np.random.Generator,
+            ref: slice | None = None) -> np.ndarray:
+    """x plus noise scaled to the requested SNR: the RMS of x over `ref` (default: all of x) against the RMS
+    of the drawn noise crop, which covers all of x.
+
+    Refuses (ValueError) when either side has zero RMS — a silent signal, or a noise crop that landed on a
+    silent stretch — rather than returning x unchanged under a draw that names a noise file and an SNR.
+    """
     x = np.asarray(x, dtype=np.float64)
     seg = crop_or_tile(noise, x.size, rng)
-    sx, sn = rms(x), rms(seg)
-    if sx <= 0.0 or sn <= 0.0:
-        return x.copy()
+    sx, sn = rms(x[ref] if ref is not None else x), rms(seg)
+    if sx <= 0.0:
+        raise ValueError(f"cannot mix at {snr_db} dB SNR: the signal's reference span has zero RMS (digital "
+                         "silence)")
+    if sn <= 0.0:
+        raise ValueError(f"cannot mix at {snr_db} dB SNR: the drawn noise crop of {x.size} samples has zero "
+                         "RMS")
     return x + seg * (sx / sn) / 10.0 ** (snr_db / 20.0)
 
 

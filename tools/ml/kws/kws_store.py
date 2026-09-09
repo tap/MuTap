@@ -6,6 +6,10 @@ archives/<id>/ (verified inputs + .verified marker), extracted/<id>/,
 pcm/<id>/<decoder>-<resampler>/, features/<manifest-hash>/<split>/, holdout/.
 `fetch` never downloads; every later stage refuses an archive whose
 .verified marker is missing or names a different sha256.
+
+Every tier path is built through `_tier`, which refuses a path that resolves
+outside the store root (a source id or archive file name carrying `/` or
+`..`), so no `mkdir`, `rmtree` or write in this module can leave the store.
 """
 from __future__ import annotations
 
@@ -45,20 +49,34 @@ def sha256_file(path: pathlib.Path, chunk: int = 1 << 20) -> str:
 
 class Store:
     def __init__(self, root: pathlib.Path):
-        self.root = root
+        self.root = pathlib.Path(root).resolve()
 
     # -- tiers ------------------------------------------------------------------
+    def _tier(self, *parts: str) -> pathlib.Path:
+        """root/parts..., refused unless every part after the tier name is one plain path segment, i.e. the
+        resolved path lies strictly inside the tier directory at exactly that depth (parts[1] names the
+        source or hash; `..`, `/` and an empty segment all fail)."""
+        tier = (self.root / parts[0]).resolve()
+        p = self.root.joinpath(*parts)
+        r = p.resolve()
+        inside = r.is_relative_to(tier) and r != tier and len(r.relative_to(tier).parts) == len(parts) - 1
+        if not inside or any(not seg or seg in (".", "..") or "/" in seg or "\\" in seg for seg in parts[1:]):
+            who = parts[1] if len(parts) > 1 else "/".join(parts)
+            raise StoreError(f"source {who!r}: path {p} escapes the store tier {tier} (ids and file names "
+                             "must be single path segments)")
+        return p
+
     def archives(self, source_id: str) -> pathlib.Path:
-        return self.root / "archives" / source_id
+        return self._tier("archives", source_id)
 
     def extracted(self, source_id: str) -> pathlib.Path:
-        return self.root / "extracted" / source_id
+        return self._tier("extracted", source_id)
 
     def pcm(self, source_id: str, decoder_id: str, resampler_id: str) -> pathlib.Path:
-        return self.root / "pcm" / source_id / f"{decoder_id}-{resampler_id}"
+        return self._tier("pcm", source_id, f"{decoder_id}-{resampler_id}")
 
     def features(self, manifest_hash: str, split: str | None = None) -> pathlib.Path:
-        p = self.root / "features" / manifest_hash
+        p = self._tier("features", manifest_hash)
         return p / split if split else p
 
     def holdout(self) -> pathlib.Path:
@@ -66,7 +84,12 @@ class Store:
 
     # -- archives ---------------------------------------------------------------
     def archive_path(self, source: Source) -> pathlib.Path:
-        return self.archives(source.id) / source.archive.file
+        base = self.archives(source.id)
+        p = base / source.archive.file
+        if p.parent != base or p.name in ("", ".", "..") or p.name != source.archive.file:
+            raise StoreError(f"source {source.id!r}: archive.file {source.archive.file!r} must be a bare "
+                             f"file name inside {base}")
+        return p
 
     def marker_path(self, source: Source) -> pathlib.Path:
         return self.archives(source.id) / ".verified"
@@ -91,14 +114,15 @@ class Store:
         if digest != source.archive.sha256:
             self.marker_path(source).unlink(missing_ok=True)
             raise StoreError(f"source {source.id!r}: archive sha256 {digest} != manifest {source.archive.sha256} ({dest})")
-        self.marker_path(source).write_text(digest + "\n")
+        self.marker_path(source).write_text(digest + "\n", encoding="utf-8")
         return dest
 
     def require_verified(self, source: Source) -> pathlib.Path:
         """The archive path, provided `fetch` verified exactly the manifest's sha256; otherwise refuse."""
         dest = self.archive_path(source)
         marker = self.marker_path(source)
-        if not dest.exists() or not marker.exists() or marker.read_text().strip() != source.archive.sha256:
+        if not dest.exists() or not marker.exists() \
+                or marker.read_text(encoding="utf-8").strip() != source.archive.sha256:
             raise StoreError(f"source {source.id!r}: archive not verified against the manifest — run `fetch` first")
         if dest.stat().st_size != source.archive.size:
             raise StoreError(f"source {source.id!r}: archive size changed since verification — run `fetch` again")
@@ -110,7 +134,7 @@ class Store:
         archive = self.require_verified(source)
         out = self.extracted(source.id)
         marker = out / ".extracted"
-        if marker.exists() and marker.read_text().strip() == source.archive.sha256:
+        if marker.exists() and marker.read_text(encoding="utf-8").strip() == source.archive.sha256:
             return out
         if out.exists():
             shutil.rmtree(out)
@@ -148,13 +172,18 @@ class Store:
                         shutil.copyfileobj(src, dst)
         else:
             raise StoreError(f"source {source.id!r}: unknown archive type {archive.name}")
-        marker.write_text(source.archive.sha256 + "\n")
+        marker.write_text(source.archive.sha256 + "\n", encoding="utf-8")
         return out
 
 
 def _safe_member(name: str) -> bool:
     p = pathlib.PurePosixPath(name)
     return bool(name) and not p.is_absolute() and ".." not in p.parts and not name.startswith("/") and "\\" not in name
+
+
+def safe_member(name: str) -> bool:
+    """True when `name` is a relative archive member path with no `..`, `\\` or leading `/`."""
+    return _safe_member(name)
 
 
 def fetch_all(manifest: Manifest, store: Store, repo_root: pathlib.Path) -> None:

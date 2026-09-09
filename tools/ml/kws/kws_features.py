@@ -18,12 +18,21 @@ vectors at 6.8e-14 / 1.5e-13 on Linux GCC x86-64 (no FMA contraction, where
 Apple clang on arm64 contracts), so SELF_CHECK_TOLERANCE follows DspTap's
 tuned-geometry double pin, 5e-13 — rounding-level; a formula drift shows up
 at 1e-6 or worse.
+
+The bridge library (`submodules/dsptap/build_capi/`) is keyed to the submodule
+commit it was compiled from: `ensure_bridge` writes `.dsptap_commit` beside it
+after a build and rebuilds (Release, the type DspTap's CI and ours use) when
+the marker is absent or names another commit, so `dsptap_commit()` — the
+value the lock and every shard header record — is the commit the C ABI was
+actually built from. A submodule with uncommitted changes to tracked files is
+refused: no commit describes it.
 """
 from __future__ import annotations
 
 import dataclasses
 import importlib.util
 import pathlib
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -37,6 +46,12 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 DSPTAP = ROOT / "submodules" / "dsptap"
 REFERENCE_SCRIPT = DSPTAP / "tools" / "reference" / "make_frontend_reference.py"
 BRIDGE_DIR = DSPTAP / "notebooks"
+BRIDGE_BUILD = DSPTAP / "build_capi"       # where dsptap_py looks for the C ABI library (its `_BUILD`)
+BRIDGE_MARKER_NAME = ".dsptap_commit"      # beside the library: the submodule commit it was built from
+
+
+class BridgeError(RuntimeError):
+    """The C ABI bridge cannot be tied to a DspTap commit (a dirty submodule, or an unkeyed build)."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -150,8 +165,73 @@ def reference_module():
     return _REFERENCE_MODULE
 
 
+def _git(*args: str) -> str:
+    out = subprocess.run(["git", "-C", str(DSPTAP), *args], capture_output=True, text=True, check=True)
+    return out.stdout.strip()
+
+
+def dsptap_head() -> str:
+    """The submodule's checked-out commit (`git rev-parse HEAD`)."""
+    return _git("rev-parse", "HEAD")
+
+
+def dsptap_dirty() -> list[str]:
+    """Tracked files with uncommitted changes in the submodule (`git status --porcelain -uno`)."""
+    return [line for line in _git("status", "--porcelain", "-uno").splitlines() if line.strip()]
+
+
+def _bridge_library(build_dir: pathlib.Path) -> pathlib.Path | None:
+    """The C ABI library if it exists under build_dir, looked up the way dsptap_py._lib_path does."""
+    stem = "dsptap_capi"
+    names = {"linux": f"lib{stem}.so", "darwin": f"lib{stem}.dylib", "win32": f"{stem}.dll"}
+    name = next(v for k, v in names.items() if sys.platform.startswith(k))
+    for cand in (build_dir / name, build_dir / "Release" / name, build_dir / "Debug" / name):
+        if cand.exists():
+            return cand
+    return None
+
+
+def _build_bridge(build_dir: pathlib.Path, verbose: bool = False) -> None:
+    """cmake the C ABI into build_dir (Release, as DspTap's own CI builds it); output shown when verbose."""
+    kw: dict[str, Any] = {"cwd": str(DSPTAP), "check": True}
+    if not verbose:
+        kw["capture_output"] = True
+    subprocess.run(["cmake", "-B", str(build_dir), "-S", str(DSPTAP / "tools" / "capi"),
+                    "-DCMAKE_BUILD_TYPE=Release"], **kw)
+    subprocess.run(["cmake", "--build", str(build_dir), "--config", "Release", "--parallel"], **kw)
+
+
+def ensure_bridge(build_dir: pathlib.Path | None = None, verbose: bool = False) -> str:
+    """Make the C ABI library under build_dir the one built from the submodule's HEAD; returns that commit.
+
+    Rebuilds when the library is missing or its `.dsptap_commit` marker is absent or names another commit
+    (dsptap_py itself only builds when the library file is missing, so a pin move would otherwise keep a
+    stale library under a fresh commit id). Refuses a submodule whose tracked files are modified.
+    """
+    build_dir = BRIDGE_BUILD if build_dir is None else build_dir
+    head = dsptap_head()
+    dirty = dsptap_dirty()
+    if dirty:
+        names = ", ".join(d.split()[-1] for d in dirty[:5])
+        raise BridgeError(f"the DspTap submodule at {DSPTAP} has uncommitted changes to tracked files "
+                          f"({names}): no commit describes the front end it would build; commit or revert "
+                          "them")
+    marker = build_dir / BRIDGE_MARKER_NAME
+    recorded = marker.read_text(encoding="utf-8").strip() if marker.exists() else None
+    if _bridge_library(build_dir) is None or recorded != head:
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+        _build_bridge(build_dir, verbose=verbose)
+        if _bridge_library(build_dir) is None:
+            raise BridgeError(f"cmake finished but no dsptap_capi library appeared under {build_dir}")
+        marker.write_text(head + "\n", encoding="utf-8")
+    return head
+
+
 def bridge_module():
-    """dsptap_py, DspTap's ctypes bridge; builds build_capi/ under the submodule on first import."""
+    """dsptap_py, DspTap's ctypes bridge, over a library built from the submodule's HEAD (`ensure_bridge`)."""
+    if "dsptap_py" not in sys.modules:
+        ensure_bridge()
     if str(BRIDGE_DIR) not in sys.path:
         sys.path.insert(0, str(BRIDGE_DIR))
     import dsptap_py  # noqa: E402
@@ -174,9 +254,25 @@ def contract_version() -> int:
 
 
 def dsptap_commit() -> str:
-    """The submodule commit the front end was built from (the lock records it)."""
-    out = subprocess.run(["git", "-C", str(DSPTAP), "rev-parse", "HEAD"], capture_output=True, text=True, check=True)
-    return out.stdout.strip()
+    """The submodule commit the C ABI bridge was built from (the lock and every shard header record it).
+
+    HEAD of the submodule, provided the bridge's `.dsptap_commit` marker names that same commit and the
+    submodule's tracked files are unmodified; otherwise BridgeError — the value would not describe the
+    library that computes the features.
+    """
+    head = dsptap_head()
+    dirty = dsptap_dirty()
+    if dirty:
+        names = ", ".join(d.split()[-1] for d in dirty[:5])
+        raise BridgeError(f"the DspTap submodule has uncommitted changes to tracked files ({names}): no "
+                          "commit describes the front end")
+    marker = BRIDGE_BUILD / BRIDGE_MARKER_NAME
+    recorded = marker.read_text(encoding="utf-8").strip() if marker.exists() else None
+    if recorded != head:
+        raise BridgeError(f"the DspTap C ABI bridge under {BRIDGE_BUILD} was built at "
+                          f"{recorded or 'an unrecorded commit'}, the submodule is at {head}: import "
+                          "kws_features (ensure_bridge) to rebuild it before recording a commit")
+    return head
 
 
 def assert_band_support(g: Geometry) -> None:
@@ -256,7 +352,13 @@ def main(argv: list[str] | None = None) -> int:
 
     ap = argparse.ArgumentParser(description="Run the front-end self-check at a geometry (default: the reference).")
     ap.add_argument("--geometry", help="JSON file or string with log_mel_geometry values (manifest recipe.geometry)")
+    ap.add_argument("--ensure-bridge", action="store_true",
+                    help="only (re)build the C ABI bridge for the submodule's HEAD, with cmake's output "
+                         "shown, and print the commit it was built from (the CI job's readable build step)")
     args = ap.parse_args(argv)
+    if args.ensure_bridge:
+        print(f"dsptap_capi built from DspTap {ensure_bridge(verbose=True)} under {BRIDGE_BUILD}")
+        return 0
     g = REFERENCE
     if args.geometry:
         text = pathlib.Path(args.geometry).read_text() if pathlib.Path(args.geometry).exists() else args.geometry

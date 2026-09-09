@@ -8,9 +8,13 @@ corpus, M4c the recorded hold-out. Every number the plan states as a rule is
 enforced here by a script that can fail.
 
 Host-side tooling only: never part of the library or the emulated-target
-builds. Python ≥ 3.10 in a pinned environment (`requirements.txt`; on the
+builds. Python ≥ 3.12 in a pinned environment (`requirements.txt` — the plan's
+floor is 3.10, but the pinned numpy 2.5.3 and scipy 1.18.1 require 3.12; on the
 M0 Mac `uv venv --python 3.12 .venv && uv pip install -r tools/ml/kws/requirements.txt`),
-plus the DspTap C ABI, which `dsptap_py` builds on first import.
+plus the DspTap C ABI, which `kws_features.ensure_bridge` builds (Release) on
+first import and keys to the submodule commit with a `.dsptap_commit` marker
+beside the library, rebuilding after a pin move so the commit the lock and the
+shard headers record is the one the library was compiled from.
 
 ## Ownership
 
@@ -45,38 +49,60 @@ Two committed parts and one emitted part.
 
 | field | meaning |
 |---|---|
-| `id` | stable directory name in the store, e.g. `speech_commands_v0.02` |
-| `kind` | the ingestion adapter: `speech_commands_v2`, `musan`, `openslr_28_simulated`, `mswc_keywords`, `holdout` (M4b adds `common_voice`, `ami`, `fma`, `piper`) |
+| `id` | stable directory name in the store, e.g. `speech_commands_v0.02`: a single path segment `[A-Za-z0-9._-]+` (it names store directories; anything else is refused) |
+| `kind` | the ingestion adapter (`kws_sources.py`): `speech_commands_v2`, `musan`, `openslr_28_simulated`, `keyword_list` (a text file, one keyword per line, `options.member`; the toy's Speech Commands list), `mswc_keywords`, `piper` (a pinned voice archive — `<voice>.onnx` + `<voice>.onnx.json` placed by hand, verified by `fetch`; it lists no clips, `synth` produces them from `recipe.tts`, whose every voice names its `piper` source), `holdout` (M4c; refused at M4a) — M4b adds `common_voice`, `ami`, `fma` |
 | `release` | the upstream release id (or Data Collective dataset id) |
-| `origin` | `{"url": ..., "obtain": "<human step>"}` for a store-only source, or `{"path": "tools/ml/kws/fixtures/..."}` for a committed one |
-| `archive` | `{"file", "sha256", "size"}` — `fetch` verifies both |
+| `origin` | `{"url": ..., "obtain": "<human step>"}` for a store-only source, or `{"path": "tools/ml/kws/fixtures/..."}` for a committed one (an in-repository origin must lie under `tools/ml/kws/fixtures/`) |
+| `archive` | `{"file", "sha256", "size"}` — `fetch` verifies both; `file` is a bare file name inside `archives/<id>/` |
 | `licence`, `attribution`, `terms_accepted`, `terms_verified` | the licence id, the attribution text, the terms accepted on download and the date they were verified |
 | `redistributable` | may audio from this source enter git? An origin inside the repository requires `true`; the builder refuses the manifest otherwise |
-| `roles` | subset of `train`, `aug`, `dev`, `eval-speech`, `eval-music`, `eval-noise`, `eval-tts`, `holdout` |
+| `roles` | subset of `train`, `aug`, `dev`, `eval-speech`, `eval-music`, `eval-noise`, `eval-tts`, `holdout`. A clip is first assigned a split (official, or keyed hash), then a share from the roles: `train` / `dev` featurize the clip in that split; `aug` makes it mix-in material (noise, RIRs, or speech/music the roles do not featurize) in whichever training-side split its key hashes into — never featurized, `label` null; the eval roles select the eval share by material (`eval-speech`, `eval-music`, `eval-noise`, `eval-tts`). A clip whose split the roles do not cover is excluded and counted in the lock's `summary.excluded_by_role` |
 | `pcm_exact` | `true` when the archive is 16 kHz PCM, so the decoded-PCM sha256 is an identity field |
-| `options` | adapter-specific: MUSAN's `partition`, the keyword-list member, … |
+| `options` | adapter-specific: MUSAN's `partition` and `exclude` (file ids left out, e.g. the one unattributed sound-bible file), Speech Commands' `keywords` restriction, SLR28's `sizes`, the keyword-list `member`, … |
 
-**`recipe`** — geometry values and stored path (`log` or `pcen`),
-`log_mel_contract_version` (checked against `dsptap_log_mel_contract_version()`
-at build) kept separate from `kws_features_version`, `phrase` and `near_miss`,
-the label rule (`trim_db` *X*, `window_ms`, `tolerance_hops` *T*), `context_s`,
-the resampler (name and window), the split rule (committed `salt`, `fractions`),
+**`recipe`** — geometry values and stored path (`log` or `pcen`; it must be
+the path the geometry computes, `pcen` iff `geometry.pcen.enabled`, and the
+shard header's `stored_path` is derived from the geometry), `log_mel_contract_version`
+(checked against `dsptap_log_mel_contract_version()` at build) kept separate
+from `kws_features_version`, `phrase` and `near_miss`, the label rule (`trim_db`
+*X*, `window_ms`, `tolerance_hops` *T* — an integer, a target until M4b's build
+measures the trim rule's spread), `context_s` (≥ 2 s, the plan's minimum), the
+resampler (name and window), the split rule (committed `salt`, `fractions`),
 the augmentation policy (`seed`, `draws_per_positive` *K*, `noisy_per_negative`
-*M*, `dry_share`, ranges), the exclusion rules, the mining method, and (M4b)
-the TTS block and named subsets.
+*M*, `dry_share`, ranges — each `[lo, hi]` with `lo ≤ hi`, `speed` positive,
+`rt60_s` non-negative — and `mic_model`, `none` only: no microphone-path model
+exists at M4a, so any other value is refused rather than silently ignored),
+the exclusion rules, the mining method, the TTS block (`voices[]` — `id`,
+`source` naming a `piper` sources[] row, `onnx` and `config` members of that
+archive, the onnx `sha256`, optional `speakers` —, `texts.positive` /
+`texts.negative`, `positives_per_speaker`, the `length_scale` / `noise_scale` /
+`noise_w` ranges; filled by M4b, exercised by hand at M4a) and (M4b) named
+subsets. Every schema deviation — an unknown or missing field anywhere — is
+refused by name at load.
 
 **`lock.json`** — emitted beside the shards. Per clip: id, source, material,
 split, share, label, endpoint sample, length, split key, decoded-PCM sha256,
 variant and resolved draw; per shard: file, sha256, frame count; per split ×
 class hours and counts; the class-balance table; `eval_set_id` per eval share
 (sha256 of the sorted clip ids — a pure function of the manifest); the hold-out
-set id; the toolchain; the self-check record. **Identity fields** (everything
-above except the next list) reproduce exactly on every rebuild. **Derived
-fields** — feature values, per-shard sha256, the decoded-PCM sha256 of any
-lossy or resampled source, the toolchain block — reproduce exactly only on the
-M0 Mac in the pinned environment; elsewhere features agree within the
-tolerance written beside the assertion and the rest are reported, never
-compared.
+set id; the toolchain; the self-check record. A row exists for every decoded
+clip (variant 0) and for every draw (variant 1…). A row's `endpoint_sample` is
+the endpoint inside the audio that row is featurized from: the dry *e* for a
+dry-only row, *e*‴ for a featurized positive (eval positives included, since
+they are embedded in context); `extra.endpoint_dry` always keeps *e*. A row's
+`length` is the sample count of the audio its `pcm_sha256` digests — the dry
+clip, or the rendered variant in the augmented tier (a positive's is the
+gain + speed keyword, since its RIR and noise are applied to the mixture) —
+context excluded; hours come from these; `extra.mixture_samples` records the
+mixture. MUSAN clips carry their per-file `extra.attribution` block and
+the licence id classified from it as `extra.licence`, which the card checks.
+**Identity fields** (everything above except the next list) reproduce exactly
+on every rebuild. **Derived fields** — feature values, per-shard sha256, the
+decoded-PCM sha256 of any lossy or resampled source and of every augmented
+variant (rendered through `resample_poly` / `fftconvolve`), the toolchain block
+— reproduce exactly only on the M0 Mac in the pinned environment; elsewhere
+features agree within the tolerance written beside the assertion and the rest
+are reported, never compared (`kws_manifest.compare_locks`).
 
 ## The builder — `kws_build.py`
 
@@ -94,15 +120,53 @@ stages: fetch · decode · synth · augment · extract · shard · all
   `scipy.signal.resample_poly` (the one resampler for every source; the
   shipping `decimate.h` is never in the training path), and writes the pcm tier.
 - `synth` runs `piper-tts` as a subprocess over the manifest's TTS block (M4b;
-  hand-exercised at M4a over one pinned voice, its lock rows kept as the record).
+  hand-exercised at M4a over one pinned voice — `fixtures/synth_hand_run/`
+  holds the manifest used and `lock_excerpt.json`, the TTS rows and toolchain
+  of that run, no audio, which the card cites). Every voice's `.onnx`/`.json`
+  come from its `piper` source's verified archive; rows carry the voice, its
+  sha256, speaker id (`"0"` for a single-speaker voice), the length / noise /
+  noise-w scales drawn from `draw_rng(seed, clip_id + "#tts", 0)`, the text
+  variant and the resampler record; the lock's toolchain gains the piper-tts
+  and ONNX Runtime versions read from piper's own interpreter (espeak-ng is
+  embedded in piper ≥ 1.3 and reports no version of its own, which the lock
+  says rather than inventing one).
 - `augment` freezes the augmentation into the store under the manifest seed.
   Every draw is a function of the seed and the clip id alone (`kws_audio.draw_rng`),
   never of a process-shared RNG, so the lock does not depend on `--jobs`.
-- `extract` runs the front end (double) and writes float32 shards; positives
-  are featurized embedded in `context_s` of same-split negative material with
-  one `reset()` per mixture.
+  Train/dev positives get *K* draws, train/dev negatives one clean row plus
+  *M* draws, eval clips none. A draw is resolved in the fixed order dry?
+  (probability `dry_share`: gain only) → gain → speed → RIR (the same-split
+  `rir` pool inside `rt60_s`, RT60 by `kws_audio.rt60_t20` recorded per RIR
+  as `extra.rt60_s`; an empty pool is refused, never skipped) → noise (the
+  same-split noise share) → SNR, then for every positive its context and
+  offset. A negative variant is rendered whole (gain, speed, RIR, noise); a
+  positive variant's augmented-tier file carries gain and speed only, its RIR
+  and noise being applied to the whole mixture by `extract`. Rendered audio
+  goes to `features/<hash>/augmented/` (regenerable).
+- `extract` runs the front end (double) and writes float32 rows; positives
+  are featurized embedded in same-split negative material: a stream of the
+  drawn `context` clips, the keyword replacing it from `offset` for its own
+  length, then (20 + *T*) hops plus one frame of the stream so the hit window
+  fits; the draw's RIR is then convolved over the whole mixture (the
+  direct-path delay *d* is uniform, so *e*‴ is unchanged) and the draw's noise
+  added over the whole mixture at the drawn SNR measured against the keyword's
+  extent [`offset`, `offset` + length + RIR tail), so the background and the
+  reverberation run continuously across context and keyword — no
+  keyword-bounded burst marks the positives (a treated mixture is
+  peak-normalised to 0.99 like every rendered variant; an eval positive's is
+  the raw concatenation); one `reset()` per mixture; negatives alone after a
+  reset. It refuses a mixture whose rows do not reach the stored endpoint's
+  hop, and a draw whose noise crop or signal is silent (`kws_audio.mix_snr`
+  refuses rather than returning the input unchanged).
 - `shard` writes the lock and the shard headers (`log_mel_contract_version`,
   the DspTap commit, the full geometry, `kws_features_version`, the manifest hash).
+  `extract` records the DspTap commit it ran under in the ledger and `shard`
+  refuses to stamp another one over its rows. Every stage refuses to run out
+  of order (a stage ledger in `features/<hash>/clips.json`), on an unverified
+  archive (every stage after `fetch` re-checks every source's `.verified`
+  marker), and under a `log_mel_contract_version` other than the bridge's.
+  A clip that is not decodable audio, that decodes to digital silence, or that
+  is shorter than one label window is refused by name at `decode`.
 
 ## Labels
 
@@ -116,8 +180,13 @@ hop index is ⌊*e*/hop⌋. M5's hit window is frames [*h* − *T*, *h* + 20 + *
 ## Splits — `verify_splits.py`
 
 Assignment is by rule (a keyed hash with the committed salt) per source, or a
-source's official split where one exists (Speech Commands). Rules, each with a
-planted-violation fixture under `fixtures/planted/`:
+source's official split where one exists (Speech Commands); RIRs split train /
+dev only, by the fractions renormalized over the two (`kws_build.rir_split`).
+Rules, each with a planted-violation fixture under
+`fixtures/planted/<Rn-name>/` (`lock.json` + `expect.json` naming the rule and
+the planted clips, written by `fixtures/planted/make_planted_fixtures.py`;
+`verify_splits.py --self-test` requires each to be rejected by exactly its
+rule):
 
 - **R1** client-id disjointness across Common Voice and MSWC.
 - **R2** no decoded-PCM sha256 of any dev, eval or hold-out clip in a training
@@ -130,13 +199,34 @@ planted-violation fixture under `fixtures/planted/`:
 ## The card — `kws_dataset_card.py`
 
 Renders `DATASET.md` and `ATTRIBUTION.csv` from the manifest and lock; nothing
-in the card is typed by hand. Its test plants an unlicensed clip and a
-CC BY-NC track and requires both to fail.
+in the card is typed by hand. Its checks (`--check` runs them alone) refuse a
+clip without a licence, a clip flagged `unlicensed`, and any licence id
+carrying an `NC` term — per file where the adapter recorded `extra.licence`;
+SA and ND ids pass the gate and are stated per file (whether such material is
+admitted corpus-wide is a plan-level policy the card does not decide). Its
+test plants an unlicensed clip and a CC BY-NC track and requires both to
+fail. The class-balance table's vocabulary is `origin` (real / synthetic) and
+`render` (dry / augmented) in both the builder and the card (`render`, not
+`condition`: the plan's `condition` is the recording condition M4b adds).
+When the lock's build ran no `synth`, the tooling section cites the committed
+hand-run record (`fixtures/synth_hand_run/lock_excerpt.json`) and renders its
+tool versions from that file. The toy's card is committed under `fixtures/toy/expected/` (a pure
+function of the committed lock; `test_kws.py` requires the match); M4b's full
+corpus renders to `tools/ml/kws/DATASET.md` and `ATTRIBUTION.csv`.
 
 ## Tests and CI
 
-`test_kws.py` (unittest) rebuilds the toy fixture into an empty store and is
-the `kws-dataset` CI job's body. Every M4a pass item of the plan is one test.
+`test_kws.py` (unittest) is the M4a pass, one test per item, and the body of
+the `kws-dataset` CI job (`python -m unittest discover -s tools/ml/kws -p
+'test_*.py' -v`, which also runs `test_verify_splits.py` and
+`test_dataset_card.py`). It rebuilds `fixtures/toy/manifest.json` into empty
+temporary stores with `--jobs 4` and `--jobs 1` and compares them with the
+committed expected outputs under `fixtures/toy/expected/`: `lock.json`,
+`features/<split>/shard-0000.npz` and the card, produced by a real toy build
+on the M0 Mac at the pinned DspTap commit (the lock's toolchain block says
+which; the test reports the commit and shard digests, never compares them). The fixture itself is
+cut by `fixtures/make_toy_fixture.py` from the store's verified upstream
+archives, deterministically; `fixtures/toy/provenance.json` records the picks.
 
 ## Shard format
 
@@ -161,7 +251,10 @@ first one it reads, as `train_suppressor.py` refuses mixed geometries.
 ## The resolved draw
 
 `Clip.draw` names everything the augmentation did to a clip, so a rebuild is
-checkable and a refactor cannot re-roll the data under an unchanged manifest:
+checkable and a refactor cannot re-roll the data under an unchanged manifest
+(the draw schema and its order — dry?, gain, speed, RIR, noise, SNR, context,
+offset — are fixed; where a treatment is applied, the keyword alone or the
+whole mixture, is `augment`'s and `extract`'s business, above):
 
 ```
 {"gain_db": float, "snr_db": float | null, "noise": "<clip id>" | null,
@@ -169,6 +262,19 @@ checkable and a refactor cannot re-roll the data under an unchanged manifest:
  "context": ["<clip id>", ...], "offset": int}
 ```
 
-`offset` is the sample at which the (speed-scaled, reverberated) clip starts
-inside its context material; the stored endpoint is *e*‴ = round(*e*/speed) +
-`rir_delay` + `offset`. A hold-out mixed take (M4c) draws `{"noise", "level_db"}`.
+`offset` is the sample at which the speed-scaled clip starts inside its
+context material — drawn in [`context_s`, 1.5 · `context_s`] samples (both
+ends inclusive: *n* + {0, …, *n* // 2} with *n* = `context_s` · 16000) for a
+positive, 0 with an empty `context` for a negative; the stored endpoint is
+*e*‴ = round(*e*/speed) + `rir_delay` + `offset`. `speed` is the rational
+factor actually applied, `Fraction(draw).limit_denominator(1000)` as a float
+(the rule `kws_audio.change_speed` resamples by), not the raw uniform draw, so
+*e*′ is computed from the factor the audio underwent; the render asserts the
+applied factor equals the recorded one. Every id names a variant-0 row of the
+same split. `rir` and `noise` are null and `speed` 1.0 for a dry draw. The
+noise crop's start inside `kws_audio.mix_snr` comes from its own generator,
+`draw_rng(seed, clip_id + "#noise", variant)`, so the schema above is complete
+without a `noise_start` field; a TTS clip's synthesis scales come from
+`draw_rng(seed, clip_id + "#tts", 0)`, so the variant-0 key stays reserved for
+the eval positive's context draw. A hold-out mixed take (M4c) draws
+`{"noise", "level_db"}`.

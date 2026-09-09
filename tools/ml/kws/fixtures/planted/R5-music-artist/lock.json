@@ -1,0 +1,659 @@
+{
+ "class_balance": [],
+ "clips": [
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "meeting": "ES2002a",
+    "participants": [
+     "FEE005",
+     "MEE006"
+    ]
+   },
+   "id": "ami/ES2002a/seg-0001",
+   "key": "ES2002a",
+   "label": 0,
+   "length": 160000,
+   "material": "speech",
+   "pcm_sha256": "7d46bee7f7ccc21e9f5f2a4a25d42682348d225985e43abced21e66d43d49e49",
+   "share": "train",
+   "source": "ami",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "meeting": "ES2002b",
+    "participants": [
+     "FEE005",
+     "MEE006",
+     "MEE007"
+    ]
+   },
+   "id": "ami/ES2002b/seg-0001",
+   "key": "ES2002b",
+   "label": 0,
+   "length": 160000,
+   "material": "speech",
+   "pcm_sha256": "a6273bd9049375da3d282dbf271bffb699427e119078664a05c336a9b7973a75",
+   "share": "train",
+   "source": "ami",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "meeting": "IS1000a",
+    "participants": [
+     "FIE081",
+     "MIE082"
+    ]
+   },
+   "id": "ami/IS1000a/seg-0001",
+   "key": "IS1000a",
+   "label": 0,
+   "length": 160000,
+   "material": "speech",
+   "pcm_sha256": "240c0788a67f37156840d9ea9c4149ec120e690a15a30c4bb688ec7140e4c87b",
+   "share": "dev",
+   "source": "ami",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "client_id": "clientA"
+   },
+   "id": "cv/clips/common_voice_en_100",
+   "key": "clientA",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "e35309226bc034cb38ea923ce15c05ed2be161069f994145223622d5459107b2",
+   "share": "train",
+   "source": "cv",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "client_id": "clientA"
+   },
+   "id": "cv/clips/common_voice_en_101",
+   "key": "clientA",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "1ce6068c9353918ad6b88b1c29335fa5ef207fd38a295429c14bfa43f042b974",
+   "share": "train",
+   "source": "cv",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "client_id": "clientB"
+   },
+   "id": "cv/clips/common_voice_en_200",
+   "key": "clientB",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "4d9e77e0395711ff57db47622ad932d5f992519a81565d73b509e821416c567b",
+   "share": "dev",
+   "source": "cv",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "client_id": "clientC"
+   },
+   "id": "cv/clips/common_voice_en_300",
+   "key": "clientC",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "201f873f5c245cc4dbda62e11bf063fc69299ff16692666f3d3a22b8f4a10e40",
+   "share": "eval-speech",
+   "source": "cv",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "Ann Artist",
+    "licence": "CC BY 4.0",
+    "track": "Noon"
+   },
+   "id": "fma/fma_full/000/000123",
+   "key": "Ann Artist",
+   "label": 0,
+   "length": 32000,
+   "material": "music",
+   "pcm_sha256": "5813210615cd0c6305489e67dc80565c953e3fc1d77a48021a1882eeba70161b",
+   "share": "aug",
+   "source": "fma",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "ANN  artist",
+    "licence": "CC0 1.0",
+    "track": "Night"
+   },
+   "id": "fma/fma_full/000/000456",
+   "key": "ANN  artist",
+   "label": 0,
+   "length": 32000,
+   "material": "music",
+   "pcm_sha256": "19ef429c834cd7bfbda00b4f5f4e645e88efecc8ab24d901decb948d518accf8",
+   "share": "eval-music",
+   "source": "fma",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 14000,
+   "extra": {
+    "distance_m": 1.0
+   },
+   "id": "holdout/talker-01/room-1m/utt-0001",
+   "key": "talker-01",
+   "label": 1,
+   "length": 16000,
+   "material": "holdout",
+   "pcm_sha256": "0f3659191e660b291f37e5dfe225cfd2f92c68a71644790faf47fb2dd100898b",
+   "share": "holdout",
+   "source": "holdout",
+   "speaker": "talker-01",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "level_db": -20.0,
+    "noise": "musan_noise/noise/free-sound/noise-free-sound-0003"
+   },
+   "endpoint_sample": 14000,
+   "extra": {
+    "distance_m": 1.0
+   },
+   "id": "holdout/talker-01/room-1m/utt-0001",
+   "key": "talker-01",
+   "label": 1,
+   "length": 16000,
+   "material": "holdout",
+   "pcm_sha256": "",
+   "share": "holdout",
+   "source": "holdout",
+   "speaker": "talker-01",
+   "split": "eval",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "client_id": "clientA",
+    "keyword": "house"
+   },
+   "id": "mswc/en/clips/house/common_voice_en_100__house",
+   "key": "clientA",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "f6a720c4d5f8ee0a1f549d93408e2f372e35c9895da137f1920535923f643d14",
+   "share": "train",
+   "source": "mswc",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "client_id": null,
+    "keyword": "house",
+    "unjoinable": true
+   },
+   "id": "mswc/en/clips/house/common_voice_en_999__house",
+   "key": "common_voice_en_999",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "f9118a2c79a189d60fd1d1b14383b6f590e180812138dc30ca506a3175d070e2",
+   "share": "train",
+   "source": "mswc",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "Ann Artist",
+    "track": "Morning"
+   },
+   "id": "musan_music/music/fma/music-fma-0001",
+   "key": "Ann Artist",
+   "label": null,
+   "length": 32000,
+   "material": "music",
+   "pcm_sha256": "d3da646711cf5a7233b3d7fccc0992b2a5464373dbce241ec60b0129e3659dd1",
+   "share": "aug",
+   "source": "musan_music",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "Bo Band",
+    "track": "Evening"
+   },
+   "id": "musan_music/music/fma/music-fma-0002",
+   "key": "Bo Band",
+   "label": null,
+   "length": 32000,
+   "material": "music",
+   "pcm_sha256": "db31f08bac186da5236a6f5511c98537ad30a654c711f36f2baba346c8abe70c",
+   "share": "eval-music",
+   "source": "musan_music",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "musan_noise/noise/free-sound/noise-free-sound-0001",
+   "key": "noise-free-sound-0001",
+   "label": null,
+   "length": 48000,
+   "material": "noise",
+   "pcm_sha256": "b4418f40c220e933dd2285df1dd76612b2c78f1e6eb451aefe2c256346815e61",
+   "share": "train",
+   "source": "musan_noise",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "musan_noise/noise/free-sound/noise-free-sound-0002",
+   "key": "noise-free-sound-0002",
+   "label": null,
+   "length": 48000,
+   "material": "noise",
+   "pcm_sha256": "556c7e3a1fcfbfe952ccde5728fff4cd93dc7a2dab64506a25c924ba303c641b",
+   "share": "dev",
+   "source": "musan_noise",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "musan_noise/noise/free-sound/noise-free-sound-0003",
+   "key": "noise-free-sound-0003",
+   "label": null,
+   "length": 48000,
+   "material": "noise",
+   "pcm_sha256": "030b543205bb7a747b0d7bd007910a0e40a8b3497a28bcf504a9942543205cf0",
+   "share": "eval-noise",
+   "source": "musan_noise",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "voice": "en_US-lessac-medium",
+    "voice_sha256": "33e5dcf0d80df9be86224c0f6af71ecffa36b012114f2bb60494070b8d37a4c1"
+   },
+   "id": "piper/lessac/0/neg-0001",
+   "key": "en_US-lessac-medium/0",
+   "label": 0,
+   "length": 16000,
+   "material": "tts",
+   "pcm_sha256": "1e05199977be14f85ff668f0c84711e765f1daa5b335402c6cc4297fd34e8282",
+   "share": "train",
+   "source": "piper",
+   "speaker": "0",
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 12000,
+   "extra": {
+    "voice": "en_US-lessac-medium",
+    "voice_sha256": "33e5dcf0d80df9be86224c0f6af71ecffa36b012114f2bb60494070b8d37a4c1"
+   },
+   "id": "piper/lessac/0/pos-0001",
+   "key": "en_US-lessac-medium/0",
+   "label": 1,
+   "length": 16000,
+   "material": "tts",
+   "pcm_sha256": "89f3e72ff3779a7b22ebcebb441596ecdda3cbf04b5ea2f7ddb86dc8454540e8",
+   "share": "train",
+   "source": "piper",
+   "speaker": "0",
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "voice": "en_US-libritts-high",
+    "voice_sha256": "73fcb25575cf4fca38302adeea482c4315e7d6435b177818cc1d0e184701d025"
+   },
+   "id": "piper/libritts/12/neg-0001",
+   "key": "en_US-libritts-high/12",
+   "label": 0,
+   "length": 16000,
+   "material": "tts",
+   "pcm_sha256": "73d03e3459a98bffa55d70084cbd9c768ab74f5d1185da37d67d778c0861fdc2",
+   "share": "dev",
+   "source": "piper",
+   "speaker": "12",
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 12000,
+   "extra": {
+    "voice": "en_US-libritts-high",
+    "voice_sha256": "73fcb25575cf4fca38302adeea482c4315e7d6435b177818cc1d0e184701d025"
+   },
+   "id": "piper/libritts/12/pos-0001",
+   "key": "en_US-libritts-high/12",
+   "label": 1,
+   "length": 16000,
+   "material": "tts",
+   "pcm_sha256": "caf206af0320505f6673bb50535f8a528eb10ace8d3fe1b65b5cafbea78ea6fa",
+   "share": "dev",
+   "source": "piper",
+   "speaker": "12",
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "voice": "en_US-libritts-high",
+    "voice_sha256": "73fcb25575cf4fca38302adeea482c4315e7d6435b177818cc1d0e184701d025"
+   },
+   "id": "piper/libritts/30/neg-0001",
+   "key": "en_US-libritts-high/30",
+   "label": 0,
+   "length": 16000,
+   "material": "tts",
+   "pcm_sha256": "1fe9170e0c54dba2bc55855053e640d908761f3c39209ef31a32d692c1d3eaf5",
+   "share": "eval-tts",
+   "source": "piper",
+   "speaker": "30",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 12000,
+   "extra": {
+    "voice": "en_US-libritts-high",
+    "voice_sha256": "73fcb25575cf4fca38302adeea482c4315e7d6435b177818cc1d0e184701d025"
+   },
+   "id": "piper/libritts/30/pos-0001",
+   "key": "en_US-libritts-high/30",
+   "label": 1,
+   "length": 16000,
+   "material": "tts",
+   "pcm_sha256": "9d3d40f65a7d445e46213c92848dd11575b75d3260edc329dfb548ede4f3c9d8",
+   "share": "eval-tts",
+   "source": "piper",
+   "speaker": "30",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "sc/house/aaaa_nohash_0",
+   "key": "aaaa",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "b1a0cfe296f6690869694fd2348a00a02ab2b2cfe7456a013f05bfe8c56888b3",
+   "share": "train",
+   "source": "sc",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "sc/house/bbbb_nohash_0",
+   "key": "bbbb",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "99e1c45f37c1e464aa8049283feffcc4a1d173d361bf6432f722a280f1ca8444",
+   "share": "dev",
+   "source": "sc",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "sc/house/cccc_nohash_0",
+   "key": "cccc",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "72aff9041545809cc100ebe2359dc3fbe278a86b46514a6fbf32e34dc87045f0",
+   "share": "eval-speech",
+   "source": "sc",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 9600,
+   "extra": {},
+   "id": "sc/marvin/aaaa_nohash_0",
+   "key": "aaaa",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "303900ee991301c2ad55ab71263aaba92ca8f93439c8aa9aedb068d35e5479b0",
+   "share": "train",
+   "source": "sc",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "sc/house/aaaa_nohash_0"
+    ],
+    "gain_db": -2.0,
+    "noise": "musan_noise/noise/free-sound/noise-free-sound-0001",
+    "offset": 1600,
+    "rir": "slr28/simulated_rirs/smallroom/Room001/Room001-00001",
+    "rir_delay": 200,
+    "snr_db": 8.0,
+    "speed": 1.0
+   },
+   "endpoint_sample": 11400,
+   "extra": {},
+   "id": "sc/marvin/aaaa_nohash_0",
+   "key": "aaaa",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "",
+   "share": "train",
+   "source": "sc",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 9800,
+   "extra": {},
+   "id": "sc/marvin/bbbb_nohash_0",
+   "key": "bbbb",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "eef31ecd15dec7ce6e7e02c13587c331856111dd9b64c018922d4133d9ba3a0f",
+   "share": "dev",
+   "source": "sc",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "sc/house/bbbb_nohash_0"
+    ],
+    "gain_db": 1.0,
+    "noise": "musan_noise/noise/free-sound/noise-free-sound-0002",
+    "offset": 1600,
+    "rir": "slr28/simulated_rirs/mediumroom/Room002/Room002-00001",
+    "rir_delay": 300,
+    "snr_db": 12.0,
+    "speed": 1.0
+   },
+   "endpoint_sample": 11700,
+   "extra": {},
+   "id": "sc/marvin/bbbb_nohash_0",
+   "key": "bbbb",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "",
+   "share": "dev",
+   "source": "sc",
+   "speaker": null,
+   "split": "dev",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 9500,
+   "extra": {},
+   "id": "sc/marvin/cccc_nohash_0",
+   "key": "cccc",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "712bdb5f5fc41e8edf0f08baa1da5818b65babe12d33c62a9dd359c6ec196f9f",
+   "share": "eval-speech",
+   "source": "sc",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "slr28/simulated_rirs/mediumroom/Room002/Room002-00001",
+   "key": "Room002",
+   "label": null,
+   "length": 6000,
+   "material": "rir",
+   "pcm_sha256": "b598793c8ae3a02da93adad81338576985ab4f31a5d77ee8f69278aad4f143ad",
+   "share": "dev",
+   "source": "slr28",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {},
+   "id": "slr28/simulated_rirs/smallroom/Room001/Room001-00001",
+   "key": "Room001",
+   "label": null,
+   "length": 4000,
+   "material": "rir",
+   "pcm_sha256": "481c47948188596b412fd759593e6b18062dded42b621e8dedff5a633132f9b7",
+   "share": "train",
+   "source": "slr28",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  }
+ ],
+ "eval_set_id": {
+  "eval-music": "7844d73b04d80b1333f460445616b6ab38f369533ac89416f5a4811f05d665e2",
+  "eval-noise": "030b543205bb7a747b0d7bd007910a0e40a8b3497a28bcf504a9942543205cf0",
+  "eval-speech": "f6d79a2714a38e7c7e6bb8a72f6364b1d9404c6a64670c07af37d8ab18866633",
+  "eval-tts": "bfa377862944ff58ac2d29885354307ff0f6cc323c2b75a6b7b2807ef1042ee7"
+ },
+ "holdout_set_id": null,
+ "lock_version": 1,
+ "manifest_hash": "9a1476c72c7383946c5c3890f22e61d4be9eb27eb18059123c3cd1430bce7bd4",
+ "self_check": {},
+ "shards": [],
+ "summary": {},
+ "toolchain": {
+  "note": "synthetic lock from fixtures/planted/make_planted_fixtures.py; no audio"
+ }
+}

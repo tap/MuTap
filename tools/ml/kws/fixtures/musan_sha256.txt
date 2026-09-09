@@ -1,0 +1,6 @@
+# MUSAN (OpenSLR SLR17, https://www.openslr.org/resources/17/musan.tar.gz), the upstream archive the
+# toy fixture's excerpts were cut from. Measured on the M0 Mac 2026-09-09 with `shasum -a 256` after
+# the download's size was stable across two checks a minute apart and `tar tzf` listed all 2050
+# members without error; the digest and size M4b's manifest pins for source openslr_17_musan.
+86d1061c7e15b5c9e906777685c519701df51bfde3001e1070dcc9ffac955ee1  musan.tar.gz
+size 11086114085

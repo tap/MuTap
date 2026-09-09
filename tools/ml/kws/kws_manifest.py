@@ -7,16 +7,23 @@ in the store. The lock is what a build emitted from it, with its fields
 classified as identity (reproduced exactly by every rebuild) or derived
 (reproduced exactly only on the M0 Mac in the pinned environment). See
 README.md for the field tables.
+
+Every refusal is a `ManifestError` whose message names the source (or the
+recipe field) and the rule; a document that does not match the schema —
+an unknown or missing field anywhere — is refused the same way, never as a
+bare TypeError/KeyError.
 """
 from __future__ import annotations
 
 import dataclasses
 import hashlib
 import json
+import math
 import pathlib
+import re
 from typing import Any
 
-from kws_features import KWS_FEATURES_VERSION, Geometry, assert_band_support
+from kws_features import KWS_FEATURES_VERSION, Geometry, Pcen, assert_band_support
 
 MANIFEST_VERSION = 1
 LOCK_VERSION = 1
@@ -29,14 +36,35 @@ KINDS = {  # ingestion adapter -> the material it yields
     "speech_commands_v2": "speech",
     "musan": None,  # per options.partition: noise | speech | music
     "openslr_28_simulated": "rir",
+    "keyword_list": "keywords",  # a plain text file, one keyword per line (the toy fixture; M4b: MSWC)
     "mswc_keywords": "keywords",
+    "piper": "tts",  # a pinned voice archive (.onnx + .json): no clips to list, `synth` produces them
     "holdout": "holdout",
-    # M4b: "common_voice", "ami", "fma", "piper"
+    # M4b: "common_voice", "ami", "fma"
 }
+FIXTURE_PREFIX = "tools/ml/kws/fixtures/"  # every in-repository origin lives here (plan §6 M4 "Sources")
+MIC_MODELS = ("none",)  # no microphone-path model is implemented at M4a; any other value is refused
+MIN_CONTEXT_S = 2.0  # the plan's ">= 2 s of same-split negative material" (a rule, not a measurement)
+_SEGMENT = re.compile(r"[A-Za-z0-9._-]+")
 
 
 class ManifestError(ValueError):
     """A manifest the builder refuses, with the reason."""
+
+
+def _check_keys(cls: type, d: dict[str, Any], where: str) -> None:
+    """Refuse a dict whose keys are not exactly the dataclass's fields (unknown keys, missing required)."""
+    if not isinstance(d, dict):
+        raise ManifestError(f"{where}: expected an object, got {type(d).__name__}")
+    fields = {f.name: f for f in dataclasses.fields(cls)}
+    unknown = sorted(set(d) - set(fields))
+    if unknown:
+        raise ManifestError(f"{where}: unknown field(s) {unknown} (known: {sorted(fields)})")
+    required = sorted(n for n, f in fields.items()
+                      if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
+                      and n not in d)
+    if required:
+        raise ManifestError(f"{where}: missing required field(s) {required}")
 
 
 # ---------------------------------------------------------------- sources
@@ -93,11 +121,17 @@ class Source:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Source":
+        where = f"source {d.get('id', '?')!r}" if isinstance(d, dict) else "source"
+        _check_keys(cls, d, where)
         d = dict(d)
+        _check_keys(Origin, d["origin"], f"{where}.origin")
+        _check_keys(Archive, d["archive"], f"{where}.archive")
         origin = Origin(**d.pop("origin"))
         archive = Archive(**d.pop("archive"))
-        roles = tuple(d.pop("roles"))
-        return cls(origin=origin, archive=archive, roles=roles, **d)
+        roles = d.pop("roles")
+        if isinstance(roles, str) or not isinstance(roles, (list, tuple)):
+            raise ManifestError(f"{where}.roles: expected a list of roles, got {roles!r}")
+        return cls(origin=origin, archive=archive, roles=tuple(roles), **d)
 
 
 # ---------------------------------------------------------------- recipe
@@ -107,7 +141,9 @@ class Source:
 class LabelRule:
     trim_db: float = 40.0     # X: the last window above peak - X dB ends the keyword (measured at M4b)
     window_ms: float = 10.0
-    tolerance_hops: int = 3   # T (measured at build from the trim rule's spread)
+    # T: a target until M4b's build measures the trim rule's spread across the length-scale draws
+    # (plan §6 M4 "Label data"); the card prints it as a manifest value, not a measurement
+    tolerance_hops: int = 3
 
 
 @dataclasses.dataclass(frozen=True)
@@ -135,12 +171,15 @@ class AugmentPolicy:
     mic_model: str = "none"
 
 
+RANGE_FIELDS = ("snr_db", "gain_db", "speed", "rt60_s")
+
+
 @dataclasses.dataclass(frozen=True)
 class Recipe:
     phrase: str
     near_miss: tuple[str, ...]
     geometry: Geometry
-    stored_path: str = "log"                    # log | pcen
+    stored_path: str = "log"                    # log | pcen — must agree with geometry.pcen.enabled
     log_mel_contract_version: int = 1
     kws_features_version: int = KWS_FEATURES_VERSION
     label: LabelRule = LabelRule()
@@ -159,26 +198,46 @@ class Recipe:
         d["geometry"] = self.geometry.to_dict()
         d["near_miss"] = list(self.near_miss)
         d["resampler"] = {"name": self.resampler.name, "window": list(self.resampler.window)}
-        for k in ("snr_db", "gain_db", "speed", "rt60_s"):
+        for k in RANGE_FIELDS:
             d["augment"][k] = list(d["augment"][k])
         return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Recipe":
+        _check_keys(cls, d, "recipe")
         d = dict(d)
-        geometry = Geometry.from_dict(d.pop("geometry"))
-        label = LabelRule(**d.pop("label", {}))
+        geometry_doc = d.pop("geometry")
+        _check_keys(Geometry, geometry_doc, "recipe.geometry")
+        _check_keys(Pcen, geometry_doc.get("pcen") or {}, "recipe.geometry.pcen")
+        try:
+            geometry = Geometry.from_dict(geometry_doc)
+        except (ValueError, TypeError) as e:
+            raise ManifestError(f"recipe.geometry: {e}") from None
+        label_doc = d.pop("label", {})
+        _check_keys(LabelRule, label_doc, "recipe.label")
+        label = LabelRule(**label_doc)
         r = d.pop("resampler", {})
-        resampler = Resampler(name=r.get("name", Resampler.name), window=tuple(r.get("window", Resampler.window)))
-        split = SplitRule(**d.pop("split", {}))
+        _check_keys(Resampler, r, "recipe.resampler")
+        window = r.get("window", Resampler.window)
+        if isinstance(window, str) or not isinstance(window, (list, tuple)):
+            raise ManifestError(f"recipe.resampler.window: expected [name, beta], got {window!r}")
+        resampler = Resampler(name=r.get("name", Resampler.name), window=tuple(window))
+        split_doc = d.pop("split", {})
+        _check_keys(SplitRule, split_doc, "recipe.split")
+        split = SplitRule(**split_doc)
         a = dict(d.pop("augment", {}))
-        for k in ("snr_db", "gain_db", "speed", "rt60_s"):
+        _check_keys(AugmentPolicy, a, "recipe.augment")
+        for k in RANGE_FIELDS:
             if k in a:
+                if isinstance(a[k], str) or not isinstance(a[k], (list, tuple)):
+                    raise ManifestError(f"recipe.augment.{k}: expected [lo, hi], got {a[k]!r}")
                 a[k] = tuple(a[k])
         augment = AugmentPolicy(**a)
-        near_miss = tuple(d.pop("near_miss", ()))
+        near_miss = d.pop("near_miss", ())
+        if isinstance(near_miss, str) or not isinstance(near_miss, (list, tuple)):
+            raise ManifestError(f"recipe.near_miss: expected a list of keywords, got {near_miss!r}")
         return cls(geometry=geometry, label=label, resampler=resampler, split=split, augment=augment,
-                   near_miss=near_miss, **d)
+                   near_miss=tuple(near_miss), **d)
 
 
 # ---------------------------------------------------------------- manifest
@@ -204,6 +263,16 @@ class Manifest:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any], path: pathlib.Path | None = None) -> "Manifest":
+        if not isinstance(d, dict):
+            raise ManifestError(f"manifest: expected an object, got {type(d).__name__}")
+        unknown = sorted(set(d) - {"manifest_version", "name", "sources", "recipe"})
+        if unknown:
+            raise ManifestError(f"manifest: unknown top-level field(s) {unknown}")
+        missing = sorted(k for k in ("name", "sources", "recipe") if k not in d)
+        if missing:
+            raise ManifestError(f"manifest: missing top-level field(s) {missing}")
+        if isinstance(d["sources"], (str, dict)) or not isinstance(d["sources"], (list, tuple)):
+            raise ManifestError("manifest.sources: expected a list of sources")
         return cls(name=d["name"], manifest_version=int(d.get("manifest_version", MANIFEST_VERSION)),
                    sources=tuple(Source.from_dict(s) for s in d["sources"]),
                    recipe=Recipe.from_dict(d["recipe"]), path=path)
@@ -219,6 +288,81 @@ def manifest_hash(m: Manifest) -> str:
                                           "recipe": m.recipe.to_dict()}).encode()).hexdigest()
 
 
+def _is_real(v: Any) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+
+
+def _is_int(v: Any) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _check_range(name: str, value: Any, lo_min: float | None = None, lo_positive: bool = False) -> None:
+    """A range is [lo, hi] of finite real numbers with lo <= hi (a degenerate range is a fixed value)."""
+    if not isinstance(value, (list, tuple)) or len(value) != 2 or not all(_is_real(v) for v in value):
+        raise ManifestError(f"recipe.augment.{name}: expected [lo, hi] of finite numbers, got {value!r}")
+    lo, hi = value
+    if lo > hi:
+        raise ManifestError(f"recipe.augment.{name}: range {list(value)} is reversed (lo > hi)")
+    if lo_positive and lo <= 0.0:
+        raise ManifestError(f"recipe.augment.{name}: range {list(value)} must be positive (lo > 0)")
+    if lo_min is not None and lo < lo_min:
+        raise ManifestError(f"recipe.augment.{name}: range {list(value)} must not go below {lo_min}")
+
+
+def validate_tts(m: Manifest) -> None:
+    """The TTS block: every voice names a `piper` source (its verified archive) and every `piper` source is
+    named by a voice; a `piper` source without a TTS block is a dead row and is refused."""
+    piper_ids = {s.id for s in m.sources if s.kind == "piper"}
+    tts = m.recipe.tts
+    if tts is None:
+        if piper_ids:
+            raise ManifestError(f"sources {sorted(piper_ids)} are of kind 'piper' but recipe.tts is absent — "
+                                "a voice archive is synth's input; add the TTS block or drop the source")
+        return
+    if not isinstance(tts, dict):
+        raise ManifestError("recipe.tts: expected an object")
+    voices = tts.get("voices")
+    texts = tts.get("texts")
+    if not isinstance(voices, list) or not voices:
+        raise ManifestError("recipe.tts.voices: expected a non-empty list of voices")
+    if not isinstance(texts, dict) or not texts.get("positive"):
+        raise ManifestError("recipe.tts.texts: expected {positive: [...], negative: [...]} with at least one "
+                            "positive text")
+    named: set[str] = set()
+    seen_ids: set[str] = set()
+    for v in voices:
+        if not isinstance(v, dict):
+            raise ManifestError(f"recipe.tts.voices: expected voice objects, got {v!r}")
+        missing = sorted(k for k in ("id", "source", "onnx", "config", "sha256") if not v.get(k))
+        if missing:
+            raise ManifestError(f"recipe.tts voice {v.get('id', '?')!r}: missing {missing} (id, source — a "
+                                "sources[] row of kind piper —, onnx and config members of that archive, the "
+                                "onnx sha256)")
+        if v["id"] in seen_ids:
+            raise ManifestError(f"recipe.tts: duplicate voice id {v['id']!r}")
+        seen_ids.add(v["id"])
+        if v["source"] not in piper_ids:
+            raise ManifestError(f"recipe.tts voice {v['id']!r}: source {v['source']!r} is not a sources[] "
+                                f"row of kind 'piper' (have {sorted(piper_ids)})")
+        named.add(v["source"])
+        for k in ("onnx", "config"):
+            p = pathlib.PurePosixPath(v[k])
+            if p.is_absolute() or ".." in p.parts:
+                raise ManifestError(f"recipe.tts voice {v['id']!r}: {k} {v[k]!r} must be a relative member "
+                                    "path of the voice archive")
+        if len(v["sha256"]) != 64 or any(c not in "0123456789abcdef" for c in v["sha256"]):
+            raise ManifestError(f"recipe.tts voice {v['id']!r}: sha256 must be 64 lowercase hex characters")
+        speakers = v.get("speakers")
+        if speakers is not None and (isinstance(speakers, str) or not isinstance(speakers, list)):
+            raise ManifestError(f"recipe.tts voice {v['id']!r}: speakers must be a list of speaker ids")
+    unnamed = sorted(piper_ids - named)
+    if unnamed:
+        raise ManifestError(f"sources {unnamed} are of kind 'piper' but no recipe.tts voice names them")
+    for k in ("length_scale", "noise_scale", "noise_w"):
+        if k in tts:
+            _check_range(k, tts[k], lo_positive=(k == "length_scale"))
+
+
 def validate(m: Manifest) -> None:
     """Refuse a manifest the builder cannot honour; every refusal names the source and the rule."""
     if m.manifest_version != MANIFEST_VERSION:
@@ -227,6 +371,9 @@ def validate(m: Manifest) -> None:
         raise ManifestError("manifest has no name")
     seen: set[str] = set()
     for s in m.sources:
+        if s.id in ("", ".", "..") or "/" in s.id or "\\" in s.id or not _SEGMENT.fullmatch(s.id):
+            raise ManifestError(f"source {s.id!r}: id must be a single path segment [A-Za-z0-9._-]+ (it "
+                                "names store directories)")
         if s.id in seen:
             raise ManifestError(f"duplicate source id {s.id!r}")
         seen.add(s.id)
@@ -236,13 +383,20 @@ def validate(m: Manifest) -> None:
             raise ManifestError(f"source {s.id!r}: origin needs exactly one of url or path")
         if s.origin.path is not None and (pathlib.PurePosixPath(s.origin.path).is_absolute() or ".." in s.origin.path.split("/")):
             raise ManifestError(f"source {s.id!r}: origin.path must be repository-relative, got {s.origin.path!r}")
+        if s.origin.path is not None and not s.origin.path.startswith(FIXTURE_PREFIX):
+            raise ManifestError(f"source {s.id!r}: an in-repository origin must lie under {FIXTURE_PREFIX}, "
+                                f"got {s.origin.path!r} (plan §6 M4: committed sources live in the fixtures "
+                                "directory)")
         if s.origin.in_repository and not s.redistributable:
             raise ManifestError(f"source {s.id!r}: an origin inside the repository requires redistributable: true "
                                 "(only redistributable audio may enter git)")
+        f = s.archive.file
+        if not f or f in (".", "..") or "/" in f or "\\" in f:
+            raise ManifestError(f"source {s.id!r}: archive.file must be a bare file name, got {f!r}")
         if len(s.archive.sha256) != 64 or any(c not in "0123456789abcdef" for c in s.archive.sha256):
             raise ManifestError(f"source {s.id!r}: archive.sha256 must be 64 lowercase hex characters")
-        if s.archive.size <= 0:
-            raise ManifestError(f"source {s.id!r}: archive.size must be positive")
+        if not _is_int(s.archive.size) or s.archive.size <= 0:
+            raise ManifestError(f"source {s.id!r}: archive.size must be a positive integer")
         if not s.licence:
             raise ManifestError(f"source {s.id!r}: licence is empty — every hour of audio is accounted for with a licence")
         if not s.attribution:
@@ -256,32 +410,71 @@ def validate(m: Manifest) -> None:
     r = m.recipe
     if r.stored_path not in ("log", "pcen"):
         raise ManifestError(f"recipe.stored_path {r.stored_path!r} must be log or pcen")
+    computed = "pcen" if r.geometry.pcen.enabled else "log"
+    if r.stored_path != computed:
+        raise ManifestError(f"recipe.stored_path {r.stored_path!r} does not match "
+                            f"recipe.geometry.pcen.enabled={r.geometry.pcen.enabled} — the stored path is "
+                            f"the one the geometry computes ({computed!r})")
     if r.kws_features_version != KWS_FEATURES_VERSION:
         raise ManifestError(f"recipe.kws_features_version {r.kws_features_version} != this module's {KWS_FEATURES_VERSION}")
     if not r.geometry.valid():
         raise ManifestError("recipe.geometry is not a valid log_mel geometry")
-    assert_band_support(r.geometry)
+    try:
+        assert_band_support(r.geometry)
+    except ValueError as e:
+        raise ManifestError(f"recipe.geometry: {e}") from None
     if abs(sum(r.split.fractions.values()) - 1.0) > 1e-9 or set(r.split.fractions) != set(SPLITS):
         raise ManifestError(f"recipe.split.fractions must cover {list(SPLITS)} and sum to 1, got {r.split.fractions}")
-    if r.label.tolerance_hops < 0 or r.label.trim_db <= 0 or r.label.window_ms <= 0:
+    if not _is_int(r.label.tolerance_hops):
+        raise ManifestError(f"recipe.label.tolerance_hops must be an integer number of hops, got "
+                            f"{r.label.tolerance_hops!r}")
+    if r.label.tolerance_hops < 0 or not _is_real(r.label.trim_db) or r.label.trim_db <= 0 \
+            or not _is_real(r.label.window_ms) or r.label.window_ms <= 0:
         raise ManifestError("recipe.label: trim_db and window_ms must be positive, tolerance_hops non-negative")
+    if not _is_real(r.context_s) or r.context_s < MIN_CONTEXT_S:
+        raise ManifestError(f"recipe.context_s {r.context_s!r} is below the plan's minimum of "
+                            f"{MIN_CONTEXT_S:g} s of same-split negative material around every positive "
+                            "(plan §6 M4 \"Positives and augmentation\")")
     a = r.augment
-    if a.draws_per_positive < 1 or a.noisy_per_negative < 0 or not 0.0 <= a.dry_share <= 1.0:
+    if not _is_int(a.draws_per_positive) or not _is_int(a.noisy_per_negative):
+        raise ManifestError("recipe.augment: draws_per_positive (K) and noisy_per_negative (M) must be "
+                            "integers")
+    if a.draws_per_positive < 1 or a.noisy_per_negative < 0 or not _is_real(a.dry_share) \
+            or not 0.0 <= a.dry_share <= 1.0:
         raise ManifestError("recipe.augment: draws_per_positive >= 1, noisy_per_negative >= 0, dry_share in [0, 1]")
+    if not _is_int(a.seed):
+        raise ManifestError(f"recipe.augment.seed must be an integer, got {a.seed!r}")
+    _check_range("snr_db", a.snr_db)
+    _check_range("gain_db", a.gain_db)
+    _check_range("speed", a.speed, lo_positive=True)
+    _check_range("rt60_s", a.rt60_s, lo_min=0.0)
+    if a.mic_model not in MIC_MODELS:
+        raise ManifestError(f"recipe.augment.mic_model {a.mic_model!r} is not implemented (allowed: "
+                            f"{list(MIC_MODELS)}; no microphone-path model exists at M4a, so any other value "
+                            "would be a silent no-op)")
     if not r.phrase:
         raise ManifestError("recipe.phrase is empty")
+    validate_tts(m)
 
 
 def load_manifest(path: str | pathlib.Path) -> Manifest:
     path = pathlib.Path(path)
-    with path.open() as f:
-        m = Manifest.from_dict(json.load(f), path=path)
+    with path.open(encoding="utf-8") as f:
+        doc = json.load(f)
+    try:
+        m = Manifest.from_dict(doc, path=path)
+    except ManifestError:
+        raise
+    except (TypeError, KeyError, AttributeError) as e:
+        raise ManifestError(f"{path}: manifest does not match schema version {MANIFEST_VERSION}: "
+                            f"{e}") from None
     validate(m)
     return m
 
 
 def save_manifest(m: Manifest, path: str | pathlib.Path) -> None:
-    pathlib.Path(path).write_text(json.dumps(m.to_dict(), indent=1, ensure_ascii=False) + "\n")
+    text = json.dumps(m.to_dict(), indent=1, ensure_ascii=False) + "\n"
+    pathlib.Path(path).write_text(text, encoding="utf-8")
 
 
 # ---------------------------------------------------------------- the lock
@@ -343,11 +536,12 @@ class Lock:
 
 
 def write_lock(lock: Lock, path: str | pathlib.Path) -> None:
-    pathlib.Path(path).write_text(json.dumps(lock.to_dict(), indent=1, sort_keys=True, ensure_ascii=False) + "\n")
+    text = json.dumps(lock.to_dict(), indent=1, sort_keys=True, ensure_ascii=False) + "\n"
+    pathlib.Path(path).write_text(text, encoding="utf-8")
 
 
 def read_lock(path: str | pathlib.Path) -> Lock:
-    with pathlib.Path(path).open() as f:
+    with pathlib.Path(path).open(encoding="utf-8") as f:
         return Lock.from_dict(json.load(f))
 
 
@@ -358,7 +552,9 @@ def eval_set_id(clips: list[Clip], share: str) -> str:
 
 
 # Identity fields reproduce exactly on every rebuild; everything else in the
-# lock is derived. pcm_sha256 is identity only for sources flagged pcm_exact.
+# lock is derived. pcm_sha256 is identity only for the decoded (variant 0)
+# clips of sources flagged pcm_exact: an augmented variant's digest is of
+# audio rendered through resample_poly and fftconvolve, so it is derived.
 CLIP_IDENTITY_FIELDS = ("id", "source", "material", "split", "share", "label", "endpoint_sample", "length", "key",
                         "variant", "draw", "speaker", "extra")
 SHARD_IDENTITY_FIELDS = ("split", "file", "frames", "clips")
@@ -382,7 +578,7 @@ def compare_locks(expected: Lock, actual: Lock, pcm_exact_sources: set[str]) -> 
         for f in CLIP_IDENTITY_FIELDS:
             if getattr(a, f) != getattr(b, f):
                 diffs.append(f"clip {key[0]} variant {key[1]}.{f}: expected {getattr(a, f)!r}, got {getattr(b, f)!r}")
-        if a.source in pcm_exact_sources and a.pcm_sha256 != b.pcm_sha256:
+        if a.variant == 0 and a.source in pcm_exact_sources and a.pcm_sha256 != b.pcm_sha256:
             diffs.append(f"clip {key[0]} variant {key[1]}.pcm_sha256 (pcm_exact source): expected {a.pcm_sha256}, got {b.pcm_sha256}")
     exp_s = {(s.split, s.file): s for s in expected.shards}
     act_s = {(s.split, s.file): s for s in actual.shards}
