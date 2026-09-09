@@ -13,7 +13,11 @@ because log_mel.h zero-fills a band with no FFT bin inside it silently.
 
 Measured 2026-09-09 on the M0 Mac (bridge vs numpy, the reference signal):
 reference geometry 1.5e-14 (log) / 3.4e-14 (PCEN); DspTap's TUNED geometry
-1.6e-15 / 5.3e-15. SELF_CHECK_TOLERANCE is DspTap's own double pin, 1e-13.
+1.6e-15 / 5.3e-15. DspTap's CI measured the same C++ against the same
+vectors at 6.8e-14 / 1.5e-13 on Linux GCC x86-64 (no FMA contraction, where
+Apple clang on arm64 contracts), so SELF_CHECK_TOLERANCE follows DspTap's
+tuned-geometry double pin, 5e-13 — rounding-level; a formula drift shows up
+at 1e-6 or worse.
 """
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ from typing import Any
 import numpy as np
 
 KWS_FEATURES_VERSION = 1  # this module's schema: Geometry fields, as_array layout, self-check record
-SELF_CHECK_TOLERANCE = 1e-13
+SELF_CHECK_TOLERANCE = 5e-13
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 DSPTAP = ROOT / "submodules" / "dsptap"
