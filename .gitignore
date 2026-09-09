@@ -13,3 +13,6 @@ __pycache__/
 # ITU real-speech test vectors: local test use only, never committed
 # (download from the ITU test-signal database; see docs/itu-compliance.md)
 tests/data/itu/
+
+# local Python environment for tools/ml/kws (uv venv --python 3.12 .venv)
+.venv/

@@ -1,0 +1,614 @@
+{
+ "class_balance": [
+  {
+   "count": 1,
+   "hours": 0.0007063020833333333,
+   "keyword": "",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "musan_music_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0005555555555555556,
+   "keyword": "",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-music",
+   "source": "musan_music_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0005555555555555556,
+   "keyword": "",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "musan_music_toy",
+   "split": "train"
+  },
+  {
+   "count": 4,
+   "hours": 0.001348090277777778,
+   "keyword": "",
+   "label": 0,
+   "origin": "synthetic",
+   "render": "dry",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "split": "eval"
+  },
+  {
+   "count": 2,
+   "hours": 0.0004966666666666666,
+   "keyword": "",
+   "label": 1,
+   "origin": "synthetic",
+   "render": "dry",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "split": "eval"
+  },
+  {
+   "count": 4,
+   "hours": 0.001087204861111111,
+   "keyword": "marvin",
+   "label": 1,
+   "origin": "real",
+   "render": "augmented",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 6,
+   "hours": 0.0016600520833333333,
+   "keyword": "marvin",
+   "label": 1,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "no",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0003971354166666667,
+   "keyword": "right",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004120138888888889,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004102430555555555,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004124479166666667,
+   "keyword": "stop",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004203819444444444,
+   "keyword": "yes",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "go",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "left",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "marvin",
+   "label": 1,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "no",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "right",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "stop",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "yes",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  }
+ ],
+ "clips": [
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_dry": null,
+    "endpoint_hop": -1,
+    "frames": 80,
+    "length_scale": 0.9918244516692601,
+    "mixture_samples": 12818,
+    "noise_scale": 0.6548391625401702,
+    "noise_w": 0.9332263760882541,
+    "source_rate": 22050,
+    "text": "sheila",
+    "text_variant": 0,
+    "voice": "en_US-kristin-medium",
+    "voice_sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+   },
+   "id": "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-000-000",
+   "key": "en_US-kristin-medium:0",
+   "label": 0,
+   "length": 12818,
+   "material": "tts",
+   "pcm_sha256": "29f4f6201d62b4af2c7a7f7809ea42c97fab6cb9b08e13103bb8ea3f04451a48",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "speaker": "0",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_dry": null,
+    "endpoint_hop": -1,
+    "frames": 81,
+    "length_scale": 1.0791136960795826,
+    "mixture_samples": 13004,
+    "noise_scale": 0.7986630950516802,
+    "noise_w": 0.7871649023216599,
+    "source_rate": 22050,
+    "text": "sheila",
+    "text_variant": 0,
+    "voice": "en_US-kristin-medium",
+    "voice_sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+   },
+   "id": "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-000-001",
+   "key": "en_US-kristin-medium:0",
+   "label": 0,
+   "length": 13004,
+   "material": "tts",
+   "pcm_sha256": "c6dc17893088b57c849d0c1f8eec72734019605d4e89c5f1f8cfe9ab2aba7709",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "speaker": "0",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_dry": null,
+    "endpoint_hop": -1,
+    "frames": 170,
+    "length_scale": 1.0510142063469394,
+    "mixture_samples": 27307,
+    "noise_scale": 0.5830581931683408,
+    "noise_w": 0.8130690753270455,
+    "source_rate": 22050,
+    "text": "the weather is fine today",
+    "text_variant": 1,
+    "voice": "en_US-kristin-medium",
+    "voice_sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+   },
+   "id": "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-001-000",
+   "key": "en_US-kristin-medium:0",
+   "label": 0,
+   "length": 27307,
+   "material": "tts",
+   "pcm_sha256": "b2abfc31977c6f957b58cdeb72a03df237b74221dab81f11c56d87eb1a1e0e11",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "speaker": "0",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_dry": null,
+    "endpoint_hop": -1,
+    "frames": 153,
+    "length_scale": 0.9824589490650173,
+    "mixture_samples": 24521,
+    "noise_scale": 0.5182165155146501,
+    "noise_w": 0.8801533109761144,
+    "source_rate": 22050,
+    "text": "the weather is fine today",
+    "text_variant": 1,
+    "voice": "en_US-kristin-medium",
+    "voice_sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+   },
+   "id": "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-001-001",
+   "key": "en_US-kristin-medium:0",
+   "label": 0,
+   "length": 24521,
+   "material": "tts",
+   "pcm_sha256": "ef22f909583487e0fabf17ba7a1dff3a715d85185c683f5e29e7de77f7e6f237",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "speaker": "0",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-000-001",
+     "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-000-000",
+     "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-001-001",
+     "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-001-001"
+    ],
+    "gain_db": 0.0,
+    "noise": null,
+    "offset": 44004,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": 55684,
+   "extra": {
+    "endpoint_dry": 11680,
+    "endpoint_hop": 348,
+    "frames": 393,
+    "length_scale": 1.0831843386298714,
+    "mixture_samples": 62945,
+    "noise_scale": 0.796583202874738,
+    "noise_w": 0.8762038144496556,
+    "source_rate": 22050,
+    "text": "marvin",
+    "text_variant": 0,
+    "voice": "en_US-kristin-medium",
+    "voice_sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+   },
+   "id": "piper_en_US-kristin-medium/en_US-kristin-medium/0/positive-000-000",
+   "key": "en_US-kristin-medium:0",
+   "label": 1,
+   "length": 14861,
+   "material": "tts",
+   "pcm_sha256": "8d329c934b302199d6f9fc6a666646e51f4e83e8d5f78b54e7f1b549f107cdd1",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "speaker": "0",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-001-001",
+     "piper_en_US-kristin-medium/en_US-kristin-medium/0/negative-000-001",
+     "speech_commands_v0.02_toy/sheila/022cd682_nohash_0",
+     "speech_commands_v0.02_toy/sheila/022cd682_nohash_0"
+    ],
+    "gain_db": 0.0,
+    "noise": null,
+    "offset": 45779,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": 56659,
+   "extra": {
+    "endpoint_dry": 10880,
+    "endpoint_hop": 354,
+    "frames": 397,
+    "length_scale": 1.0235087583108538,
+    "mixture_samples": 63606,
+    "noise_scale": 0.5209573906600031,
+    "noise_w": 0.8576521875674379,
+    "source_rate": 22050,
+    "text": "marvin",
+    "text_variant": 0,
+    "voice": "en_US-kristin-medium",
+    "voice_sha256": "5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
+   },
+   "id": "piper_en_US-kristin-medium/en_US-kristin-medium/0/positive-000-001",
+   "key": "en_US-kristin-medium:0",
+   "label": 1,
+   "length": 13747,
+   "material": "tts",
+   "pcm_sha256": "48c3b5eedae9ca54cf3288d97ca058c731399e7f2a1ef875edbbb6ad5c3d20d9",
+   "share": "eval-tts",
+   "source": "piper_en_US-kristin-medium",
+   "speaker": "0",
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "sheila",
+    "mixture_samples": 16000,
+    "near_miss": true
+   },
+   "id": "speech_commands_v0.02_toy/sheila/022cd682_nohash_0",
+   "key": "022cd682",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "f65637472a578b8550c2fcf638544010fc5cc5132e2a532813ac6e817317e946",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  }
+ ],
+ "eval_set_id": {
+  "eval-music": "f80d71df5d53c76af0067abfd3892420d6da464c526f2c9feebcae1bd2078cf5",
+  "eval-noise": "3ef98c9d4c0e7d10eefa776b194b4de320edea9eb3a47aea1806fad715f3594a",
+  "eval-speech": "2df98e45c58aa0366ebd11db80b82a2637b8aa093bfa9d21fa4c153f356441e8",
+  "eval-tts": "a28e224b8aff9e9d671ff432abe178014af48042a1185d45608306daa4285cd2"
+ },
+ "holdout_set_id": null,
+ "lock_version": 1,
+ "manifest_hash": "8eef4fd9c9f7829b9909fe3f62ced59a33b45fd5e5e850119357e6415df3f040",
+ "self_check": {
+  "reference": {
+   "geometry": {
+    "bands": 40,
+    "fft_size": 512,
+    "fmax_hz": 7600.0,
+    "fmin_hz": 20.0,
+    "frame": 400,
+    "hop": 160,
+    "log_floor": 1e-10,
+    "log_scale": 5.0,
+    "log_shift": 5.0,
+    "pcen": {
+     "alpha": 0.98,
+     "delta": 2.0,
+     "enabled": false,
+     "epsilon": 1e-06,
+     "power": 0.5,
+     "smoother": 0.025
+    },
+    "preemphasis": 0.0,
+    "sample_rate": 16000.0,
+    "window": "hann"
+   },
+   "max_abs_diff_log": 1.532107773982716e-14,
+   "max_abs_diff_pcen": 3.397282455352979e-14,
+   "tolerance": 5e-13
+  }
+ },
+ "shards": [
+  {
+   "clips": 16,
+   "file": "train/shard-0000.npz",
+   "frames": 3962,
+   "sha256": "3cfa5f669e2c613a36bb701fd0a586bf3533b1a2c731b6ff95976f024f040199",
+   "split": "train"
+  },
+  {
+   "clips": 8,
+   "file": "dev/shard-0000.npz",
+   "frames": 2072,
+   "sha256": "81689b5fd820f9a5734265f90d8b99ae24939e77bd959722a6d5223b66588702",
+   "split": "dev"
+  },
+  {
+   "clips": 11,
+   "file": "eval/shard-0000.npz",
+   "frames": 2164,
+   "sha256": "875c273d01253e84b50a36e60a41b5306cea1bd4a5025ae0ae63b68dd4f4b74f",
+   "split": "eval"
+  }
+ ],
+ "summary": {
+  "clips_per_shard": 256,
+  "context_s": 2.0,
+  "decoded_clips": 29,
+  "excluded_by_role": {},
+  "featurized_rows": 35,
+  "keyword_lists": {
+   "speech_commands_keywords": {
+    "count": 35,
+    "sha256": "0461045d9f03f941bd6f52e6e7fe3d178aed5108a60f8ad99efcd693f34cd6fe"
+   }
+  },
+  "notes": [
+   "piper_en_US-kristin-medium: voice archive (en_US-kristin-medium/en_US-kristin-medium.onnx); its clips are synthesized by `synth` from recipe.tts"
+  ],
+  "splits": {
+   "dev": {
+    "negative": {
+     "count": 4,
+     "frames": 448,
+     "hours": 0.0012453472222222221
+    },
+    "positive": {
+     "count": 4,
+     "frames": 1624,
+     "hours": 0.001087204861111111
+    }
+   },
+   "eval": {
+    "negative": {
+     "count": 8,
+     "frames": 984,
+     "hours": 0.0027369791666666666
+    },
+    "positive": {
+     "count": 3,
+     "frames": 1180,
+     "hours": 0.0007744444444444444
+    }
+   },
+   "train": {
+    "negative": {
+     "count": 10,
+     "frames": 1442,
+     "hours": 0.004013177083333333
+    },
+    "positive": {
+     "count": 6,
+     "frames": 2520,
+     "hours": 0.0016600520833333333
+    }
+   }
+  }
+ },
+ "toolchain": {
+  "decoder": "soundfile-0.14.0-libsndfile-1.2.2",
+  "dsptap_commit": "5ca3b1cdffc4d724fdcef4bafb06e2908defda1d",
+  "espeak-ng": "embedded in piper-tts 1.8.0 (piper.espeakbridge; the bridge reports no separate espeak-ng version)",
+  "kws_features_version": 1,
+  "libsndfile": "1.2.2",
+  "log_mel_contract_version": 1,
+  "numpy": "2.5.3",
+  "onnxruntime": "1.29.0",
+  "piper-tts": "1.8.0",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "python": "3.12.14",
+  "resampler": "resample_poly-1.18.1-kaiser-5.0",
+  "scipy": "1.18.1",
+  "soundfile": "0.14.0"
+ }
+}

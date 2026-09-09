@@ -1,0 +1,1428 @@
+{
+ "class_balance": [
+  {
+   "count": 1,
+   "hours": 0.0007063020833333333,
+   "keyword": "",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "musan_music_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0005555555555555556,
+   "keyword": "",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-music",
+   "source": "musan_music_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0005555555555555556,
+   "keyword": "",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "musan_music_toy",
+   "split": "train"
+  },
+  {
+   "count": 4,
+   "hours": 0.001087204861111111,
+   "keyword": "marvin",
+   "label": 1,
+   "origin": "real",
+   "render": "augmented",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 6,
+   "hours": 0.0016600520833333333,
+   "keyword": "marvin",
+   "label": 1,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "no",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0003971354166666667,
+   "keyword": "right",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004120138888888889,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004102430555555555,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004124479166666667,
+   "keyword": "stop",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0004203819444444444,
+   "keyword": "yes",
+   "label": 0,
+   "origin": "real",
+   "render": "augmented",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "go",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "left",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "marvin",
+   "label": 1,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "no",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "right",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "split": "dev"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "split": "eval"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "sheila",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "stop",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  },
+  {
+   "count": 1,
+   "hours": 0.0002777777777777778,
+   "keyword": "yes",
+   "label": 0,
+   "origin": "real",
+   "render": "dry",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "split": "train"
+  }
+ ],
+ "clips": [
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "Airglow",
+    "attribution": "“Memory Bank” (by Airglow)\nmusic-fma-0000\n“Electrifying Landscape” (by Airglow)\nmusic-fma-0002\n“Far Apart” (by Airglow)\nmusic-fma-0004\n“Cepheid Disk” (by Airglow)\nmusic-fma-0001\n“Blueshift” (by Airglow)\nmusic-fma-0003\n“Lisa” (by Airglow)\nmusic-fma-0005\nMemory Bank by Airglow is licensed under a Attribution License.\nhttp://freemusicarchive.org/music/Airglow/Memory_Bank",
+    "endpoint_hop": -1,
+    "frames": 200,
+    "licence": "CC-BY",
+    "mixture_samples": 32000,
+    "subset": "fma"
+   },
+   "id": "musan_music_toy/musan/music/fma/music-fma-0000",
+   "key": "Airglow",
+   "label": 0,
+   "length": 32000,
+   "material": "music",
+   "pcm_sha256": "9ae3f08b52a099dfc1dc2710707ee2f490ab8db529b4d0a42ecf38e047752f93",
+   "share": "train",
+   "source": "musan_music_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": 0.116,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 0,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 4.447647,
+    "speed": 0.9790748898678414
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "Airglow",
+    "attribution": "“Memory Bank” (by Airglow)\nmusic-fma-0000\n“Electrifying Landscape” (by Airglow)\nmusic-fma-0002\n“Far Apart” (by Airglow)\nmusic-fma-0004\n“Cepheid Disk” (by Airglow)\nmusic-fma-0001\n“Blueshift” (by Airglow)\nmusic-fma-0003\n“Lisa” (by Airglow)\nmusic-fma-0005\nMemory Bank by Airglow is licensed under a Attribution License.\nhttp://freemusicarchive.org/music/Airglow/Memory_Bank",
+    "endpoint_hop": -1,
+    "frames": 254,
+    "licence": "CC-BY",
+    "mixture_samples": 40683,
+    "subset": "fma"
+   },
+   "id": "musan_music_toy/musan/music/fma/music-fma-0000",
+   "key": "Airglow",
+   "label": 0,
+   "length": 40683,
+   "material": "music",
+   "pcm_sha256": "2112abe20a105f92fe93c5dd4d58d215567290ce9267b2114d9e221dcbe869c1",
+   "share": "train",
+   "source": "musan_music_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "artist": "Alecs_Band",
+    "attribution": "“I Don't Think” (by Alec's Band)\nmusic-fma-0006\n“A Young Griffin Boyle In Drag” (by Alec's Band)\nmusic-fma-0008\n“Well Water” (by Alec's Band)\nmusic-fma-0007\n“Young Adult Friction” (by Alec's Band)\nmusic-fma-0009\nAlec's band by Alec's Band is licensed under a Attribution License.\nhttp://freemusicarchive.org/music/Alecs_Band/none_given_1794",
+    "endpoint_hop": -1,
+    "frames": 200,
+    "licence": "CC-BY",
+    "mixture_samples": 32000,
+    "subset": "fma"
+   },
+   "id": "musan_music_toy/musan/music/fma/music-fma-0006",
+   "key": "Alecs_Band",
+   "label": 0,
+   "length": 32000,
+   "material": "music",
+   "pcm_sha256": "629485740e0dc0b24d803ed6f10f47c37911ce76121ae15f371ba326a30b0203",
+   "share": "eval-music",
+   "source": "musan_music_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "attribution": "noise-sound-bible-0001\nTitle: Answering Machine Beep\nLicense: Attribution 3.0\nRecorded by Mike Koenig \nhttp://soundbible.com/5-Answering-Machine-Beep.html",
+    "licence": "CC-BY-3.0",
+    "subset": "sound-bible"
+   },
+   "id": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+   "key": "noise-sound-bible-0001",
+   "label": null,
+   "length": 32000,
+   "material": "noise",
+   "pcm_sha256": "5863dabc4d44ae809ccae2d41962d39edb4bf0e557990c94d9be11d26863c580",
+   "share": "aug",
+   "source": "musan_noise_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "attribution": "noise-sound-bible-0003\nTitle: Audience Applause\nLicense: Attribution 3.0\nRecorded by Matthiew11 \nLicense: Attribution 3.0 \nhttp://soundbible.com/2087-Audience-Applause.html",
+    "licence": "CC-BY-3.0",
+    "subset": "sound-bible"
+   },
+   "id": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003",
+   "key": "noise-sound-bible-0003",
+   "label": null,
+   "length": 32000,
+   "material": "noise",
+   "pcm_sha256": "1e292bd1f140057dff32d14fbafed6393b7f1ee410c90f9fb8a9e220a1342813",
+   "share": "aug",
+   "source": "musan_noise_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "attribution": "noise-sound-bible-0005\nTitle: Background Noise\nLicense: Attribution 3.0\nRecorded by Mike Koenig\nhttp://soundbible.com/531-Background-Noise.html",
+    "licence": "CC-BY-3.0",
+    "subset": "sound-bible"
+   },
+   "id": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+   "key": "noise-sound-bible-0005",
+   "label": null,
+   "length": 32000,
+   "material": "noise",
+   "pcm_sha256": "b011a9abceb093bb0e457d9cc3d54bf6743c4ee2e7802cadbbe58047f36f4337",
+   "share": "aug",
+   "source": "musan_noise_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "attribution": "noise-sound-bible-0011\nTitle: Canadian Geese Migration\nLicense: Attribution 3.0\nRecorded by Mike Koenig\nhttp://soundbible.com/1861-Canadian-Geese-Migration.html",
+    "licence": "CC-BY-3.0",
+    "subset": "sound-bible"
+   },
+   "id": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0011",
+   "key": "noise-sound-bible-0011",
+   "label": null,
+   "length": 32000,
+   "material": "noise",
+   "pcm_sha256": "dbffdf222a30d4040761715e6442a24005b949366add9b9163b434df587f4f18",
+   "share": "eval-noise",
+   "source": "musan_noise_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "onset": 26,
+    "rir_id": "small-Room005-00001",
+    "room": "small-Room005",
+    "rt60_s": 0.322125,
+    "size": "small"
+   },
+   "id": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001",
+   "key": "small-Room005",
+   "label": null,
+   "length": 8000,
+   "material": "rir",
+   "pcm_sha256": "b23fba9c4df9344c6977c1e264303830ba0d338cc6d6a2bec0c84a403172d813",
+   "share": "aug",
+   "source": "openslr_28_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "onset": 12,
+    "rir_id": "small-Room006-00001",
+    "room": "small-Room006",
+    "rt60_s": 0.271313,
+    "size": "small"
+   },
+   "id": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+   "key": "small-Room006",
+   "label": null,
+   "length": 8000,
+   "material": "rir",
+   "pcm_sha256": "147e2af24f575fc127c50d468c3b43ba1e06c3c8a1b245958c8661cd2a3f7c14",
+   "share": "aug",
+   "source": "openslr_28_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "go",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/go/022cd682_nohash_0",
+   "key": "022cd682",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "d5c16343f0a0a56964e982e5d7a5f0232d7bf8e80f0881fbfc9a9435b4679bb7",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "left",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/left/022cd682_nohash_0",
+   "key": "022cd682",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "e03b00600d1ae41bbecdb955114ca23d3e44e36f78f3e0350c09745eb84e9fe5",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 13280,
+   "extra": {
+    "endpoint_dry": 13280,
+    "keyword": "marvin"
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00176480_nohash_0",
+   "key": "00176480",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "d1147e5b2e2bde9ce0400579d10cbfaf1fd916c04866a9397808f6ea2560ee1a",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+     "speech_commands_v0.02_toy/stop/00970ce1_nohash_1",
+     "speech_commands_v0.02_toy/right/012187a4_nohash_0",
+     "speech_commands_v0.02_toy/yes/004ae714_nohash_0",
+     "speech_commands_v0.02_toy/right/012187a4_nohash_0"
+    ],
+    "gain_db": -2.964743,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003",
+    "offset": 41512,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 0.529145,
+    "speed": 0.9757281553398058
+   },
+   "endpoint_sample": 55134,
+   "extra": {
+    "endpoint_dry": 13280,
+    "endpoint_hop": 344,
+    "frames": 437,
+    "keyword": "marvin",
+    "mixture_samples": 69990
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00176480_nohash_0",
+   "key": "00176480",
+   "label": 1,
+   "length": 16399,
+   "material": "speech",
+   "pcm_sha256": "f95c99bb1d2cf83cc06bd5c56e85cd44fc1d0c6a9bc7d10bfcbb09d4aab47b02",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/yes/004ae714_nohash_0",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003",
+     "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+     "speech_commands_v0.02_toy/stop/00970ce1_nohash_1"
+    ],
+    "gain_db": -1.281492,
+    "noise": null,
+    "offset": 44863,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": 58143,
+   "extra": {
+    "endpoint_dry": 13280,
+    "endpoint_hop": 363,
+    "frames": 405,
+    "keyword": "marvin",
+    "mixture_samples": 64943
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00176480_nohash_0",
+   "key": "00176480",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "c65c211435ac690e162c9b7f24e1ba432ebb688dd219ffb3023c15e58a8500f9",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 2
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 12960,
+   "extra": {
+    "endpoint_dry": 12960,
+    "keyword": "marvin"
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00176480_nohash_1",
+   "key": "00176480",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "080cfaac692f55ae490f0c0a1875da687028f7b9aaaa516ef6fd5b1ee1f0cd17",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003",
+     "musan_music_toy/musan/music/fma/music-fma-0000",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005"
+    ],
+    "gain_db": -0.742145,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 41200,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 4.926487,
+    "speed": 1.0595744680851065
+   },
+   "endpoint_sample": 53443,
+   "extra": {
+    "endpoint_dry": 12960,
+    "endpoint_hop": 334,
+    "frames": 427,
+    "keyword": "marvin",
+    "mixture_samples": 68380
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00176480_nohash_1",
+   "key": "00176480",
+   "label": 1,
+   "length": 15101,
+   "material": "speech",
+   "pcm_sha256": "39caf82e95b37826294075d77f73c7dfac557a97a7363efdd5693291fdec6c18",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": {
+    "context": [
+     "musan_music_toy/musan/music/fma/music-fma-0000",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+     "speech_commands_v0.02_toy/sheila/004ae714_nohash_0"
+    ],
+    "gain_db": 1.501943,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 43255,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 13.539267,
+    "speed": 0.9835255354200988
+   },
+   "endpoint_sample": 56444,
+   "extra": {
+    "endpoint_dry": 12960,
+    "endpoint_hop": 352,
+    "frames": 447,
+    "keyword": "marvin",
+    "mixture_samples": 71603
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00176480_nohash_1",
+   "key": "00176480",
+   "label": 1,
+   "length": 16269,
+   "material": "speech",
+   "pcm_sha256": "2b857ddc996e73b761f959bb037f2d925f24f08a1cec4f2aecc2b40cf7d8d624",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 2
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 16000,
+   "extra": {
+    "endpoint_dry": 16000,
+    "keyword": "marvin"
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00b01445_nohash_0",
+   "key": "00b01445",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "0c96efafaeb66a1b0156ef78ae9fd0ba8ec90e2874f85e9243315638ea8b6c88",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+     "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+     "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+     "musan_music_toy/musan/music/fma/music-fma-0000"
+    ],
+    "gain_db": -2.001056,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003",
+    "offset": 35917,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 14.110239,
+    "speed": 1.0095057034220531
+   },
+   "endpoint_sample": 51778,
+   "extra": {
+    "endpoint_dry": 16000,
+    "endpoint_hop": 323,
+    "frames": 399,
+    "keyword": "marvin",
+    "mixture_samples": 63846
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00b01445_nohash_0",
+   "key": "00b01445",
+   "label": 1,
+   "length": 15850,
+   "material": "speech",
+   "pcm_sha256": "f637de0839f01b3c754cd83b78d044790acbbfe93b23daeb5ff5bf8df22fdbab",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": {
+    "context": [
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+     "speech_commands_v0.02_toy/yes/004ae714_nohash_0",
+     "speech_commands_v0.02_toy/right/012187a4_nohash_0",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003"
+    ],
+    "gain_db": 0.976741,
+    "noise": null,
+    "offset": 44772,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": 60772,
+   "extra": {
+    "endpoint_dry": 16000,
+    "endpoint_hop": 379,
+    "frames": 405,
+    "keyword": "marvin",
+    "mixture_samples": 64852
+   },
+   "id": "speech_commands_v0.02_toy/marvin/00b01445_nohash_0",
+   "key": "00b01445",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "7ddf9fb2abfe34fe06d855da6c236b8a04c2c12b7729d9f12cafb9332e0d5188",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 2
+  },
+  {
+   "draw": {
+    "context": [
+     "musan_music_toy/musan/music/fma/music-fma-0006",
+     "speech_commands_v0.02_toy/left/022cd682_nohash_0",
+     "musan_music_toy/musan/music/fma/music-fma-0006"
+    ],
+    "gain_db": 0.0,
+    "noise": null,
+    "offset": 42475,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": 53355,
+   "extra": {
+    "endpoint_dry": 10880,
+    "endpoint_hop": 333,
+    "frames": 390,
+    "keyword": "marvin",
+    "mixture_samples": 62555
+   },
+   "id": "speech_commands_v0.02_toy/marvin/022cd682_nohash_0",
+   "key": "022cd682",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "cb8f6145a19565bc08a7832fe3debb232c1f3f413d6a421de4444f879405050a",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 16000,
+   "extra": {
+    "endpoint_dry": 16000,
+    "keyword": "marvin"
+   },
+   "id": "speech_commands_v0.02_toy/marvin/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "9a5e9a25403d5840cfdef36c085a1bf39a26570587e58dffc37b35f1d436a46c",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+     "speech_commands_v0.02_toy/sheila/026290a7_nohash_0"
+    ],
+    "gain_db": 2.732351,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+    "offset": 33087,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001",
+    "rir_delay": 26,
+    "snr_db": 10.336946,
+    "speed": 1.0258503401360544
+   },
+   "endpoint_sample": 48710,
+   "extra": {
+    "endpoint_dry": 16000,
+    "endpoint_hop": 304,
+    "frames": 379,
+    "keyword": "marvin",
+    "mixture_samples": 60763
+   },
+   "id": "speech_commands_v0.02_toy/marvin/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 1,
+   "length": 15597,
+   "material": "speech",
+   "pcm_sha256": "0f237d59b7e70919455577762c2e985bac3ce92b2005b815ddc1ad7d8e594403",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 1
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001"
+    ],
+    "gain_db": 4.671352,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+    "offset": 38577,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001",
+    "rir_delay": 26,
+    "snr_db": 8.624096,
+    "speed": 1.0479233226837061
+   },
+   "endpoint_sample": 53871,
+   "extra": {
+    "endpoint_dry": 16000,
+    "endpoint_hop": 336,
+    "frames": 412,
+    "keyword": "marvin",
+    "mixture_samples": 65925
+   },
+   "id": "speech_commands_v0.02_toy/marvin/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 1,
+   "length": 15269,
+   "material": "speech",
+   "pcm_sha256": "f2072dda1dd0b15ebfabd05ba4ef8ad2bacf9a05b319cf09001257d3049d6921",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 2
+  },
+  {
+   "draw": null,
+   "endpoint_sample": 16000,
+   "extra": {
+    "endpoint_dry": 16000,
+    "keyword": "marvin"
+   },
+   "id": "speech_commands_v0.02_toy/marvin/07de53d3_nohash_0",
+   "key": "07de53d3",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "f434c2a557cc98ca63dc125d05050f44187dbf6073aa3677330f7a27d9bfe85b",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0"
+    ],
+    "gain_db": -0.303206,
+    "noise": null,
+    "offset": 47958,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": 63958,
+   "extra": {
+    "endpoint_dry": 16000,
+    "endpoint_hop": 399,
+    "frames": 425,
+    "keyword": "marvin",
+    "mixture_samples": 68038
+   },
+   "id": "speech_commands_v0.02_toy/marvin/07de53d3_nohash_0",
+   "key": "07de53d3",
+   "label": 1,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "a4a69a10e7135def277ea57a30aab661e894c38340ee2816b1d90f888183b739",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 1
+  },
+  {
+   "draw": {
+    "context": [
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+     "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+     "speech_commands_v0.02_toy/no/026290a7_nohash_0"
+    ],
+    "gain_db": 4.250297,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+    "offset": 37501,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001",
+    "rir_delay": 26,
+    "snr_db": 7.96335,
+    "speed": 1.0154277699859748
+   },
+   "endpoint_sample": 53284,
+   "extra": {
+    "endpoint_dry": 16000,
+    "endpoint_hop": 333,
+    "frames": 408,
+    "keyword": "marvin",
+    "mixture_samples": 65337
+   },
+   "id": "speech_commands_v0.02_toy/marvin/07de53d3_nohash_0",
+   "key": "07de53d3",
+   "label": 1,
+   "length": 15757,
+   "material": "speech",
+   "pcm_sha256": "96954c38c058a9e38ea97e007fd060f726a5502a1d194f8b5751548db4ca0078",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 2
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "no",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "1c6039a06beec2dcea69511ab607c3dbada27dd7db604f5ee295aa4479965ec8",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": -0.368264,
+    "noise": null,
+    "offset": 0,
+    "rir": null,
+    "rir_delay": 0,
+    "snr_db": null,
+    "speed": 1.0
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "no",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/no/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "6806299899df1c2575e0656e2c14a76e746baa91825401ddf026fb09026a8601",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "right",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/right/012187a4_nohash_0",
+   "key": "012187a4",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "80a9f1267dcde9549f882a51fa2d15e7fc7830b57a1ea83e306d9ac01a5dd755",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": 2.29583,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 0,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 17.5524,
+    "speed": 1.0755873340143003
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 142,
+    "keyword": "right",
+    "mixture_samples": 22875
+   },
+   "id": "speech_commands_v0.02_toy/right/012187a4_nohash_0",
+   "key": "012187a4",
+   "label": 0,
+   "length": 22875,
+   "material": "speech",
+   "pcm_sha256": "110fab21de8cb03ddd72cc21bd07ab8ab5fcbaa9078f5b5428df94b0895d6b37",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "sheila",
+    "mixture_samples": 16000,
+    "near_miss": true
+   },
+   "id": "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+   "key": "004ae714",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "a748d6a02dbfaf07baa6f2249e49ed2e4b62c04c9c2a7eb7f5986213295fa44e",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": 3.688554,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 0,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 17.21555,
+    "speed": 1.02365308804205
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 147,
+    "keyword": "sheila",
+    "mixture_samples": 23630,
+    "near_miss": true
+   },
+   "id": "speech_commands_v0.02_toy/sheila/004ae714_nohash_0",
+   "key": "004ae714",
+   "label": 0,
+   "length": 23630,
+   "material": "speech",
+   "pcm_sha256": "7fd3ad4ec92a38b8167612da15bcc8e3286df420fb41ab50d54eb4113f62f1b2",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "sheila",
+    "mixture_samples": 16000,
+    "near_miss": true
+   },
+   "id": "speech_commands_v0.02_toy/sheila/022cd682_nohash_0",
+   "key": "022cd682",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "f65637472a578b8550c2fcf638544010fc5cc5132e2a532813ac6e817317e946",
+   "share": "eval-speech",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "eval",
+   "variant": 0
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "sheila",
+    "mixture_samples": 16000,
+    "near_miss": true
+   },
+   "id": "speech_commands_v0.02_toy/sheila/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "fde51299db619c9b53c542e0e5ce42e5d8e84f13b2a807300f67c0ab2f9cd097",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": 4.895713,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001",
+    "offset": 0,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001",
+    "rir_delay": 26,
+    "snr_db": 2.281265,
+    "speed": 1.016971279373368
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 148,
+    "keyword": "sheila",
+    "mixture_samples": 23732,
+    "near_miss": true
+   },
+   "id": "speech_commands_v0.02_toy/sheila/026290a7_nohash_0",
+   "key": "026290a7",
+   "label": 0,
+   "length": 23732,
+   "material": "speech",
+   "pcm_sha256": "acf969c05d820b9509424e07816d1b2c067616269c1fd2c73ff4f716df7ad373",
+   "share": "dev",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "dev",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "stop",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/stop/00970ce1_nohash_1",
+   "key": "00970ce1",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "8b093e16e6d3da4a2461660731fc8948d5325c9c4386424295961fc7e9c977a6",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": 0.344331,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 0,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 3.846136,
+    "speed": 1.015406162464986
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 148,
+    "keyword": "stop",
+    "mixture_samples": 23757
+   },
+   "id": "speech_commands_v0.02_toy/stop/00970ce1_nohash_1",
+   "key": "00970ce1",
+   "label": 0,
+   "length": 23757,
+   "material": "speech",
+   "pcm_sha256": "d012c606268ca9b2f2a1e82b7a8f974044abe27c735f9b0cb6f8326b1dd7f306",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  },
+  {
+   "draw": null,
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 100,
+    "keyword": "yes",
+    "mixture_samples": 16000
+   },
+   "id": "speech_commands_v0.02_toy/yes/004ae714_nohash_0",
+   "key": "004ae714",
+   "label": 0,
+   "length": 16000,
+   "material": "speech",
+   "pcm_sha256": "d19540ed5ca22c50691baf73e2f30159a50992dc653b400cf7a975c3e37d8350",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 0
+  },
+  {
+   "draw": {
+    "context": [],
+    "gain_db": 0.210915,
+    "noise": "musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005",
+    "offset": 0,
+    "rir": "openslr_28_toy/RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001",
+    "rir_delay": 12,
+    "snr_db": 8.219324,
+    "speed": 0.9867751780264497
+   },
+   "endpoint_sample": null,
+   "extra": {
+    "endpoint_hop": -1,
+    "frames": 151,
+    "keyword": "yes",
+    "mixture_samples": 24214
+   },
+   "id": "speech_commands_v0.02_toy/yes/004ae714_nohash_0",
+   "key": "004ae714",
+   "label": 0,
+   "length": 24214,
+   "material": "speech",
+   "pcm_sha256": "86256f14ed836761ec7ebed5d005fdbe7d1911324e55667a5dc7e85ed937425c",
+   "share": "train",
+   "source": "speech_commands_v0.02_toy",
+   "speaker": null,
+   "split": "train",
+   "variant": 1
+  }
+ ],
+ "eval_set_id": {
+  "eval-music": "f80d71df5d53c76af0067abfd3892420d6da464c526f2c9feebcae1bd2078cf5",
+  "eval-noise": "3ef98c9d4c0e7d10eefa776b194b4de320edea9eb3a47aea1806fad715f3594a",
+  "eval-speech": "2df98e45c58aa0366ebd11db80b82a2637b8aa093bfa9d21fa4c153f356441e8"
+ },
+ "holdout_set_id": null,
+ "lock_version": 1,
+ "manifest_hash": "f6dab21edbe3ec9dce84eb0ddd22a2585c29deff221f8e175431815ae075b1fb",
+ "self_check": {
+  "reference": {
+   "geometry": {
+    "bands": 40,
+    "fft_size": 512,
+    "fmax_hz": 7600.0,
+    "fmin_hz": 20.0,
+    "frame": 400,
+    "hop": 160,
+    "log_floor": 1e-10,
+    "log_scale": 5.0,
+    "log_shift": 5.0,
+    "pcen": {
+     "alpha": 0.98,
+     "delta": 2.0,
+     "enabled": false,
+     "epsilon": 1e-06,
+     "power": 0.5,
+     "smoother": 0.025
+    },
+    "preemphasis": 0.0,
+    "sample_rate": 16000.0,
+    "window": "hann"
+   },
+   "max_abs_diff_log": 1.532107773982716e-14,
+   "max_abs_diff_pcen": 3.397282455352979e-14,
+   "tolerance": 5e-13
+  }
+ },
+ "shards": [
+  {
+   "clips": 16,
+   "file": "train/shard-0000.npz",
+   "frames": 3962,
+   "sha256": "bc2aa44593f2fe31d93726a5a6a90bdbb71fe9d6911b774db985c83d52a2b5d9",
+   "split": "train"
+  },
+  {
+   "clips": 8,
+   "file": "dev/shard-0000.npz",
+   "frames": 2072,
+   "sha256": "6123369186ad318804e053c2d0f66294635a2613677b93c72d0e7cb91fe6e6ab",
+   "split": "dev"
+  },
+  {
+   "clips": 5,
+   "file": "eval/shard-0000.npz",
+   "frames": 890,
+   "sha256": "24a9c07eee628c820b9ce5fb8d99cb2e460d9097855a0fb66d0ff90d69efc742",
+   "split": "eval"
+  }
+ ],
+ "summary": {
+  "clips_per_shard": 256,
+  "context_s": 2.0,
+  "decoded_clips": 23,
+  "excluded_by_role": {},
+  "featurized_rows": 29,
+  "keyword_lists": {
+   "speech_commands_keywords": {
+    "count": 35,
+    "sha256": "0461045d9f03f941bd6f52e6e7fe3d178aed5108a60f8ad99efcd693f34cd6fe"
+   }
+  },
+  "notes": [],
+  "splits": {
+   "dev": {
+    "negative": {
+     "count": 4,
+     "frames": 448,
+     "hours": 0.0012453472222222221
+    },
+    "positive": {
+     "count": 4,
+     "frames": 1624,
+     "hours": 0.001087204861111111
+    }
+   },
+   "eval": {
+    "negative": {
+     "count": 4,
+     "frames": 500,
+     "hours": 0.001388888888888889
+    },
+    "positive": {
+     "count": 1,
+     "frames": 390,
+     "hours": 0.0002777777777777778
+    }
+   },
+   "train": {
+    "negative": {
+     "count": 10,
+     "frames": 1442,
+     "hours": 0.004013177083333333
+    },
+    "positive": {
+     "count": 6,
+     "frames": 2520,
+     "hours": 0.0016600520833333333
+    }
+   }
+  }
+ },
+ "toolchain": {
+  "decoder": "soundfile-0.14.0-libsndfile-1.2.2",
+  "dsptap_commit": "5ca3b1cdffc4d724fdcef4bafb06e2908defda1d",
+  "kws_features_version": 1,
+  "libsndfile": "1.2.2",
+  "log_mel_contract_version": 1,
+  "numpy": "2.5.3",
+  "platform": "macOS-26.6.2-arm64-arm-64bit",
+  "python": "3.12.14",
+  "resampler": "resample_poly-1.18.1-kaiser-5.0",
+  "scipy": "1.18.1",
+  "soundfile": "0.14.0"
+ }
+}

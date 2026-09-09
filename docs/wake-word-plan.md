@@ -820,6 +820,44 @@ NC track fail the card test; the self-check holds at the reference geometry; a
 toy source whose origin is in the repository but whose `redistributable` is
 false is refused. M5's bring-up starts on this output.
 
+**Done, 9 September 2026** (MuTap branch `feat/wake-word-m4a`, tap/MuTap#48;
+DspTap pin `5ca3b1c`, tap/DspTap#16 — the parameterized numpy reference, so
+the self-check runs at the manifest geometry from the first build). Measured,
+not estimated. `tools/ml/kws/`: `kws_features.py` over the bridge (the
+band-support assertion; the self-check at the reference and manifest
+geometries — 1.5e-14 / 3.4e-14 at the reference geometry on the M0 Mac, pinned
+at 5e-13 because DspTap's Linux GCC leg measures 6.8e-14 / 1.5e-13 at its
+tuned geometry against macOS-generated vectors, FMA contraction differing
+between the two; the bridge library keyed to the DspTap commit it was compiled
+from and rebuilt on a pin move); the manifest and lock schemas with
+refuse-by-name validation; `kws_build.py`'s seven stages with a lock that is
+byte-identical between `--jobs 1` and `--jobs 4`; `verify_splits.py` R1–R5 with
+one planted fixture each; `kws_dataset_card.py` with its planted-clip tests; a
+662,293-byte toy fixture (15 Speech Commands clips, six 2 s MUSAN excerpts, two
+SLR28 small-room RIRs chosen by the builder's own RT60 rule, the 35 keywords)
+whose committed lock, three shards and card a rebuild into an empty store
+reproduces bit for bit on the M0 Mac (max |feature difference| 0.0) and the
+`kws-dataset` CI job rebuilds on ubuntu-latest in 1 m 20 s inside the 1e-6
+pin; the `synth` hand-run over `en_US-kristin-medium` (piper-tts 1.8.0 and
+ONNX Runtime 1.29.0 as an isolated subprocess tool) recorded as
+`fixtures/synth_hand_run/`, no audio; 74 tests in 22 s. The bring-up corpus
+for M5, `manifests/speech_commands_v2_bringup.json` — Speech Commands v0.02
+in full under its official split, MUSAN's noise partition, SLR28's 60,000
+simulated RIRs, the keyword list; *K* = 2, *M* = 1, dry share 0.25, context
+2 s — built on the M0 Mac with `--jobs 8`: `fetch` verifies 14.8 GB; `decode`
+166,758 clips in 39.6 s; `augment` 96,729 variants in 65.2 s; `extract`
+200,653 rows, 27.5 M frames, in 49.6 s; `shard` 784 shards in 227.6 s; 396 s
+in all at 2.3 GB peak resident; the lock 164 MB, the features 3.6 GB, the
+augmented tier 4.9 GB. `marvin` positives 1,710 / 195 / 195 (train / dev /
+eval) and negatives 83,133 / 9,786 / 10,810; the eval-speech share is 3.0 h
+and the eval-noise share 0.5 h, so its zero-event bound is ln 20 / 3.0 =
+1.0 FA/h — the bring-up figure this section predicted, and the reason M4b's
+eval floors are 20 h; 27,455 of the 60,000 RIRs lie inside `rt60_s`
+[0.2, 1.0] (median RT60 0.67 s); `verify_splits` clean over 263,487 rows in
+2.4 s; the card's licence checks pass, and the card is committed beside the
+manifest. Not in M4a, by design: any TTS beyond the hand-run, music in
+training, and Common Voice, AMI, FMA or MSWC material (M4b).
+
 **M4b — The full corpus** (parallel with M5's bring-up). **Deliverables:** the
 phrase and its table, first; Piper positives and TTS negatives; MSWC mining
 with the mined list stored; Common Voice, AMI, MUSAN, FMA and SLR28's

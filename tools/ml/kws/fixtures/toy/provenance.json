@@ -1,0 +1,187 @@
+{
+ "built": "2026-09-09",
+ "salt": "mutap-kws-toy-2026-09-09",
+ "manifest_hash": "f6dab21edbe3ec9dce84eb0ddd22a2585c29deff221f8e175431815ae075b1fb",
+ "archive_bytes": 662293,
+ "speech_commands": [
+  {
+   "relpath": "marvin/00176480_nohash_0.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 13280
+  },
+  {
+   "relpath": "marvin/00176480_nohash_1.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 12960
+  },
+  {
+   "relpath": "marvin/00b01445_nohash_0.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "marvin/022cd682_nohash_0.wav",
+   "split": "eval",
+   "samples": 16000,
+   "endpoint": 10880
+  },
+  {
+   "relpath": "marvin/026290a7_nohash_0.wav",
+   "split": "dev",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "marvin/07de53d3_nohash_0.wav",
+   "split": "dev",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "sheila/004ae714_nohash_0.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "sheila/022cd682_nohash_0.wav",
+   "split": "eval",
+   "samples": 16000,
+   "endpoint": 12480
+  },
+  {
+   "relpath": "sheila/026290a7_nohash_0.wav",
+   "split": "dev",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "yes/004ae714_nohash_0.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "no/026290a7_nohash_0.wav",
+   "split": "dev",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "left/022cd682_nohash_0.wav",
+   "split": "eval",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "stop/00970ce1_nohash_1.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "right/012187a4_nohash_0.wav",
+   "split": "train",
+   "samples": 16000,
+   "endpoint": 16000
+  },
+  {
+   "relpath": "go/022cd682_nohash_0.wav",
+   "split": "eval",
+   "samples": 16000,
+   "endpoint": 16000
+  }
+ ],
+ "musan": [
+  {
+   "partition": "noise",
+   "subset": "sound-bible",
+   "fid": "noise-sound-bible-0001",
+   "split": "dev",
+   "key": "noise-sound-bible-0001",
+   "licence": "CC-BY-3.0",
+   "offset": 0
+  },
+  {
+   "partition": "noise",
+   "subset": "sound-bible",
+   "fid": "noise-sound-bible-0003",
+   "split": "train",
+   "key": "noise-sound-bible-0003",
+   "licence": "CC-BY-3.0",
+   "offset": 16000
+  },
+  {
+   "partition": "noise",
+   "subset": "sound-bible",
+   "fid": "noise-sound-bible-0005",
+   "split": "train",
+   "key": "noise-sound-bible-0005",
+   "licence": "CC-BY-3.0",
+   "offset": 16000
+  },
+  {
+   "partition": "noise",
+   "subset": "sound-bible",
+   "fid": "noise-sound-bible-0011",
+   "split": "eval",
+   "key": "noise-sound-bible-0011",
+   "licence": "CC-BY-3.0",
+   "offset": 16000
+  },
+  {
+   "partition": "music",
+   "subset": "fma",
+   "fid": "music-fma-0000",
+   "split": "train",
+   "key": "Airglow",
+   "licence": "CC-BY",
+   "offset": 16000
+  },
+  {
+   "partition": "music",
+   "subset": "fma",
+   "fid": "music-fma-0006",
+   "split": "eval",
+   "key": "Alecs_Band",
+   "licence": "CC-BY",
+   "offset": 16000
+  }
+ ],
+ "rirs": [
+  {
+   "relpath": "RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001.wav",
+   "room": "small-Room006",
+   "rir_list_line": "--rir-id small-Room006-00001 --room-id small-Room006 RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001.wav",
+   "samples": 8000,
+   "onset": 12,
+   "rt60_s": 0.271313
+  },
+  {
+   "relpath": "RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001.wav",
+   "room": "small-Room005",
+   "rir_list_line": "--rir-id small-Room005-00001 --room-id small-Room005 RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001.wav",
+   "samples": 8000,
+   "onset": 26,
+   "rt60_s": 0.322125
+  }
+ ],
+ "keywords": 35,
+ "upstream": {
+  "speech_commands_v0.02": {
+   "sha256": "af14739ee7dc311471de98f5f9d2c9191b18aedfe957f4a6ff791c709868ff58",
+   "size": 2428923189
+  },
+  "openslr_17_musan": {
+   "sha256": "86d1061c7e15b5c9e906777685c519701df51bfde3001e1070dcc9ffac955ee1",
+   "size": 11086114085
+  },
+  "openslr_28": {
+   "sha256": "3b50cfde915b3984738169b4beb341e9f6b8062ae4c2076146c5db71c2c05dc7",
+   "size": 1311166223
+  }
+ }
+}

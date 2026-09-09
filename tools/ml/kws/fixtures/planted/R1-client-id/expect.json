@@ -1,0 +1,8 @@
+{
+ "rule": "R1",
+ "clips": [
+  "cv/clips/common_voice_en_100",
+  "cv/clips/common_voice_en_101",
+  "mswc/en/clips/house/common_voice_en_100__house"
+ ]
+}

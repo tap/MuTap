@@ -1,0 +1,7 @@
+{
+ "rule": "R2",
+ "clips": [
+  "holdout/talker-01/room-1m/utt-0001",
+  "musan_noise/noise/free-sound/noise-free-sound-0001"
+ ]
+}

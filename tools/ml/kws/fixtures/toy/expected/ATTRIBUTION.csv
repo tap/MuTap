@@ -1,0 +1,51 @@
+source,clip,kind,release,material,licence,attribution,terms_accepted,terms_verified,redistributable,origin,roles
+speech_commands_v0.02_toy,,speech_commands_v2,v0.02,speech,CC-BY-4.0,"Warden, P. (2018). Speech Commands: A Dataset for Limited-Vocabulary Speech Recognition. arXiv:1804.03209. Creative Commons Attribution 4.0 International (CC BY 4.0). Toy subset: 15 clips, the reduced validation/testing lists and the LICENSE, laid out as upstream",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,train dev eval-speech
+musan_noise_toy,,musan,SLR17,noise,CC-BY-4.0,"Snyder, D., Chen, G. & Povey, D. (2015). MUSAN: A Music, Speech, and Noise Corpus. arXiv:1510.08484. OpenSLR SLR17, CC BY 4.0; per-file terms in each subset's LICENSE, retained in the toy tarball. Toy excerpts: 4 noise files, 2 s each from 1 s in, CC BY / public-domain files only",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,aug eval-noise
+musan_noise_toy,musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0001,musan,SLR17,noise,CC-BY-3.0,"noise-sound-bible-0001
+Title: Answering Machine Beep
+License: Attribution 3.0
+Recorded by Mike Koenig 
+http://soundbible.com/5-Answering-Machine-Beep.html",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,aug
+musan_noise_toy,musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0003,musan,SLR17,noise,CC-BY-3.0,"noise-sound-bible-0003
+Title: Audience Applause
+License: Attribution 3.0
+Recorded by Matthiew11 
+License: Attribution 3.0 
+http://soundbible.com/2087-Audience-Applause.html",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,aug
+musan_noise_toy,musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0005,musan,SLR17,noise,CC-BY-3.0,"noise-sound-bible-0005
+Title: Background Noise
+License: Attribution 3.0
+Recorded by Mike Koenig
+http://soundbible.com/531-Background-Noise.html",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,aug
+musan_noise_toy,musan_noise_toy/musan/noise/sound-bible/noise-sound-bible-0011,musan,SLR17,noise,CC-BY-3.0,"noise-sound-bible-0011
+Title: Canadian Geese Migration
+License: Attribution 3.0
+Recorded by Mike Koenig
+http://soundbible.com/1861-Canadian-Geese-Migration.html",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,eval-noise
+musan_music_toy,,musan,SLR17,music,CC-BY-4.0,"Snyder, D., Chen, G. & Povey, D. (2015). MUSAN: A Music, Speech, and Noise Corpus. arXiv:1510.08484. OpenSLR SLR17, CC BY 4.0; per-file terms in each subset's LICENSE, retained in the toy tarball. Toy excerpts: 2 music files, 2 s each from 1 s in, CC BY / public-domain tracks only, ANNOTATIONS rows retained for the artist key",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,train eval-music
+musan_music_toy,musan_music_toy/musan/music/fma/music-fma-0000,musan,SLR17,music,CC-BY,"“Memory Bank” (by Airglow)
+music-fma-0000
+“Electrifying Landscape” (by Airglow)
+music-fma-0002
+“Far Apart” (by Airglow)
+music-fma-0004
+“Cepheid Disk” (by Airglow)
+music-fma-0001
+“Blueshift” (by Airglow)
+music-fma-0003
+“Lisa” (by Airglow)
+music-fma-0005
+Memory Bank by Airglow is licensed under a Attribution License.
+http://freemusicarchive.org/music/Airglow/Memory_Bank",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,train
+musan_music_toy,musan_music_toy/musan/music/fma/music-fma-0006,musan,SLR17,music,CC-BY,"“I Don't Think” (by Alec's Band)
+music-fma-0006
+“A Young Griffin Boyle In Drag” (by Alec's Band)
+music-fma-0008
+“Well Water” (by Alec's Band)
+music-fma-0007
+“Young Adult Friction” (by Alec's Band)
+music-fma-0009
+Alec's band by Alec's Band is licensed under a Attribution License.
+http://freemusicarchive.org/music/Alecs_Band/none_given_1794",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,eval-music
+openslr_28_toy,,openslr_28_simulated,SLR28,rir,Apache-2.0,"Ko, T., Peddinti, V., Povey, D., Seltzer, M. L. & Khudanpur, S. (2017). A study on data augmentation of reverberant speech for robust speech recognition. ICASSP 2017. OpenSLR SLR28, Apache License 2.0 (the release carries no LICENSE file; the licence is stated on the OpenSLR resource page). Toy excerpt: 2 simulated small-room RIRs, one per training-side split, with their rir_list lines: RIRS_NOISES/simulated_rirs/smallroom/Room006/Room006-00001.wav (RT60 0.271 s), RIRS_NOISES/simulated_rirs/smallroom/Room005/Room005-00001.wav (RT60 0.322 s)",Apache License 2.0,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,aug
+speech_commands_keywords,,keyword_list,v0.02,keywords,CC-BY-4.0,"The 35 keywords of Speech Commands v0.02 (Warden, P. (2018). Speech Commands: A Dataset for Limited-Vocabulary Speech Recognition. arXiv:1804.03209. Creative Commons Attribution 4.0 International (CC BY 4.0)), listed from the archive's keyword directories (_background_noise_ excluded): the list the training guide's toy mining run matches against, replaced by MSWC's at M4b",CC BY 4.0: attribution,2026-09-08,yes,repository: tools/ml/kws/fixtures/toy,train
