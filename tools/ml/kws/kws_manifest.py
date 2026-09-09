@@ -52,19 +52,24 @@ class ManifestError(ValueError):
     """A manifest the builder refuses, with the reason."""
 
 
-def _check_keys(cls: type, d: dict[str, Any], where: str) -> None:
-    """Refuse a dict whose keys are not exactly the dataclass's fields (unknown keys, missing required)."""
+def check_keys(cls: type, d: Any, where: str, error: type[ValueError] = ManifestError) -> None:
+    """Refuse a dict whose keys are not exactly the dataclass's fields (unknown keys, missing required),
+    raising `error` (ManifestError here; kws_holdout and kws_eval pass their own class — M5's additive
+    change so the three modules share one schema-key check)."""
     if not isinstance(d, dict):
-        raise ManifestError(f"{where}: expected an object, got {type(d).__name__}")
+        raise error(f"{where}: expected an object, got {type(d).__name__}")
     fields = {f.name: f for f in dataclasses.fields(cls)}
     unknown = sorted(set(d) - set(fields))
     if unknown:
-        raise ManifestError(f"{where}: unknown field(s) {unknown} (known: {sorted(fields)})")
+        raise error(f"{where}: unknown field(s) {unknown} (known: {sorted(fields)})")
     required = sorted(n for n, f in fields.items()
                       if f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING
                       and n not in d)
     if required:
-        raise ManifestError(f"{where}: missing required field(s) {required}")
+        raise error(f"{where}: missing required field(s) {required}")
+
+
+_check_keys = check_keys   # the manifest's own call sites
 
 
 # ---------------------------------------------------------------- sources

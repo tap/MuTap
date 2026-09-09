@@ -849,10 +849,11 @@ simulated RIRs, the keyword list; *K* = 2, *M* = 1, dry share 0.25, context
 200,653 rows, 27.5 M frames, in 49.6 s; `shard` 784 shards in 227.6 s; 396 s
 in all at 2.3 GB peak resident; the lock 164 MB, the features 3.6 GB, the
 augmented tier 4.9 GB. `marvin` positives 1,710 / 195 / 195 (train / dev /
-eval) and negatives 83,133 / 9,786 / 10,810; the eval-speech share is 3.0 h
-and the eval-noise share 0.5 h, so its zero-event bound is ln 20 / 3.0 =
-1.0 FA/h — the bring-up figure this section predicted, and the reason M4b's
-eval floors are 20 h; 27,455 of the 60,000 RIRs lie inside `rt60_s`
+eval) and negatives 83,133 / 9,786 / 10,810; the eval-speech negatives are
+2.95 h (3.0 h with the positives, which the FA/h denominator excludes) and the
+eval-noise share 0.5 h, so the zero-event bound is ln 20 / 2.95 = 1.02 FA/h —
+the bring-up figure this section predicted, and the reason M4b's eval floors
+are 20 h; 27,455 of the 60,000 RIRs lie inside `rt60_s`
 [0.2, 1.0] (median RT60 0.67 s); `verify_splits` clean over 263,487 rows in
 2.4 s; the card's licence checks pass, and the card is committed beside the
 manifest. Not in M4a, by design: any TTS beyond the hand-run, music in
@@ -934,6 +935,46 @@ known positive endpoints and known false-accept placements, scored by the
 harness against hand-computed recall and FA/hour, exact to the utterance; a
 deliberately mis-accounted variant must be rejected. The trivial band-energy
 baseline is run as a sanity curve, not as the pass.
+
+**Done, 9 September 2026** (MuTap branch `feat/wake-word-m5`; DspTap pin
+`5ca3b1c`). Measured, not estimated. `tools/ml/kws/`: `kws_scoring.py` — the
+scoring semantics as numbers, checked against hand-computed values: the hit
+window [*h* − *T*, *h* + 20 + *T*] inclusive with *h* = ⌊*e*/160⌋; the
+reference decision stage — a trailing moving average over *W* = 10 hops, an
+upward crossing of the threshold fires, a crossing fewer than *R* = 100 hops
+after an event merges into it (the numbers `kws.h` must match at M6); the
+exact two-sided Poisson 95 % interval, the zero-event bound ln 20 / *H* and the
+Wilson interval. `kws_streams.py` assembles every eval positive as the mixture
+`extract` featurized and packs each share's negatives into streams of at most
+60 s, hours from decoded lengths, every mis-accounting refused by name;
+`kws_detectors.py` carries the detector contract (one score per completed hop,
+through the bridge), the band-energy baseline and the oracle's planted
+detector; `kws_holdout.py` carries M4c's `holdout.json`, verified by file hash
+and consent row before anything is scored, and the hold-out set id;
+`kws_eval.py` the sweep and the committed report — speech, music and TTS
+speech as separate FA/h columns, an absent share absent, every figure with its
+hours and interval, the eval-tts recall beside the hold-out's. The pass, in CI
+(44 tests in 2 s): the planted-event oracle — hits exact to the utterance at
+both inclusive window edges and one hop outside each, four planted events of
+which two merge under the refractory period (3 in 0.5 h → 6.0 FA/h,
+[1.24, 17.53]), events exactly *R* apart both firing and *R* − 1 apart
+merging, a zero-event share reporting ln 20 / *H*, spurious events never in
+FA/h — and the mis-accounted variants each refused by name (a wrong or
+non-integer hours count, an endpoint or window beyond the stream, duplicate
+ids, a positive stream with hours, NaN, short or out-of-range scores). On the
+bring-up corpus (M0 Mac): 412 streams — 195 positives; the eval-speech
+negatives 2.9513 h in 179 streams (zero-event bound 1.015 FA/h) and eval-noise
+0.5021 h in 38; the band-energy baseline through the bridge scores about
+2,500 s of audio per second including decoding; the sweep 8.6 s wall; the
+executed notebook `notebooks/kws_det.ipynb` (built by
+`tools/ml/build_kws_det_notebook.py` in 14 s, 0.12 MB) carries the sanity
+curve — best recall 34/195 at 1,977 FA/h on speech, useless as the plan expects
+of a band-energy mean, and not a pass. Every stream is decided after a fresh
+reset, so each FA/h row depends on the packing bound by at most streams / *H*
+(60.65 FA/h at θ = 0 on this corpus; 12–40 FA/h, 0.6–3.1 %, at thresholds
+0.1–0.9), which the report records as `max_stream_s`. Not in M5, by design:
+the engine through the `mutap_kws_*` C ABI (M6, which pins the harness ↔
+`kws.h` decision-stage parity) and any recorded hold-out (M4c).
 
 ### M6 — The spotter *(MuTap)*
 

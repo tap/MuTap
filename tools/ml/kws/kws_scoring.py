@@ -8,8 +8,9 @@
   endpoint tolerance in hops, L the §7 detection-latency ceiling (20 hops = 200 ms). One hit per utterance.
 - The reference decision stage (the numbers `kws.h` carries at M6 and must match, pinned there): the score
   is smoothed by a trailing moving average over W hops, an event fires at hop t when the smoothed score
-  crosses the threshold upward (s[t] >= theta and s[t-1] < theta, or t = 0 and s[0] >= theta), and no
-  event may fire within R hops of the previous one — the refractory period, under which false accepts
+  crosses the threshold upward (s[t] >= theta and s[t-1] < theta, or t = 0 and s[0] >= theta) and at
+  least R hops have passed since the previous event (t - last >= R): a crossing exactly R hops after an
+  event fires, one R - 1 hops after it merges into it — the refractory period, under which false accepts
   merge.
 - A false accept is an event on a negative stream; FA/h = events / H with H the negative streams' decoded
   duration in hours. Every FA/h carries H, the exact two-sided 95 % Poisson interval on the count
@@ -83,8 +84,9 @@ def smooth(scores: np.ndarray, window: int) -> np.ndarray:
 
 
 def decide(scores: np.ndarray, scoring: Scoring, threshold: float) -> list[int]:
-    """Event hops under the reference decision stage: upward threshold crossings of the smoothed score,
-    never within `refractory_hops` of the previous event."""
+    """Event hops under the reference decision stage: upward threshold crossings of the smoothed score
+    that come at least `refractory_hops` (R) after the previous event — t - last >= R, so a crossing
+    exactly R hops after an event fires and one R - 1 hops after it merges."""
     s = smooth(scores, scoring.smoothing_hops)
     events: list[int] = []
     last = -scoring.refractory_hops - 1
@@ -171,6 +173,14 @@ def _self_check() -> None:
     x[200:210] = 1.0  # after it
     ev = decide(x, Scoring(smoothing_hops=1), 0.5)
     assert ev == [10, 200], ev
+    # the refractory boundary as a number: a crossing exactly R = 100 hops after an event fires, one at
+    # R - 1 hops merges
+    x = np.zeros(400)
+    x[10], x[110] = 1.0, 1.0
+    assert decide(x, Scoring(smoothing_hops=1), 0.5) == [10, 110]
+    x = np.zeros(400)
+    x[10], x[109] = 1.0, 1.0
+    assert decide(x, Scoring(smoothing_hops=1), 0.5) == [10]
     # hits: the window edges are inclusive, one hit per utterance
     p = [Positive("a", 9000, 56), Positive("b", 20000, 125)]
     assert hits([53], p, sc) == {"a": True, "b": False}
