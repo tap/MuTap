@@ -286,3 +286,183 @@ without a `noise_start` field; a TTS clip's synthesis scales come from
 `draw_rng(seed, clip_id + "#tts", 0)`, so the variant-0 key stays reserved for
 the eval positive's context draw. A hold-out mixed take (M4c) draws
 `{"noise", "level_db"}`.
+
+## M5 — the evaluation harness
+
+The harness of the wake-word plan's M5 (`docs/wake-word-plan.md` §6 M5 and
+§7), built before any model so that M6 is measured by tooling that can fail
+on its own. Host-side only, like the builder; the same pinned environment.
+
+**Modules.**
+
+- `kws_scoring.py` — the scoring semantics **as numbers**, checked against
+  hand-computed values by its own self-check (`python kws_scoring.py`):
+  `Scoring` (hop, rate, *T* = `tolerance_hops`, *L* = `LATENCY_CEILING_HOPS`
+  = 20, *W* = `smoothing_hops`, *R* = `refractory_hops`), `Positive`,
+  `smooth`, `decide` (the reference decision stage: an upward crossing of
+  the smoothed score at least *R* hops after the previous event — *t* − last
+  ≥ *R*, so a crossing exactly *R* hops after an event fires and one *R* − 1
+  hops after it merges), `hits` (one
+  per utterance, window [*h* − *T*, *h* + *L* + *T*] inclusive with
+  *h* = ⌊*e* / hop⌋), `spurious`, `poisson_interval` (exact two-sided 95 %,
+  chi-square form), `zero_event_bound` (ln 20 / *H*), `wilson_interval`.
+  `kws.h` carries the same numbers at M6 and must match them.
+- `kws_streams.py` — `Stream` (id, share, positives, `negative_samples`,
+  subshare, eager `audio` or lazy `load`, `members`), `streams_from_lock`:
+  every variant-0 eval positive becomes one stream whose audio is the row's
+  mixture (`kws_build.mixture` over its draw — what `extract` featurized, so
+  the stream has exactly the lock's `extra.frames` hops and the hit window
+  fits); the negatives of each eval share, sorted by id, are packed into
+  `<share>/stream-NNNN` streams of at most 60 s, a clip never split (an
+  over-long clip stands alone). Hours per share = Σ `negative_samples` /
+  16000 / 3600 — the decoded durations, the plan's denominator; positives
+  never enter it. `validate_streams` decodes every stream once and refuses by
+  name: no streams, duplicate ids, an unknown share, an empty stream, a
+  `negative_samples` that is not an integer, a positive stream with hours or
+  without positives or without a subshare, an endpoint at or beyond its
+  audio, an `endpoint_hop` that disagrees with its sample, a hit window
+  ending beyond the stream's hops, a positive id used twice (within a stream
+  or across streams), a negative stream with positives or whose
+  `negative_samples` ≠ its decoded length. Its per-stream rules are
+  `validate_stream(stream, n_samples, scoring, seen_positives)`, which takes
+  the decoded length, so the harness applies the same rules — one rule set,
+  not a copy — to the audio it decodes for scoring. A `Scoring` whose hop,
+  rate, *T* or *L* differs from the manifest is refused
+  (`require_scoring_matches`): the lock's rows were cut for those.
+- `kws_detectors.py` — the `Detector` contract (one float64 score in [0, 1]
+  per completed hop; `frames_for(n, hop)` = n // hop, measured through the
+  bridge); `BandEnergyBaseline` (the plan's trivial sanity detector: the
+  mean over the mel bands whose centre lies in [300, 3000] Hz of the shipping
+  front end's plain-log feature, clipped to [0, 1], PCEN forced off and
+  recorded in `params`); `PlantedDetector` (the oracle's: zeros except
+  planted (hop, score) pairs per stream id, refusing a hop beyond the stream).
+- `kws_holdout.py` — M4c's `holdout.json` (version 1: talkers with
+  `consent_form_version` and `permitted_uses`; utterances with a FLAC path
+  under `<store>/holdout/`, sha256, talker, microphone path, distance, SNR,
+  phrase, 16 kHz `endpoint_sample`), refused at load on any schema
+  deviation (a path only in its canonical spelling — no `.`, `..` or empty
+  segment — and one sha256 per row, so one file is one utterance under any
+  spelling, case-folded included); `verify_holdout` refuses by file a FLAC
+  that is missing or whose sha256 differs, a stray FLAC no row names, two
+  rows resolving to one file, a talker row missing, without a consent form
+  version, or whose uses lack `evaluation` or `m7-replay`; `holdout_set_id`
+  (sha256 of the sorted FLAC hashes, each once); `streams_from_holdout`
+  (one positive stream per utterance, share `positives`, subshare `holdout`;
+  a FLAC that is not 16 kHz is refused, never resampled here).
+- `kws_eval.py` — `evaluate(streams, detector, scoring, thresholds)`: every
+  stream decoded exactly once by `score_streams`, which checks its accounting
+  on that decode (`kws_streams.validate_stream`, so a hand-built stream
+  cannot mis-account) and scores it, returning a `Scored` (the scores by id
+  plus the sample counts) that `evaluate` takes as verified — re-running only
+  the accounting rules against the recorded counts, no second decode; a bare
+  dict of scores is re-checked in full. Per threshold `decide` → hits /
+  spurious on the positive streams, events on the negative streams per
+  share; hours = the integer sample sum per share divided once (bit-identical
+  to `hours_per_share` and the lock's summary); `Report` with `to_dict` /
+  `from_dict` (schema-key diffing through `kws_manifest.check_keys`, a wrong
+  `report_version` refused) and `markdown()`. `default_thresholds` = 0, 1
+  and the quantiles of the per-stream maximum smoothed score. Refused by
+  name: a detector whose score count is not n // hop, a score that is not a
+  real number (a complex or bool array is never cast) or lies outside
+  [0, 1], a threshold outside [0, 1] or repeated, scores for a stream the
+  list does not carry, and on the CLI a `--grid` of −1 or 1.
+
+**The report** (`report.json` + `report.md`, version 1): the manifest name and
+hash; `eval_set_id` per share from the lock (and `holdout_set_id`); the
+scoring numbers; the detector name and `params`; the front end's
+`log_mel_contract_version` and DspTap commit; hours per share with stream
+counts and the negative-stream packing bound they were assembled with
+(`max_stream_s`, printed as `packed at <= 60 s`); positives per subshare
+(eval-speech / eval-tts / holdout); then one
+row per threshold — recall with its Wilson 95 % interval, FRR, spurious
+events, and **FA/h on speech, music, TTS speech and noise as separate
+columns**, each cell `rate [Poisson lo, hi] (events in H)` and `<= ln 20 / H`
+where a share saw no event — with the eval-tts recall printed beside the
+hold-out recall as the plan's descriptive gap figure. A share the lock lacks
+reads `absent`, never 0 FA/h.
+
+**Running it.**
+
+```
+# the sweep: the lock's eval shares through a detector
+python tools/ml/kws/kws_eval.py sweep --manifest M --lock L --store DIR \
+    [--detector band-energy] [--thresholds 50] [--grid N] [--smoothing 10] \
+    [--refractory 100] [--max-stream-s 60] --out DIR
+# the hold-out: verified (hashes, consent rows), then scored — beside the
+# lock's shares when --lock is given
+python tools/ml/kws/kws_eval.py holdout --holdout holdout.json --manifest M \
+    --store DIR [--lock L] --out DIR
+# the accounting of a lock alone
+python tools/ml/kws/kws_streams.py --manifest M --lock L --store DIR --validate
+# the DET notebook (executed and committed; needs requirements-notebook.txt)
+python tools/ml/build_kws_det_notebook.py --manifest tools/ml/kws/manifests/speech_commands_v2_bringup.json
+```
+
+`--grid N` adds N evenly spaced thresholds to the quantiles: the band-energy
+baseline's maximum saturates at 1.0 on most streams, so its quantiles
+collapse (5 distinct thresholds from 50 quantiles on the bring-up corpus).
+`--max-stream-s` (default `kws_streams.DEFAULT_MAX_STREAM_S` = 60) is
+recorded in the report because every negative stream is decided after a
+fresh reset: the *t* = 0 rule and the refractory restart at each stream
+boundary make every FA/h row depend on the packing by at most streams / *H*
+per share — the θ = 0 row, 60.65 FA/h on the bring-up speech share; the
+decision-stage part of it measures 12–40 FA/h on speech (0.6–3.1 % of the
+baseline's figure) at thresholds 0.1–0.9 against a run that decides the
+concatenated per-stream scores, 9 September 2026.
+
+Measured 9 September 2026 on the M0 Mac, the bring-up corpus
+(`speech_commands_v2_bringup`, 263,487 lock rows read in 1.7 s, the streams
+assembled in 0.08 s): 412 streams — 195 eval-speech positives, 179
+eval-speech negative streams = **2.9513 h** (bit-identical to the lock's own
+`summary.splits.eval.negative.hours`; the plan's "3.0 h" counted the
+positives' 0.053 h, which the denominator excludes; zero-event bound 1.015
+FA/h) and 38 eval-noise streams = 0.5021 h (bound 5.97 FA/h; three MUSAN
+files longer than 60 s stand alone, the longest 113 s); music and TTS
+absent. `kws_eval.py sweep` 8.6 s wall (6.2 s scoring + sweep, one decode
+per stream, 5 thresholds); with `--grid 21` 9.9 s (24 thresholds); the
+baseline scores about 2,500 s of audio per second including decoding and
+the accounting check, 8,400 s/s scoring alone; peak RSS 1.04 GB, the parsed
+lock. `notebooks/kws_det.ipynb` executes in 14 s (44 thresholds; 30 s on a
+first run, while matplotlib builds its font cache) and is 0.12 MB. The
+baseline's best recall over the sweep is 34/195 at 1,977 FA/h on speech —
+the sanity curve, as expected useless, not a pass.
+
+**The pass** (`test_kws_eval.py`, `test_kws_streams.py`; part of the
+`kws-dataset` CI job, 44 tests in 2 s): the planted-event oracle — synthetic
+silent streams scored by `PlantedDetector`, the per-utterance hit map
+asserted through the harness's own `decide` → `hits` path with events inside
+a window, at its two inclusive edges and one hop outside each (one at the
+lower edge and one below, two at the upper edge and two above, so a rigid
+shift of the window of up to 13 hops changes the aggregates as well as the
+map), negative streams totalling exactly 0.5 h with four planted events of
+which two fall inside one refractory period (3 counted → 6.0 FA/h, Poisson
+[1.237, 17.535]), the refractory boundary as a number (events exactly *R*
+hops apart both fire, *R* − 1 merge: 2 → 8.0 FA/h and 1 → 4.0 FA/h in 0.25 h),
+one hit per utterance when two events fall in one window, a share with zero
+events reporting ln 20 / *H*, spurious events never in FA/h, every figure
+asserted against a hand computation, and the `_self_check`s of
+`kws_scoring` and `kws_detectors` run under `unittest`; the mis-accounted
+variants (a wrong, non-integer or negative `negative_samples`, an endpoint
+or window beyond the stream, duplicate stream ids, a positive id used twice
+within or across streams, a positive stream with hours) each refused by name
+by both the harness and `validate_streams`, plus NaN / short / out-of-range
+/ complex scores handed to `evaluate`, thresholds outside [0, 1] or
+repeated, and a stream edited after scoring; the report round trip (the
+packing bound included) and its markdown carrying every figure with its
+hours; the toy rebuilt into a temporary store and swept end to end through
+the bridge as a library call and through `kws_eval.py sweep` (hours = the
+pcm tier's decoded lengths, bit-identical to `hours_per_share` and the
+lock's summary, positives = the eval positives, `eval_set_id` = the lock's,
+`max_stream_s` recorded, `--grid -1` and `--grid 1` refused by name, the
+positive's frame count = `extra.frames` and its features = the committed
+shard's rows); the band-energy alignment on a planted 1 kHz burst (peak at
+or before hop *e* // 160 + 1, the score at *h* ≥ 0.32 and at *h* + 1 ≥ 0.96,
+at most 0.979 at *h* + 2, 0 from *h* + 3, measured); the hold-out record
+over soundfile-written FLACs (verify passes, one flipped byte refused naming
+the file, the talker / consent / uses refusals, the set id changing when a
+row is dropped and unchanged by a duplicate row, a second spelling or a
+second row with one sha256 refused at load, two rows resolving to one file
+refused by `verify_holdout`, a 22.05 kHz FLAC refused by name, and
+`kws_eval.py holdout` writing a report with the record's set id then refusing
+the altered tier with nothing written); and the three CLIs refusing a
+missing store with `refused:` and rc 2.

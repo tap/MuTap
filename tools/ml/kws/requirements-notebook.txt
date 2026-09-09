@@ -1,0 +1,7 @@
+# The DET notebook's toolchain (tools/ml/build_kws_det_notebook.py -> notebooks/kws_det.ipynb), on top of
+# requirements.txt. Not installed in CI: the DET evaluation is the notebook verification layer, executed
+# and committed by hand on the M0 Mac (wake-word plan §7). Versions as installed 9 September 2026.
+nbformat==5.11.1
+nbclient==0.11.0
+ipykernel==7.3.0
+matplotlib==3.11.1
