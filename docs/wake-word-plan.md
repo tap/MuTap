@@ -1,12 +1,17 @@
 # Building `mutap.wake~` — implementation proposal
 
-*Proposal, rev 2 — 4 September 2026; **in progress**: M0 decided, M1 done
+*Proposal, rev 3 — 8 September 2026; **in progress**: M0 decided, M1 done
 (DspTap), M2 done (MuTap) and M3 done (DspTap · MuTap), each with a dated
 record of measured numbers under its milestone in §6. Background and
 corpus survey in [`wake-word-briefing.md`](wake-word-briefing.md). Rev 2
-carries every amendment from the [adversarial audit](wake-word-audit.md) of
-rev 1; the audit refers to rev 1's milestone numbers, and the mapping is given
-in §6.*
+carried every amendment from the [adversarial audit](wake-word-audit.md) of
+rev 1; rev 3 rewrites §6 M4 per the [M4 review](wake-word-m4-review.md) and
+the two decisions of 8 September 2026 recorded in HANDOFF.md (hold-out audio
+out of git; training features from the shipping front end through
+`dsptap_py.LogMel`). M4 is staged M4a → M4b → M4c; the milestone numbering is
+unchanged. The audit refers to rev 1's milestone numbers (the mapping is given
+in §6); the review's line numbers refer to rev 2's M4 section, which rev 3
+replaces.*
 
 Formatted version: <https://claude.ai/code/artifact/341309d6-52dc-4d86-896c-2bcdd9534163>
 
@@ -111,17 +116,17 @@ synthetic positives are the least clean input, not the cleanest.
 
 | Component | Licence | Role | Shippable? |
 |---|---|---|---|
-| Speech Commands v2 | CC BY 4.0 | Benchmark; harness bring-up (M5 runs on this first) | yes, with attribution |
+| Speech Commands v2 | CC BY 4.0 | Benchmark; ingested at M4a; harness bring-up (M5 runs on this first) | yes, with attribution |
 | MSWC | CC BY 4.0; no-reidentification term | Hard negatives, phonetic near-misses. **Force-aligned out of Common Voice** — splits must be speaker-disjoint across both. | yes, with attribution |
-| Common Voice | CC0; no-reidentification term | Bulk negatives | yes |
+| Common Voice | CC0 licence; Mozilla Data Collective Data Consumer terms: account, no re-identification, no re-hosting outside the platform | Bulk negatives, by Data Collective dataset id | audio never redistributed; derived weights yes |
 | AMI Meeting Corpus | CC BY 4.0 | Conversational negatives | yes, with attribution |
-| MUSAN | CC BY 4.0 | Additive noise; its music partition also serves as **evaluation negatives** — a Max user's room has music in it | yes, with attribution |
+| MUSAN | CC BY 4.0 (per-directory `LICENSE` files) | Noise and speech partitions for augmentation; music per the M4 split axis — a train music share and the frozen, artist-disjoint eval music share, de-duplicated against FMA — because a Max user's room has music in it | yes, with per-file attribution |
 | Free Music Archive (CC BY / CC0 subset only) | per track | Bulk music negatives beyond MUSAN's ~42 h, filtered to permissive tracks by the manifest | yes, with attribution per track |
 | OpenSLR SLR28 | Apache 2.0 (simulated RIRs); real-RIR subset carries RWCP / REVERB / AIR third-party terms | Reverberation augmentation | simulated subset yes; **real subset only after its upstream terms are checked** |
-| Piper + `piper-sample-generator` | MIT (code); **voice models carry their training corpus's terms**. Verified at M0 from the per-voice model cards: most English Piper voices — `libritts_r`, `vctk`, `arctic`, `l2arctic`, `joe`, `kusal`, and the whole en_GB set except `cori` — are *fine-tuned from* the Lessac voice and inherit its research-only lineage; `hfc_*` and `semaine` are on NC datasets; `bryce`, `danny`, `kathleen`, `amy` have unverifiable base voices | Synthetic positives, TTS-derived | code yes, with the sample generator's own LibriTTS-R `.pt` generator **excluded** (base unverified); voices: **`en_US-libritts-high`** (from scratch, LibriTTS train-clean-360, CC BY 4.0, 904 speakers), **`en_US-kristin-medium`** (from scratch, LibriVox, public domain), **`en_US-john-medium`** (fine-tuned from Kristin), **`en_GB-cori-high`** (from scratch, LibriVox, public domain) |
+| `piper-tts` ≥ 1.3 + `piper-sample-generator` | `piper-tts` GPL-3.0-or-later (espeak-ng embedded) — a build-time tool invoked as a subprocess, never imported by distributed code, never redistributed; its output is not a covered work. Sample generator MIT. **Voice models carry their training corpus's terms.** Verified at M0 from the per-voice model cards: most English Piper voices — `libritts_r`, `vctk`, `arctic`, `l2arctic`, `joe`, `kusal`, and the whole en_GB set except `cori` — are *fine-tuned from* the Lessac voice and inherit its research-only lineage; `hfc_*` and `semaine` are on NC datasets; `bryce`, `danny`, `kathleen`, `amy` have unverifiable base voices | Synthetic positives, TTS-derived | code yes, with the sample generator's own LibriTTS-R `.pt` generator **excluded: Lessac lineage** (the `libritts_r` checkpoint; loads with `weights_only=False`); voices: **`en_US-libritts-high`** (from scratch, LibriTTS train-clean-360, CC BY 4.0, 904 speakers), **`en_US-kristin-medium`** (from scratch, LibriVox, public domain), **`en_US-john-medium`** (fine-tuned from Kristin), **`en_GB-cori-high`** (from scratch, LibriVox, public domain) |
 | openWakeWord / microWakeWord | Apache 2.0 (code); models CC BY-NC-SA 4.0; pre-computed feature sets CC BY-NC with WHAM / CHiME-6 upstream | Design reference only | design yes — **no code, models or feature sets imported**; every feature shard regenerated from manifest audio |
 | Hey Snips, Qualcomm KSD | research / NC | Comparison only, if at all | **no** |
-| Recorded hold-out set | ours; consent and permitted use recorded per talker | The evaluation set | committed only with its consent row |
+| Recorded hold-out set | ours; consent scope and permitted uses recorded per talker under the committed template (evaluation, indefinite retention, M7 replay, aggregate publication, pseudonymity, withdrawal from the tip — rows stay in history); optional per-talker CC BY 4.0 opt-in attributed to the collection | The evaluation set | audio never in git — FLAC in the off-git store, only `holdout.json` committed; an opted-in subset may be released later under CC BY 4.0 |
 | PyTorch | BSD-3 | Trainer | never shipped — inference is dependency-free |
 | Trained spotter weights | ours, derived from CC BY inputs | The deliverable | yes, **with attribution delivered**: a provenance block in the MUKW payload and a notices file in the Max package |
 
@@ -215,9 +220,10 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
 
 - Geometry as a value, carried by the weights and validated at load; the
   validator accepts any hop ≥ 1, not only powers of two.
-- Label form the model was trained with (clip-level with tracked endpoint,
-  frame-aligned, or alignment-free) and the head shape (single-class or
-  per-word) — decided in M4, recorded in the header.
+- Label form the model was trained with (clip-level with tracked endpoint, or
+  frame-aligned) and the head shape (single-class or per-word) — decided in M6
+  from the label data M4 stores (keyword end sample and tolerance *T* in
+  hops), recorded in the header together with *T*.
 - Posterior smoothing window, confidence window, combination rule, refractory
   period — all as numbers, all settable, all defaulted, **all carried in the
   MUKW payload** alongside the threshold, so a retrain updates one place and
@@ -227,6 +233,10 @@ the *values*; `log_mel.h` for the *formulas*. Retraining never touches DspTap.
   load; a mismatch is refused with a message naming both versions. Under the
   runtime-first release users train against a pipeline that will move, and
   this is what keeps an old model from silently degrading on a new external.
+- The **provenance block**: corpus-level source ids, the lock's `eval_set_id`
+  per eval share and the hold-out set id, and the dataset card's hash and URI
+  — never per-track text, which lives in `ATTRIBUTION.csv` and the M8 notices
+  — about 2 KiB, with its own byte budget outside the §7 weights ceiling.
 - Detection latency: hops from phrase end to the bang, as a number.
 - Streaming-state policy (reset per window or carried) if a recurrent layer is
   present.
@@ -299,12 +309,15 @@ training runs, and a per-run time target).
    `alba`, `aru`, `northern_english_male`, `semaine`), the NC-dataset voices
    (`hfc_*`, `semaine`), the voices with unverifiable base models (`bryce`,
    `danny`, `kathleen`, `amy`), and the sample generator's bundled LibriTTS-R
-   `.pt` generator until its base voice is verified. Attribution text for
-   LibriTTS goes in the dataset card.
+   `.pt` generator (Lessac lineage). Attribution text for LibriTTS goes in
+   the dataset card.
 
-**Compute:** an Apple Silicon Mac; the trainer gains `--device mps`; per-run
-target under an hour on the 50 h development set. The remote containers are
-for the C++ and the harness, never the corpus.
+**Compute:** an Apple Silicon Mac for corpus assembly (M4, in a pinned
+Python ≥ 3.10 environment; its system Python is 3.9.6) and training (M6,
+where the trainer gains `--device mps`); per-run target under an hour on the
+50 h selection subset — a named manifest subset of training negatives (M4).
+The remote containers are for the C++, the harness and the toy CI fixture,
+never the corpus.
 
 ### M1 — The mel front end, and the decimator *(DspTap)*
 
@@ -320,8 +333,15 @@ committed, is the reference M1 is scored against — the family has no
 reference mel today, and M1's pass needs one that exists before the C++ does.
 *As built:* it lives in DspTap as `tools/reference/make_frontend_reference.py`
 (numpy only, generating `tests/reference/frontend_vectors.h`), not in MuTap,
-so there is exactly one numpy copy of the formulas in the family; M4's
-`kws_features.py` imports it through the submodule rather than restating it.
+so there is exactly one numpy copy of the formulas in the family. It is the
+oracle: M4's `kws_features.py` computes training features through the
+shipping front end (`dsptap_py.LogMel`, decided 8 September 2026) and imports
+the reference through the submodule for its parity self-check — at the
+reference geometry now, at the manifest geometry once the reference is
+parameterized (a small DspTap follow-up, not an M4 prerequisite) — and for the
+band-support assertion through its already-parameterized `mel_weights()`. The
+reference's own docstring, which says MuTap's KWS feature module imports it,
+describes that self-check import.
 
 Typed GoogleTest battery pinning every §5 contract point; float/double
 agreement measured, not assumed; C ABI exposure in `tools/capi` and the
@@ -470,68 +490,412 @@ tap/DspTap#15 merges); MuTap-Max's MuTap pin follows once MuTap's PR merges.
 
 ### M4 — Corpus, splits and dataset builder *(tools/ml/kws)*
 
-`kws_features.py` as source of truth for the feature *values* (the M1 numpy
-reference, now the real thing); Piper synthesis over lineage-verified voices;
-augmentation over MUSAN and the SLR28 simulated subset; hard-negative mining
-from MSWC by phonetic edit distance; bulk negatives from Common Voice and AMI.
-One command rebuilds the dataset from a committed manifest.
+Staged: **M4a** the builder and its contracts on a redistributable bring-up
+corpus (unblocks M5); **M4b** the full corpus, phrase, splits, lock and card;
+**M4c** the recorded hold-out, host path only. Training features come from the
+**shipping front end** (decided 8 September 2026, recorded in HANDOFF.md):
+`kws_features.py` holds the manifest's `log_mel_geometry` values as a frozen
+dataclass (the `features.py` `Geometry` pattern) and drives `dsptap_py.LogMel`
+through the DspTap C ABI, which takes every geometry field (1.5e-14 against the
+numpy reference at M1). `make_frontend_reference.py` stays the oracle M1 built.
+The module's self-check runs the bridge against it on M1's reference signal at
+the reference geometry, pinned at a measured tolerance; once the small DspTap
+follow-up that parameterizes the reference lands, the self-check also runs at
+the manifest geometry. That follow-up is not an M4a prerequisite, so geometry
+is tunable from the first build. Features are computed in double and stored
+float32. Because `log_mel.h` silently zero-fills a band with no FFT bin inside
+it, `kws_features.py` asserts band support at the chosen geometry through the
+reference's parameterized `mel_weights()` — every band has a bin of nonzero
+weight — before a frame is extracted. One builder, `kws_build.py`, rebuilds
+everything from the manifest in stages; it never downloads.
 
-Decided here, because the loss depends on it: the **label form** — clip-level
-with a tracked keyword endpoint, frame/word-aligned, or alignment-free — and the
-endpoint tolerance under RIR and tempo augmentation. Recorded in the manifest
-and the MUKW header.
+**Phrase:** `marvin` / `sheila` from Speech Commands stay the M5 bring-up
+positives, served from M4a's manifest. The development phrase is M4b's first
+act, before the synthesis, mining and one-shot consented session that depend
+on it: candidates (four syllables, unusual phonotactics, not a substring of
+common English) are scored by a recorded confusability table — MSWC English
+keywords within phone-level edit distance ≤ 1 and ≤ 2 of each word of the
+phrase, from the mining tool below, with syllable count and stress — and the
+chosen phrase and its table go in the manifest and the card. Never shipped
+(M0).
 
-**Splits:** train / dev / eval, speaker-disjoint, with MSWC clips assigned by
-their Common Voice client id so the two corpora cannot leak into each other.
-The eval negative set is named and never trained on; it is the FA/hour
-denominator for every number in this plan. It carries a **music share** —
-MUSAN's music partition and permissively licensed Free Music Archive tracks,
-never used in training — because a Max user's room has music playing in it
-and a false-accept rate measured on speech alone says nothing about that.
+**Sources and mining:** every input is a `sources[]` entry (Manifest, below)
+with an `origin` — a URL plus the human obtaining step for a store-only
+source, or a repository-relative path under `tools/ml/kws/fixtures/` for a
+committed one — and a `redistributable` flag: an origin inside the repository
+requires `redistributable: true`, and the builder refuses the manifest
+otherwise, which is how the toy fixture is kept to Speech Commands, MUSAN and
+SLR28 material; records (manifest rows, `holdout.json`) are not audio and are
+committed regardless. `fetch` never downloads: for a store-only source it
+verifies the archive a human placed under `<store>/archives/<source-id>/`, for
+a repository-relative origin it copies the file there — both against the
+manifest's sha256 and size — and every later stage refuses an unverified
+archive. Common Voice is CC0 but account-gated on Mozilla Data Collective under
+Data Consumer terms (no re-identification, no re-hosting outside the platform),
+so the manifest records Data Collective dataset ids, the one-time account step
+is a documented human action, and no Common Voice audio is ever committed or
+redistributed. MSWC's own splits, speaker-disjoint only per keyword, are
+discarded; AMI is taken from the single-distant-microphone array channel, the
+headset mix optionally a second condition labelled per clip; MUSAN's noise and
+speech partitions augment and its music follows the split axis below,
+attributed per file from its per-directory `LICENSE` files; FMA is filtered to
+CC BY / CC0 tracks by its per-track licence metadata (the release's
+`tracks.csv`, a pinned member of FMA's `sources[]` entry, so a renamed or
+altered file fails at `fetch`), licence recorded per track; SLR28 contributes
+its simulated subset only (Apache 2.0), the real-RIR subset staying out of
+`sources[]` until its RWCP / REVERB / AIR terms are checked (§4). Mining:
+grapheme-to-phoneme by espeak-ng — Piper's phonemizer, in the tooling table —
+with CMUdict where the word exists; distance is phone-level Levenshtein
+matched per word of the phrase against MSWC's keywords; distance-0 hits are
+excluded, a transcribed negative containing the whole phrase leaves every
+negative pool, and the mined list and phonemizer version are stored in the
+manifest so a lexicon update cannot move the negative set silently.
 
-**Manifest schema:** corpus release ids, archive checksums, decoder versions,
-`kws_features.py` contract version, split assignment, augmentation seeds.
-**Feature store:** a named location outside git (derived features for 300 h are
-≈ 17 GB float32); the repo carries manifests and the builder only.
+**Positives and augmentation:** positives are Piper synthesis over the four
+lineage-verified voices (M0). `piper-tts` ≥ 1.3 is GPL-3.0-or-later (espeak-ng
+embedded), runs ONNX Runtime on CPU, and is a build-time tool invoked as a
+subprocess in a `--jobs` process pool — never imported by distributed code,
+never redistributed, its output not a covered work; the sample generator's
+bundled `.pt` generator is excluded (Lessac lineage). Every clip records voice
+sha256, speaker id, length / noise / noise-w scales and text variant; speaker
+ids are driven explicitly — *N* positives per libritts speaker id and a floor
+share for the three single-speaker voices, both manifest fields. For every
+voice / speaker id used for positives the builder synthesizes at least as many
+**TTS negatives** — CC0 sentences, the phrase's words alone, near-miss phrases,
+reversed word order — with the same draws, augmentation and split assignment,
+so synthetic-versus-real cannot separate the classes. One augmentation
+distribution applies to both classes with a stated dry share, its ranges
+manifest fields: SNR against the same-split MUSAN noise share, MUSAN speech
+and the train music share, gain, speed factor (the endpoint scaled with it),
+RIR subset (within SLR28's simulated set) and RT60 range with the direct-path
+index recorded, microphone-path model; *K* draws per positive, one clean plus
+*M* noisy per negative. Augmentation is frozen into the store under the
+manifest seed, each clip naming its resolved draw, not a bare seed; every draw
+is a function of the manifest seed and the clip id alone — resolved in clip-id
+order before dispatch, or by keyed hash, never from a process-shared RNG — so
+the lock does not depend on `--jobs`, chunking or stage order; the trainer
+applies feature-domain masking only. Front-end state: positives are featurized
+embedded in ≥ 2 s of same-split negative material with one `reset()` per
+mixture — PCEN primes its smoother from the first frame after `reset()`, time
+constant −1/ln(1 − 0.025) ≈ 39.5 frames, a transient a running deployment
+never sees — the context length a manifest field; the store holds the
+plain-log path by default, and a PCEN tune is a rebuild. One resampler for
+every source and for the 22,050 Hz TTS output (441:320 to 16 kHz):
+`scipy.signal.resample_poly`, window parameters and scipy version in the lock;
+the shipping `decimate.h` is never in the training path and the card says so.
+The builder emits a class-balance table over source, real / synthetic, dry /
+augmented, voice, speaker id and condition.
 
-**Hold-out specification:** N talkers (target ≥ 10), distance × SNR condition
-matrix, owner, consent and permitted-use row per talker, target ≥ 200
-utterances. Recorded through **two microphone paths** — a host audio interface
-and the Pico 2 W example's own MEMS microphone — so both M6's and M7's
-operating points are measured on the path they ship on. Committed as a
-fixture with provenance, as the RIR fixtures are.
+**Label data:** for every positive the builder stores the keyword end sample
+*e* in the dry source — the end of the last 10 ms window above peak − *X* dB,
+*X* measured on the four voices at build and recorded — and propagates it
+analytically, never re-trimming after augmentation (an energy re-trim after
+RIR convolution lands late by about (*X*/60)·RT60 — the whole 20-hop §7
+ceiling already at *X* = 40 dB and RT60 = 0.3 s): *e*′ = round(*e*/*f*) under
+speed factor *f*, *e*″ = *e*′ + *d* with *d* the RIR's first sample within
+40 dB of its peak (the `make_rir_fixtures.py` onset rule), *e*‴ = *e*″ + the
+stream offset. The endpoint is stored as a 16 kHz sample index; under
+`log_mel.h`'s alignment (frame *t* is complete when sample (*t*+1)·160 − 1
+arrives) an endpoint at sample *n* is first covered by frame ⌊*n*/160⌋, which
+is its hop index *h*. Tolerance *T* in hops — the trim rule's spread across
+the length-scale draws, measured at build — is a manifest field, and M5's hit
+window is frames [*h* − *T*, *h* + 20 + *T*], so the §7 latency ceiling is a
+scoring rule. Speech Commands clips get endpoints by the same trim rule;
+hold-out utterances are annotated on the close-microphone take. Loss form and
+head shape are M6's, decided from this label data; *T* goes into the MUKW
+header beside the label form M6 records there.
 
-**Compute:** the trainer gains a `--device` path; a 50 h development negative
-set serves architecture selection, the full corpus only the final DET.
+**Splits:** train is what the trainer sees, the 50 h selection subset included;
+dev is where architecture, threshold and decision-stage constants are chosen;
+eval negatives and the hold-out are read once per release candidate with the
+dev-chosen threshold. Assignment is by rule — a keyed hash with a committed
+salt — per source: Common Voice `client_id`, MSWC clips joined to it by
+filename into the pinned release (the `SPEAKER` column cross-checked, agreement
+rate and unjoinable count recorded, unjoinable clips excluded from dev and
+eval); AMI participant set, since participants recur across meetings, a meeting
+whose participants span splits excluded; Piper voice + speaker id,
+single-speaker voices placed whole, `kristin` and `john` together; Speech
+Commands' official hash split; MUSAN noise files partitioned train / dev / eval
+by file id — the eval noise share exists for the hold-out's SNR mixing and
+never augments training or dev — and SLR28 simulated RIR files train / dev by
+file id (the hold-out's rooms are real). **Music is its own split axis** keyed
+by (source, artist, track): a train music share — additive background under
+both classes at the stated SNR range, and music-only negative hours — and a
+frozen eval music share, artist-disjoint, MUSAN's music de-duplicated against
+FMA, from which it is partly drawn. The eval share exists because a Max user's
+room has music playing in it and a false-accept rate measured on speech alone
+says nothing about that. The eval negative set is named, never trained on, and
+the FA/hour denominator for every number in this plan: **≥ 20 h speech and
+≥ 20 h music**, fixed and identical for every run including selection, hours
+counted from decoded durations by script. Beside every figure: with zero
+events in *H* hours the one-sided 95 % bound is ln 20 / *H* ≈ 3.0 / *H* FA/h
+(0.15 FA/h at 20 h), and at 1 FA/h the normal approximation to the 95 %
+Poisson interval on the count is ±1.96 √*H*, i.e. ±1.96 / √*H* relative
+(±44 % at 20 h, ±28 % at 50 h); M5's report prints the exact interval. TTS
+negatives whose voice / speaker id falls in eval form a third share,
+`eval-tts` — the synthetic-versus-real check on the eval side, M5's third
+column — hours counted by the same script and recorded in the lock with its
+own `eval_set_id` like the other two shares, outside the speech and music
+floors, which count real material only; no floor is set for it. TTS positives
+whose voice / speaker id falls in eval are the positive half of `eval-tts`,
+counted in the lock under the same `eval_set_id`; M5 prints their recall
+beside the hold-out's real recall as a descriptive figure — the §8
+synthetic-positive gap made visible — never a pass, since M6's operating point
+is measured on the hold-out alone. The splits are client-id-disjoint and
+clip-id-disjoint (an approximation of speaker-disjoint, recorded in the card),
+verified by `verify_splits.py` with five named rules: R1 client-id
+disjointness across Common Voice and MSWC; R2 no decoded-PCM sha256 of any
+dev, eval or hold-out file in a training or augmentation pool of any source,
+and no training or dev noise file in any hold-out mixture (that half planted
+as a lock row); R3 TTS voice + speaker-id disjointness; R4 AMI participant
+disjointness; R5 music artist disjointness after de-duplication. Each rule has
+a planted-violation fixture it must reject by name.
 
-Deliverable alongside the code: a **dataset card** — per-corpus counts, hours,
-licences, attribution text, the no-reidentification terms, and the voice
-lineage table.
+**Manifest:** `manifest.json` is a versioned document in three parts, two
+committed and one emitted. `sources[]`: release or Data Collective id, origin,
+sha256, size, licence id, attribution text, terms accepted and the date they
+were verified, `redistributable`, and role (train / aug / dev / eval-speech /
+eval-music / eval-noise / eval-tts / holdout). `recipe`: the geometry values
+and stored path, `log_mel_contract_version` (from
+`dsptap_log_mel_contract_version()`, today 1) kept separate from
+`kws_features_version` (the module's schema), phrase and confusability table,
+label rule and *T*, context length, the TTS block, mining method with
+phonemizer version and mined list, augmentation policy with *K*, *M* and the
+dry share, the split rule with its key per source and the committed salt,
+exclusion rules, the resampler, and the 50 h selection subset by name. The
+build-emitted `lock.json` beside the store: per clip decoded-PCM sha256,
+length, split, label, endpoint and resolved draw; per hold-out mixed take the
+noise file sha256 and level; per shard sha256 and frame count; per split ×
+class hours and counts, and the class-balance table; per eval share (speech,
+music, `eval-tts`) its `eval_set_id`, the sha256 of the sorted list of its
+clip ids (source id + clip name) — a pure function of `sources[]` and
+`recipe`, so it cannot change without a manifest hash change, and the
+lock-reproduction pass catches any drift; the hold-out set id (Hold-out,
+below); the toolchain — Python, numpy, scipy, soundfile, `piper-tts`,
+espeak-ng and ONNX Runtime versions, the DspTap submodule commit and the
+contract version — and the self-check's record, the geometries it ran at
+(reference only, or reference and manifest) with the measured tolerance at
+each. Lock fields are of two kinds. Identity fields — clip ids, split, label,
+endpoint sample, resolved draw, frame count per shard, per split × class
+counts and hours (from sample counts), the class-balance table, the
+`eval_set_id`s, the hold-out set id, and the decoded-PCM sha256 of any source
+stored as 16 kHz PCM — are reproduced exactly by every rebuild. Derived fields
+— the feature values, the per-shard sha256, the decoded-PCM sha256 of any
+lossy or resampled source, and the toolchain block — are reproduced exactly
+only by a rebuild on the M0 Mac in the pinned environment; elsewhere the
+features must agree within the tolerance written beside the assertion and the
+rest are recorded for the report, never compared. The M6 exporter reads
+`eval_set_id` and the hold-out set id from the lock into the MUKW provenance
+block. Every shard embeds, beside its feature arrays,
+`log_mel_contract_version`, the DspTap commit, the full geometry,
+`kws_features_version` and the manifest hash — `make_dataset.py` writes
+`geometry` into every `.npz`; that set extended — and the trainer refuses a
+mismatch as `train_suppressor.py` refuses mixed geometries. No demographic
+column (age, gender, accent) is copied from any source: the split key is the
+only per-person field held.
 
-**Pass:** dataset rebuilds from the manifest on a clean checkout with the feature
-store mounted; every hour of audio accounted for with a licence; splits verified
-speaker-disjoint by script; hold-out fixture committed with its consent rows.
+**Feature store:** `--store` or `MUTAP_KWS_STORE`, no personal default. Tiers:
+`<store>/archives/<source-id>/` (verified inputs, sha256-keyed); `<store>/pcm/`
+(decoded 16 kHz clips keyed by archive digest + decoder + resampler ids —
+mandatory for the eval split and, decoded from `<store>/holdout/`, for the
+hold-out, since M5–M7 consume samples: the 40 h eval floor as int16 is
+40 × 3600 × 16000 × 2 B = 4.6 GB); `<store>/features/<manifest-hash>/<split>/`
+with `lock.json` beside them; `<store>/holdout/` (M4c). The manifest hash
+covers `sources[]` and `recipe`, so any change yields a new directory and
+stale shards are refused by hash. Budget, as arithmetic on stated inputs:
+archives of the order of 180 GB (`fetch` records the exact figure); decoded
+pcm at int16 for the 300 h corpus, 300 × 3600 × 16000 × 2 B = 34.56 GB, the
+4.6 GB eval tier included; features 300 h × 3600 × 100 frames/s × 40 bands ×
+4 B = 17.28 GB per stored variant (57.6 MB/h), and the frozen augmentation
+stores 1 + *M* variants per negative and *K* per positive, so the feature
+tier is 17.28 GB × (1 + *M*) plus the positives' draws — about 250 GB in all
+at *M* = 1 against the Mac's ~377 GiB free; 50 h of features is 2.88 GB per
+variant. `features/` and training-split `pcm/` are regenerable and may be
+deleted, eval `pcm/` is regenerated before any DET, `archives/` and `holdout/`
+never go. Ingestion: checksum before extraction, filtered tar members, voices
+only as pinned `.onnx` + `.json`, no `torch.load` of anything.
+
+**Dataset card:** `kws_dataset_card.py` renders `tools/ml/kws/DATASET.md` and
+`ATTRIBUTION.csv` from the manifest and lock — nothing in the card is typed by
+hand, so "every hour accounted for with a licence" is a script output:
+per-source counts, hours and licences with their verification dates; MUSAN's
+per-file and FMA's per-track attribution merged; the Data Collective and
+no-reidentification terms; the partition table and the client-id
+approximation; the voice lineage and build-time tooling tables (name, pinned
+version, licence, role — `piper-tts` and espeak-ng GPL subprocess tools, never
+redistributed, the same entry M4a adds to `THIRD_PARTY_NOTICES.md` so its
+"nothing GPL-encumbered" sentence stays true and says why); the phrase,
+class-balance and resampler statements, and the self-check statement (a
+manifest geometry the reference cannot yet run at is covered by the bridge and
+DspTap's typed `log_mel` battery alone, and the card says so); the toy set's
+provenance; the hold-out's repository privacy statement, distinct from §5's
+runtime one — what a `holdout.json` row holds (FLAC sha256, pseudonym, path,
+distance, SNR, phrase, endpoint, form version; no audio, form or name), that a
+hash reveals nothing without the file, and the withdrawal procedure with its
+history limit; the hand-run full-rebuild record. Its test plants an unlicensed
+clip and a CC BY-NC FMA track and requires both to fail. The M6 exporter's
+provenance block and the M8 notices derive from `ATTRIBUTION.csv`; the MUKW
+block itself is corpus-level ids plus the card's hash and URI (~2 KiB),
+budgeted outside the §7 weights ceiling.
+
+**Hold-out:** the talkers' audio **stays out of git** (decided 8 September
+2026, recorded in HANDOFF.md). It lives as FLAC under `<store>/holdout/` or as
+a private release asset; the repository commits only the record,
+`holdout.json` — per utterance: sha256 of the FLAC file (the lock keeps the
+decoded-PCM sha256 R2 uses), talker pseudonym, microphone path, distance, SNR,
+phrase, endpoint sample; per talker: pseudonym, consent-form version,
+permitted uses. The `holdout` row in `sources[]` carries as its sha256 the
+hash of the sorted per-utterance FLAC hashes — the **hold-out set id** — so a
+withdrawal changes it, and with it the manifest hash; every M6 and M7 figure
+names the hold-out set id it was measured against and is re-measured, never
+edited, after a withdrawal. The builder verifies the FLAC files under
+`<store>/holdout/` against those rows as `fetch` verifies archives, and the M5
+harness refuses a hold-out whose file hashes do not match — the RIR
+precedent's provenance-or-refuse rule without its C-header encoding; no
+licence is asserted over the audio, since none is redistributed by default.
+Consent scope, in a committed template: evaluation use by the project,
+indefinite retention, loudspeaker replay at M7, publication of aggregate
+numbers, pseudonymous handling and a working withdrawal path (files deleted,
+rows dropped, `holdout.json` re-versioned — the withdrawn rows, hashes and
+conditions only, stay readable in the repository's history and forks, and the
+template says so) — never public-repo permanence of the audio — plus one
+optional per-talker opt-in, "may be published under CC BY 4.0, attributed to
+the collection, not to me", so an opted-in subset can be released later
+without re-consenting anyone. Signed forms live off-repo, referenced by
+pseudonym and form version. Session protocol, host path only: two-channel
+simultaneous capture through the host audio interface — a close microphone
+(the dry take; endpoints annotated on it; the replay source at M7) and a room
+microphone at each stated distance (the evaluation take); SNR realised by
+post-hoc mixing of eval-noise-share files into the room take at metered levels
+— each mixed take a builder output whose resolved draw (noise file sha256,
+level) goes in the lock, not in `holdout.json` — stated in the header's
+honest-limits block; talkers speak the M4b phrase and, optionally, non-target
+read speech. The Pico-microphone path is produced at M7 by loudspeaker replay
+of the dry take through the board's own microphone, which the consent covers.
+Size is a store matter (200 utterances × 2 s × 16 kHz × 2 channels × 2 B =
+25.6 MB as int16). The pilot is n = 1 (the owner); the **≥ 10 talkers / ≥ 200
+utterances on the host path** target (the Pico path inherits the count by
+replay at M7) and recall with its Wilson interval are M6's pass precondition —
+190 of 200 hits reads 95.0 %, interval [91.0 %, 97.3 %], so per-condition
+counts are descriptive, never a pass; the pilot — one talker, however many
+utterances — proves the mechanics, not a number.
+
+**Compute and environment:** the M0 Mac; a pinned Python ≥ 3.10 environment
+(the system 3.9.6 cannot host current numpy, torch or onnxruntime) with every
+package version in the lock; `--jobs` runs the stages in a process pool;
+synthesis rate and per-stage wall times are measured at build and written into
+M4b's Done record, not estimated here. The 50 h selection subset is a named
+manifest subset of *training* negatives for selection runs; the final model
+trains on the full training split. `--device mps` belongs to M6's trainer. The
+remote containers run the C++, the harness and the toy CI job, never the
+corpus.
+
+**M4a — Builder, contracts and bring-up corpus** (unblocks M5; no prerequisite
+beyond the current DspTap pin). **Deliverables:** `kws_features.py` (dataclass,
+bridge, band-support assertion, self-check); the `manifest.json` schema and
+`lock.json` format; `kws_build.py` with its seven subcommands
+`fetch` · `decode` · `synth` · `augment` · `extract` · `shard` · `all`,
+`--store` and `--jobs`, refusing unverified archives — `synth` exercised by
+hand on the Mac over one pinned voice, since the toy fixture carries no voice,
+its emitted lock rows carrying every per-clip TTS field and resolved draw, the
+resampler record included, and that lock excerpt kept as the hand-run record
+the card cites (audio in the store, never in git); `verify_splits.py` with
+R1–R5 and their planted fixtures; `kws_dataset_card.py` with its planted-clip
+test; Speech Commands v2 ingested (official split, trim-rule endpoints, licence
+row); the toy fixture under `tools/ml/kws/fixtures/toy/` — a handful of Speech
+Commands clips, a few seconds of MUSAN noise and music, one SLR28 simulated
+RIR and an excerpt of the MSWC English keyword list as text (what the training
+guide's toy mining run matches against), all CC BY 4.0 / Apache 2.0, ≤ 1 MB,
+never Common Voice — with its committed expected lock and feature vectors; the
+`THIRD_PARTY_NOTICES.md` entry for `piper-tts` / espeak-ng as build-time
+subprocess tools never redistributed; the `kws-dataset` CI job on the
+`nn-parity` pattern, with the DspTap C ABI built and the builder's Python
+imports (scipy, soundfile) installed beside numpy. **Pass:** the toy manifest
+rebuilds into an empty store in CI and reproduces the committed lock's
+identity fields exactly and its features within the tolerance written beside
+the assertion, and the toy lock is byte-identical between `--jobs 1` and
+`--jobs 4` on the same host; a corrupted archive checksum is refused; each
+planted leak fixture is rejected by rule name; the planted unlicensed clip and
+NC track fail the card test; the self-check holds at the reference geometry; a
+toy source whose origin is in the repository but whose `redistributable` is
+false is refused. M5's bring-up starts on this output.
+
+**M4b — The full corpus** (parallel with M5's bring-up). **Deliverables:** the
+phrase and its table, first; Piper positives and TTS negatives; MSWC mining
+with the mined list stored; Common Voice, AMI, MUSAN, FMA and SLR28's
+simulated subset with roles and licence rows and the account step documented;
+splits by the stated key per source; the eval split with its `eval_set_id` per
+share; the 50 h selection subset; the frozen-augmentation store on the M0 Mac;
+the generated `DATASET.md` and `ATTRIBUTION.csv`; measured stage wall times
+and synthesis rate in the Done record. **Pass:** the full lock reproduces
+exactly on the M0 Mac from verified archives into an empty store (elsewhere:
+identity fields exactly, features within the measured tolerance); eval
+speech and music hours ≥ 20 h each, `eval-tts` hours recorded, and the
+class-balance table free of any class-pure attribute, all by script;
+`verify_splits.py` green on all five rules over all sources; every clip maps to
+a licensed, role-tagged source and the card is generated, not typed; label data
+and *T* present for every positive; positive and TTS-negative counts per
+voice / speaker id equal the manifest's *N* and floor share, with TTS
+negatives ≥ positives for every voice / speaker id, checked by script from the
+lock's per-clip voice sha256 and speaker id; phrase recorded and the mined set
+non-empty and listed.
+
+**M4c — The hold-out, host path** (before or alongside M6's training; nothing
+in M5 waits on it). **Deliverables, in this order:** the consent template with
+the scope above and the CC BY 4.0 opt-in, pseudonymous ids, off-repo forms, the
+privacy statement in `DATASET.md`; `holdout.json`'s format and the
+`<store>/holdout/` location; the session protocol; the recording and validation
+scripts (rate, duration, clipping, endpoint present, a talker row keyed to
+every file); planted record fixtures under `tools/ml/kws/fixtures/toy/holdout/`
+— `holdout.json` variants with a missing talker row, an unknown consent-form
+version, permitted uses lacking evaluation or M7 replay, and a row whose
+sha256 does not match the toy clip it names, plus a lock fragment whose
+hold-out mixed-take draw names a train noise file (R2's hold-out half) — no
+talker audio, the stand-in file a toy Speech Commands clip already in the
+fixture; the n = 1 pilot in the store with its rows committed and the
+`holdout` row in `sources[]`. **Pass, in CI on the planted records:** the
+builder refuses each variant by name and `verify_splits.py` rejects the
+planted draw as R2. **By hand on the M0 Mac, recorded in the Done record:** the
+pilot's FLAC hashes verify against `holdout.json` and the `holdout` row's
+sha256 equals the hash of the committed rows' file hashes; its mixed takes
+draw only from eval-noise files (R2 over the lock's draws); the M5 harness runs
+it end to end — through M5's band-energy sanity baseline, or M6's engine
+through the C ABI once it exists — forming every utterance's hit window
+[*h* − *T*, *h* + 20 + *T*] from its `holdout.json` endpoint, consuming every
+mixed take and reporting per condition (a mechanics check, never a recall
+figure), and refuses a copy with one altered file; every committed row is
+pseudonymous, under a template that states the withdrawn row's history
+permanence, with any CC BY opt-in recorded per talker; and no audio, form or
+name is tracked by git.
 
 ### M5 — The evaluation harness, before any model *(tools/ml · tests)*
 
 DET curve tooling: false-rejection rate against false-accepts-per-hour, with the
-scoring semantics **defined as numbers**: hit window around each positive's
-endpoint, one hit per utterance, false-accept merging under the refractory
-period, the hours denominator from the eval negative set. Threshold sweep and a
-committed report format that reports false accepts per hour **separately on
-speech and on music**.
+scoring semantics **defined as numbers**: the hit window
+[*h* − *T*, *h* + 20 + *T*] frames around each positive, *h* = ⌊*e*/160⌋
+the hop index of its manifest endpoint sample *e*, *T* the manifest's
+tolerance in hops and 20 the §7 latency ceiling; one hit per utterance;
+false-accept merging under the refractory period; the hours denominator from
+the eval negative set's decoded durations. Threshold sweep and a committed
+report format that reports false accepts per hour **separately on speech, on
+music and on TTS speech**, with `eval-tts` recall printed beside the hold-out's
+recall as a descriptive gap figure, every FA/h figure printed with its hours
+*H* and exact Poisson 95 % interval and, at zero events, the one-sided 95 %
+upper bound ln 20 / *H* ≈ 3.0 / *H*.
 
-Brought up on **Speech Commands** (`marvin` / `sheila` as name-shaped
-positives) so it precedes M0's phrase and M4's corpus, then pointed at M4's
-splits. Runs the engine through the C ABI so it measures shipping code; the
-Python model is for training-time validation only.
+Starts on **M4a's Speech Commands manifest** (`marvin` / `sheila` as
+name-shaped positives, endpoints by M4's trim rule, the official hash split),
+so it waits on neither gated corpora nor M4's phrase, and is pointed at M4b's
+splits and `eval_set_id` when they exist. Refuses a hold-out whose file hashes
+do not match the committed `holdout.json` rows. Runs the engine through the
+C ABI so it measures shipping code; the Python model is for training-time
+validation only.
 
 **Pass — a test that can fail:** a planted-event oracle. Synthetic streams with
 known positive endpoints and known false-accept placements, scored by the
 harness against hand-computed recall and FA/hour, exact to the utterance; a
 deliberately mis-accounted variant must be rejected. The trivial band-energy
-baseline is run as a sanity curve, not as the pass. Harness↔`kws.h` decision
-stage parity pinned on the same streams.
+baseline is run as a sanity curve, not as the pass.
 
 ### M6 — The spotter *(MuTap)*
 
@@ -548,14 +912,22 @@ events with sample timestamps) and its `mutap_ffi` binding; `tools/ml/README.md`
 re-scoped to two tasks.
 
 Architecture — DS-CNN, dilated TDNN, or GRU — decided here by measurement on
-**two axes**: the M5 DET on the development set, and cost against the §7
-ceilings.
+**two axes**: the M5 DET on the manifest's dev split — never on the 50 h
+selection subset, which is training data — and cost against the §7 ceilings.
 
 **Pass:** parity with the trainer to float tolerance in both profiles, CI-run;
-the streaming fixture passes; a stated operating point measured **through the
-C ABI on the recorded hold-out set** and committed as a regression baseline;
-attribution block present in the exporter output. Target to aim at: ≥ 95 %
-recall at ≤ 1 false accept per hour on the named eval negative set, on its
+the streaming fixture passes; harness ↔ `kws.h` decision-stage parity pinned
+on M5's planted streams; the trainer's validation set is the manifest's dev
+split, never a random permutation; the exporter reads
+`log_mel_contract_version` and *T* from the manifest and `eval_set_id` and
+the hold-out set id from its lock into the MUKW payload; a stated operating
+point measured **through the C ABI on the recorded hold-out set** —
+precondition **≥ 10 talkers and ≥ 200 utterances on the host path**, recall
+reported with its Wilson interval and per-condition counts descriptive —
+committed as a regression baseline recorded against that hold-out set id;
+attribution block present in the exporter output, derived from
+`ATTRIBUTION.csv`. Target to aim at: ≥ 95 % recall at ≤ 1 false accept per
+hour on the named eval negative set (≥ 20 h speech, ≥ 20 h music), on its
 speech and its music share alike — a first-release target, looser than the
 briefing's product figure. Whatever is achieved is what gets written down.
 
@@ -584,11 +956,14 @@ detection-over-Wi-Fi demo is a natural follow-up, not a deliverable — and one
 that must share the RP2350's three PIO blocks between the I²S microphone and
 the wireless chip's PIO-driven SPI.
 
-**Bench protocol, so the hardware pass can fail.** The recorded hold-out set
-(its Pico-microphone path) and one hour of the eval negatives, speech and
-music, played through a loudspeaker at a stated distance and level, with the
-board's bang line logged; hits and false accepts counted by the M5 harness's
-own scoring rules; recall and FA/hour committed beside the host figures.
+**Bench protocol, so the hardware pass can fail.** The hold-out's
+**Pico-microphone path is produced here**: the M4c close-microphone dry takes
+and one hour of the eval negatives, speech and music, played through a
+loudspeaker at a stated distance and level into the board's own microphone
+(the consent template covers replay), with the board's bang line logged; hits
+and false accepts counted by the M5 harness's own scoring rules; recall and
+FA/hour committed beside the host figures against the same hold-out set id,
+noting that the 1 h bench bounds only ≤ 3 FA/h at zero events.
 
 **Built in CI.** A `pico2w` job beside the QEMU legs: the `arm-none-eabi-gcc`
 the M33/M55 legs already install, a Pico SDK checkout pinned by tag and
@@ -651,16 +1026,16 @@ the product's primary document.
 |---|---|---|---|
 | Header docstrings | `log_mel.h`, `decimate.h`, `nn/`, `kws.h` | M1, M3, M6 | Every §5 contract point as a number; the honest-limits block |
 | DspTap README | `README.md` | M1, M3 | A section per primitive, count bumped, per the checklist |
-| Dataset card | `tools/ml/kws/DATASET.md` | M4 | Counts, hours, licences, attribution text, no-reidentification terms, voice lineage table |
+| Dataset card | `tools/ml/kws/DATASET.md` + `ATTRIBUTION.csv`, generated by `kws_dataset_card.py` | M4 | Counts and hours per split × class, licences, attribution, Data Collective and no-reidentification terms, partition table, voice lineage table, build-time tooling table, phrase and confusability table, repository privacy statement, hand-run rebuild record |
 | Pipeline reference | `tools/ml/README.md`, re-scoped | M6 | Both tasks; the spotter's benchmark beside the suppressor's |
-| **Training guide** | `book/src/train-your-own-phrase.md` + `tools/ml/kws/README.md` | draft M6, final M8 | Choosing a phrase (syllables, confusables); verifying a voice's lineage; synthesizing positives; which negatives and how many; running the splits; training on a named device; reading a DET curve and choosing a threshold; exporting MUKW; loading it in `mutap.wake~`; recording a small hold-out of your own voice. **Its commands are a script, and CI runs that script on a toy corpus**, so the guide cannot drift from the pipeline. The toy run installs torch and one lineage-cleared Piper voice in its job, synthesizes a handful of clips, uses a committed tiny negative set rather than downloading any corpus, and has a stated time budget. |
+| **Training guide** | `book/src/train-your-own-phrase.md` + `tools/ml/kws/README.md` | draft M6, final M8 | Choosing a phrase (syllables, confusables); verifying a voice's lineage; synthesizing positives; which negatives and how many; running the splits; training on a named device; reading a DET curve and choosing a threshold; exporting MUKW; loading it in `mutap.wake~`; recording a small hold-out of your own voice. **Its commands are a script, and CI runs that script on a toy corpus**, so the guide cannot drift from the pipeline. The toy run installs torch and one lineage-cleared Piper voice in its job, synthesizes a handful of clips, uses the committed M4a toy fixture (`tools/ml/kws/fixtures/toy/`, redistributable sources only) rather than downloading any corpus, in the `kws-dataset` CI job's manner, exercises the MSWC mining on it, and has a stated time budget. |
 | Executed DET notebook | `notebooks/`, script-built | M5 onward | The performance record, through the C ABI |
 | Book chapter | `book/src/wake-word.md` | M8 | The spotter's design and measured numbers |
 | Max reference and help | `docs/mutap.wake~.maxref.xml`, `help/mutap.wake~.maxhelp` | M8 | Attributes, both host-rate patches, a tab pointing at the training guide |
 | README status rows | MuTap, MuTap-Max | M8 | Status, roadmap, charter sentence |
 | Package notices | MuTap-Max `NOTICES.md` | M8 | The dataset card's attribution text, where a user of the external sees it |
 | Pico 2 W example README | `examples/pico2w/README.md` | M7 | Wiring, flashing the CI-built UF2, building locally against the Pico SDK, the measured cycle count |
-| HANDOFF | `HANDOFF.md` | M0, M8 | The five decisions; end state for the next session |
+| HANDOFF | `HANDOFF.md` | M0, M4, M8 | The five M0 decisions; the two M4 decisions of 8 September 2026 (hold-out audio out of git, only `holdout.json` committed; training features from the shipping front end through `dsptap_py.LogMel`); the dated done record per milestone; end state for the next session |
 
 > **Sequencing note.** M1, M2 and M3 are worth doing regardless of whether the
 > wake word ships. A mel front end is a primitive several Tap libraries would
@@ -725,9 +1100,21 @@ surprising.
 **The corpus is a disk, compute and time problem.** Hundreds of hours of
 negatives is hundreds of gigabytes decoded and tens of gigabytes of features;
 the reference trainer is CPU-only and took hours per hour of audio; TTS
-synthesis is a PyTorch pipeline of its own. Corpus assembly and training happen
-on named hardware (M0), the feature store lives outside git (M4), and the repo
-carries manifests, the builder, and the executed notebook.
+synthesis is its own toolchain — `piper-tts` running the `.onnx` voices through
+ONNX Runtime on CPU, GPL-3 and subprocess-only — with its rate measured at M4b.
+Corpus assembly and training happen on named hardware (M0), the feature store
+lives outside git (M4), and the repo carries manifests, the builder,
+`holdout.json` and the executed notebook.
+
+**Corpus and toolchain access drift.** Two facts moved under the plan between
+rev 2 and the M4 review: the maintained Piper became GPL-3 and Common Voice
+became account-gated on Mozilla Data Collective with a no-re-hosting clause.
+Mitigation: release and Data Collective ids and archive checksums pinned in the
+manifest, verified archives retained in the store, every licence row dated at
+verification in the generated card, the toy CI fixture drawn only from
+redistributable sources, the hold-out audio kept out of git so no term change
+can strand a commit, and the builder never downloading — a source that changes
+terms is noticed at `fetch`, not in a trained model.
 
 **Charter drift.** MuTap's charter is adaptive filters for audio cleaning, and
 its name is literally the LMS step size. A keyword spotter is neither. The
@@ -745,7 +1132,10 @@ buffering, VAD gating and multi-keyword models — named in the header's limits.
 **The plan's own weakest estimate.** M6's architecture and training loop is the
 only milestone with genuine unknowns. M1–M5 are known refactors and known
 harnesses. If a schedule is needed, treat M6 as the one to time-box with a
-decision point rather than estimate.
+decision point rather than estimate. M4's corpus acquisition and its consented
+recording session share that property — one-time account steps, external
+terms and other people's time — so they are time-boxed the same way, with
+M4a's builder and toy fixture the part that never waits.
 
 ## 9. Decisions, with the arguments
 
@@ -776,12 +1166,14 @@ fixed ADC clock would need, so it is not Max-only work.*
 
 **Release shape.** Runtime-first, or bundled weights.
 *Recommend runtime-first for the first release. This is a shortening, not a
-reorder: it removes the phrase as a blocking decision, the shipped dataset
-card, the recorded hold-out set and the declared operating point from the
-critical path, and adds a no-model state to the external and threshold
-semantics without a measured FA/hour. M4's builder and M5's harness remain the
-product a user trains with, and the training guide in §6 becomes its primary
-document. A bundled phrase follows once a recorded evaluation set exists.*
+reorder: it removes the phrase as a blocking decision, the *shipped* dataset
+card, the *shipped* hold-out set and the *shipped* operating point from the
+critical path — M4c, M6 and M7 still require a recorded hold-out for the
+development phrase (§8, the synthetic-positive gap) — and adds a no-model state
+to the external and threshold semantics without a measured FA/hour. M4's
+builder and M5's harness remain the product a user trains with, and the
+training guide in §6 becomes its primary document. A bundled phrase follows
+once a recorded evaluation set exists.*
 
 **The wake phrase.** Load-bearing only under bundled weights.
 *Yours to choose, when needed. Three to four syllables, unusual phonotactics,
@@ -811,5 +1203,10 @@ hours; the remote containers are for the C++ and the harness, not the corpus.*
 - Corpus licences summarized from the companion briefing and the audit's
   licensing lens, with limited network access, and require verification at the
   point of use.
-- Rev 2 supersedes rev 1; the audit's issue numbers refer to rev 1's sections
-  and milestones.
+- Corpus licences and terms for Common Voice, MSWC, AMI, MUSAN, FMA, SLR28,
+  Speech Commands and Piper were re-verified on the live pages by the M4 review
+  between 5 and 8 September 2026; they remain a starting point for diligence at
+  the point of use, not a legal opinion.
+- Rev 2 superseded rev 1; the audit's issue numbers refer to rev 1's sections
+  and milestones. Rev 3 supersedes rev 2; the M4 review's line numbers refer to
+  rev 2's M4 section.
