@@ -1,0 +1,6 @@
+# Pinned environment for tools/ml/kws (the M4 builder). Python >= 3.10.
+# Versions as installed on the M0 Mac, 9 September 2026 (uv, CPython 3.12.14);
+# the lock records what a build actually ran with.
+numpy==2.5.3
+scipy==1.18.1
+soundfile==0.14.0
