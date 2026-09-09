@@ -1,0 +1,196 @@
+{
+ "manifest_version": 1,
+ "name": "speech_commands_v2_bringup",
+ "sources": [
+  {
+   "id": "speech_commands_v0.02",
+   "kind": "speech_commands_v2",
+   "release": "v0.02",
+   "origin": {
+    "url": "http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz",
+    "obtain": "public download, no account; place the tarball under archives/speech_commands_v0.02/"
+   },
+   "archive": {
+    "file": "speech_commands_v0.02.tar.gz",
+    "sha256": "af14739ee7dc311471de98f5f9d2c9191b18aedfe957f4a6ff791c709868ff58",
+    "size": 2428923189
+   },
+   "licence": "CC-BY-4.0",
+   "attribution": "Warden, P. (2018). Speech Commands: A Dataset for Limited-Vocabulary Speech Recognition. arXiv:1804.03209. Creative Commons Attribution 4.0 International (CC BY 4.0). The full v0.02 release (105,829 clips, 35 keywords, official validation/testing lists); _background_noise_/ excluded",
+   "terms_accepted": "CC BY 4.0: attribution",
+   "terms_verified": "2026-09-08",
+   "redistributable": true,
+   "roles": [
+    "train",
+    "dev",
+    "eval-speech"
+   ],
+   "pcm_exact": true,
+   "options": {}
+  },
+  {
+   "id": "openslr_17_musan",
+   "kind": "musan",
+   "release": "SLR17",
+   "origin": {
+    "url": "https://www.openslr.org/resources/17/musan.tar.gz",
+    "obtain": "public download, no account; place musan.tar.gz under archives/openslr_17_musan/"
+   },
+   "archive": {
+    "file": "musan.tar.gz",
+    "sha256": "86d1061c7e15b5c9e906777685c519701df51bfde3001e1070dcc9ffac955ee1",
+    "size": 11086114085
+   },
+   "licence": "CC-BY-4.0",
+   "attribution": "Snyder, D., Chen, G. & Povey, D. (2015). MUSAN: A Music, Speech, and Noise Corpus. arXiv:1510.08484. OpenSLR SLR17, CC BY 4.0; the noise partition (free-sound and sound-bible subsets), attributed per file from each subset's LICENSE; noise-sound-bible-0000 excluded (no attribution block upstream)",
+   "terms_accepted": "CC BY 4.0: attribution",
+   "terms_verified": "2026-09-08",
+   "redistributable": true,
+   "roles": [
+    "aug",
+    "eval-noise"
+   ],
+   "pcm_exact": true,
+   "options": {
+    "partition": "noise",
+    "exclude": [
+     "noise-sound-bible-0000"
+    ]
+   }
+  },
+  {
+   "id": "openslr_28",
+   "kind": "openslr_28_simulated",
+   "release": "SLR28",
+   "origin": {
+    "url": "https://www.openslr.org/resources/28/rirs_noises.zip",
+    "obtain": "public download, no account; place rirs_noises.zip under archives/openslr_28/"
+   },
+   "archive": {
+    "file": "rirs_noises.zip",
+    "sha256": "3b50cfde915b3984738169b4beb341e9f6b8062ae4c2076146c5db71c2c05dc7",
+    "size": 1311166223
+   },
+   "licence": "Apache-2.0",
+   "attribution": "Ko, T., Peddinti, V., Povey, D., Seltzer, M. L. & Khudanpur, S. (2017). A study on data augmentation of reverberant speech for robust speech recognition. ICASSP 2017. OpenSLR SLR28, Apache License 2.0 (stated on the OpenSLR resource page); the simulated subset only",
+   "terms_accepted": "Apache License 2.0",
+   "terms_verified": "2026-09-08",
+   "redistributable": true,
+   "roles": [
+    "aug"
+   ],
+   "pcm_exact": true,
+   "options": {}
+  },
+  {
+   "id": "speech_commands_keywords",
+   "kind": "keyword_list",
+   "release": "v0.02",
+   "origin": {
+    "path": "tools/ml/kws/fixtures/toy"
+   },
+   "archive": {
+    "file": "speech_commands_keywords.tar.gz",
+    "sha256": "2c3e0145845e933b0994b9117f19c9923ecff32cc1eedac38be98f4b343e1911",
+    "size": 235
+   },
+   "licence": "CC-BY-4.0",
+   "attribution": "The 35 keywords of Speech Commands v0.02 (Warden, P. (2018). Speech Commands: A Dataset for Limited-Vocabulary Speech Recognition. arXiv:1804.03209. Creative Commons Attribution 4.0 International (CC BY 4.0)), listed from the archive's keyword directories (_background_noise_ excluded): the list the training guide's toy mining run matches against, replaced by MSWC's at M4b",
+   "terms_accepted": "CC BY 4.0: attribution",
+   "terms_verified": "2026-09-08",
+   "redistributable": true,
+   "roles": [
+    "train"
+   ],
+   "pcm_exact": false,
+   "options": {
+    "member": "speech_commands_keywords.txt"
+   }
+  }
+ ],
+ "recipe": {
+  "phrase": "marvin",
+  "near_miss": [
+   "sheila"
+  ],
+  "geometry": {
+   "sample_rate": 16000.0,
+   "frame": 400,
+   "hop": 160,
+   "fft_size": 512,
+   "bands": 40,
+   "fmin_hz": 20.0,
+   "fmax_hz": 7600.0,
+   "window": "hann",
+   "preemphasis": 0.0,
+   "log_floor": 1e-10,
+   "log_shift": 5.0,
+   "log_scale": 5.0,
+   "pcen": {
+    "enabled": false,
+    "smoother": 0.025,
+    "alpha": 0.98,
+    "delta": 2.0,
+    "power": 0.5,
+    "epsilon": 1e-06
+   }
+  },
+  "stored_path": "log",
+  "log_mel_contract_version": 1,
+  "kws_features_version": 1,
+  "label": {
+   "trim_db": 40.0,
+   "window_ms": 10.0,
+   "tolerance_hops": 3
+  },
+  "context_s": 2.0,
+  "resampler": {
+   "name": "scipy.signal.resample_poly",
+   "window": [
+    "kaiser",
+    5.0
+   ]
+  },
+  "split": {
+   "salt": "mutap-kws-speech-commands-bringup-2026-09-09",
+   "fractions": {
+    "train": 0.8,
+    "dev": 0.1,
+    "eval": 0.1
+   }
+  },
+  "augment": {
+   "seed": 1,
+   "draws_per_positive": 2,
+   "noisy_per_negative": 1,
+   "dry_share": 0.25,
+   "snr_db": [
+    0.0,
+    20.0
+   ],
+   "gain_db": [
+    -6.0,
+    6.0
+   ],
+   "speed": [
+    0.9,
+    1.1
+   ],
+   "rt60_s": [
+    0.2,
+    1.0
+   ],
+   "mic_model": "none"
+  },
+  "exclusions": {
+   "transcript_contains_phrase": true,
+   "mswc_distance_0": true
+  },
+  "mining": {
+   "g2p": "espeak-ng",
+   "max_distance": 2
+  },
+  "tts": null,
+  "subsets": {}
+ }
+}

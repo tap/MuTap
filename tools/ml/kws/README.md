@@ -214,6 +214,14 @@ tool versions from that file. The toy's card is committed under `fixtures/toy/ex
 function of the committed lock; `test_kws.py` requires the match); M4b's full
 corpus renders to `tools/ml/kws/DATASET.md` and `ATTRIBUTION.csv`.
 
+## Manifests
+
+`manifests/<name>.json` are the committed manifests of real corpora; their
+locks live in the store (hundreds of megabytes) and their rendered cards are
+committed beside them under `manifests/<name>/` as the record M5 and M6 cite.
+`speech_commands_v2_bringup.json` is M5's bring-up corpus (built 9 September
+2026; the numbers are in the plan's M4a Done record and in its card).
+
 ## Tests and CI
 
 `test_kws.py` (unittest) is the M4a pass, one test per item, and the body of
