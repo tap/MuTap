@@ -57,9 +57,12 @@ epsilon). Two things make that acceptable as the M55 default:
 So the backend is **default ON for the bare-metal M55 embedded profile** — the
 deployment target — and OFF everywhere else. The Ooura float32 path remains one
 flag away (`-DTAP_DSP_FFT_CMSIS=OFF`) and is kept alive by a dedicated CI leg.
-(That leg once passed a misspelled `-DMUTAP_FFT_CMSIS=OFF`, which CMake ignored,
-so it silently rebuilt CMSIS; the job now checks the configure log for the
-backend line and fails if CMSIS was selected.)
+(History: the option was renamed from `MUTAP_FFT_CMSIS` to `TAP_DSP_FFT_CMSIS`
+when the FFT moved to DspTap, commit `14116f0`; the leg kept the old name, which
+CMake ignored, so from that commit until tap/MuTap#50 it silently rebuilt CMSIS.
+The job now asserts the typed cache entry `TAP_DSP_FFT_CMSIS:BOOL=OFF` — an
+unknown `-D` lands as `:UNINITIALIZED`, so a rename fails the leg — and the
+harness binary that ran prints `backend=ooura`, which the leg greps for.)
 
 ### How it is wired
 
@@ -98,23 +101,33 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
 
 ### What is validated
 
-- **DspTap's `tests/test_fft_backend.cpp`** — asserts the CMSIS forward output
-  matches a direct Ooura `rdft_f` reference bin-for-bin (<5e-6 relative) and
-  that the round trip reproduces the input, at both certified sizes (512,
-  2048). The FFT suites moved to DspTap with the FFT and run in its CI, not in
-  MuTap's `tests/bare_metal_main.cpp` selection.
+- **DspTap's `tests/test_fft_backend.cpp`** (`CertifiedGeometries/
+  fft_backend_parity`) asserts the CMSIS forward output matches a direct Ooura
+  `rdft_f` reference bin-for-bin (<5e-6 relative) and that the round trip
+  reproduces the input, at both certified sizes (512, 2048). Honest status: at
+  the current DspTap pin this gate on the CMSIS backend is executed by **no
+  CI** — the suites moved to DspTap with the FFT (so they are gone from
+  MuTap's `tests/bare_metal_main.cpp` selection), and DspTap's own M55 leg is
+  compile-only with its tests off; it will run once DspTap's embedded legs land
+  (DspTap #17, plan Part 10). Until then the float32 battery below is the only
+  CMSIS gate anywhere.
 - **The whole DspTap `test_fft.cpp` contract suite** (packing, +i sign
   convention, Parseval, float-tracks-double) exercises `basic_real_fft<float>`,
-  so it re-validates the CMSIS backend automatically when the option is on.
-- **The full emulated float32 ITU battery** runs on the M55 with the CMSIS
-  backend (now the default): 58/58 tests pass — the AEC still meets every
-  asserted float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same
-  battery with `-DTAP_DSP_FFT_CMSIS=OFF` to keep the Ooura fallback honest.
+  so it re-validates the CMSIS backend automatically wherever it runs with the
+  option on (same status as above for the M55).
+- **The emulated float32 battery** (`mutap_tests_emulated`, the 52-test
+  selection in `tests/bare_metal_main.cpp`) runs on the M55 with the CMSIS
+  backend (the default): 52/52 pass — the AEC still meets every asserted
+  float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same battery with
+  `-DTAP_DSP_FFT_CMSIS=OFF` to keep the Ooura fallback honest.
 - **`tests/fingerprint_harness.cpp`** (`mutap_fingerprint`) prints one FNV-1a
   fingerprint per (component, profile) over a fixed corpus on every CI leg,
-  including both M55 legs, so a CMSIS-vs-Ooura or pin-to-pin difference in any
-  output sample is visible as a diff of two logs. It is the bit-identity gate
-  every DspTap pin bump runs.
+  including both M55 legs, so a pin-to-pin difference in any output sample is
+  visible as a diff of two logs; it is the bit-identity gate every DspTap pin
+  bump runs (procedure at the top of the file). Between the two M55 legs it
+  shows what the contract predicts — the seven `double` lines identical, the
+  seven `float` lines all different — which documents the backends' difference
+  but asserts nothing about CMSIS accuracy; that is the parity gate's job.
 
 ### Hexagon: deferred
 
@@ -220,6 +233,8 @@ Measured (icount, vs the branchy form on each target):
 
 So each target runs its faster form; neither regresses. Because it is
 per-target, no single build compiles both shapes — the `branchless-parity` CI
-job compiles `tests/branchless_parity_check.cpp` once per macro value and diffs
-an output fingerprint over a 600-block double-talk corpus, guaranteeing the two
-forms stay sample-exact. The m55 baselines record the branch-free form.
+job compiles the fingerprint harness (`tests/fingerprint_harness.cpp`, the
+`mutap_fingerprint` target; see "What is validated" above) once per macro value
+and diffs every `FINGERPRINT` line — 14 of them, seven components in both
+profiles over the 400-block corpus — guaranteeing the two forms stay
+sample-exact. The m55 baselines record the branch-free form.

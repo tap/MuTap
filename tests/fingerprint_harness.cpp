@@ -21,6 +21,11 @@
 //     aec_chain      the certified chain: fd_kalman + postfilter (preset)
 //     aec_chain_nn   the learned chain:   fd_kalman + nn_suppressor (preset)
 //
+// For fdaf and fd_kalman both output channels are hashed: the error block
+// and the echo-estimate block (the four-argument process_block), because
+// error = desired - estimate can absorb a one-ULP move of the estimate when
+// the near end is loud; the estimate stream alone exposes it.
+//
 // The corpus is generated in double from integer state with basic IEEE
 // arithmetic only (no libm, no <random>, no wall clock, no filesystem) and
 // rounded once to float, so both profiles consume identical sample values
@@ -28,7 +33,9 @@
 // (host, compiler, flags): libm and fp-contraction differ across hosts, so
 // two fingerprints are comparable only when both runs were produced by the
 // same build configuration on the same machine — which is exactly the pin-
-// bump workflow below.
+// bump workflow below. The '#' header names the float32 FFT backend the
+// binary was compiled with (backend=cmsis|vdsp|ooura), so a log is
+// self-describing and the M55 legs can assert which backend they ran.
 //
 // How to diff two DspTap pins (the check every submodule bump runs):
 //
@@ -52,13 +59,15 @@
 // include/mutap/postfilter.h): the two builds must print identical lines.
 //
 // Builds two ways: as the normal CMake target mutap_fingerprint (a ctest
-// test on every hosted target), and standalone as the parity job compiles
-// it (g++ on this file plus DspTap's Ooura .c files — see the
-// branchless-parity job in .github/workflows/ci.yml).
+// test on every target), and standalone as the parity job compiles it (g++
+// on this file plus DspTap's Ooura .c files — see the branchless-parity job
+// in .github/workflows/ci.yml).
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "mutap/fd_kalman.h"
@@ -79,6 +88,16 @@ namespace {
     // segments; short enough for the double profile under soft-float
     // emulation on the Cortex-M legs.
     constexpr std::size_t k_blocks = 400;
+
+    // The float32 FFT backend this binary was compiled against, from the
+    // compile definitions DspTap's fft.h keys on (not the CMake cache).
+#if defined(TAP_DSP_FFT_CMSIS)
+    constexpr const char* k_backend = "cmsis";
+#elif defined(TAP_DSP_FFT_ACCELERATE)
+    constexpr const char* k_backend = "vdsp";
+#else
+    constexpr const char* k_backend = "ooura";
+#endif
 
     /// xorshift32 -> uniform in [-1, 1), exactly representable in float:
     /// a 24-bit signed integer times a power of two, so the corpus is the
@@ -114,7 +133,7 @@ namespace {
             }
         }
 
-        unsigned long long value() const noexcept { return static_cast<unsigned long long>(m_h); }
+        std::uint64_t value() const noexcept { return m_h; }
 
       private:
         std::uint64_t m_h = 1469598103934665603ULL;
@@ -130,10 +149,11 @@ namespace {
     ///   e     a converged canceller's residual (y minus 95 % of the echo)
     ///   yhat  that canceller's echo estimate (the echo itself)
     ///
-    /// The near end is present in every third 40-block stretch (double
-    /// talk): one-pole-colored noise plus a white component, incoherent
-    /// with the echo — enough structure to drive every data-dependent path
-    /// the suppressors and the control stacks branch on.
+    /// The near end is present in every third 40-block stretch from block
+    /// 40 on (double talk), so each canceller first converges in single
+    /// talk: one-pole-colored noise plus a white component, incoherent with
+    /// the echo — enough structure to drive every data-dependent path the
+    /// suppressors and the control stacks branch on.
     template <typename Sample>
     class corpus_source {
       public:
@@ -142,16 +162,16 @@ namespace {
             , m_near(0x9E3779B9u)
             , m_floor(0x2545F491u)
             , m_history(k_history, 0.0)
-            , x(k_block)
-            , y(k_block)
-            , e(k_block)
-            , yhat(k_block) {}
+            , m_x(k_block)
+            , m_y(k_block)
+            , m_e(k_block)
+            , m_yhat(k_block) {}
 
         void generate(std::size_t blk) noexcept {
             const std::size_t p   = blk % 200;
             const double      tri = static_cast<double>(p < 100 ? p : 200 - p) * 0.01;
             const double      amp = 0.05 + 0.1 * tri;
-            const bool        dt  = (blk / 40) % 3 == 0;
+            const bool        dt  = (blk / 40) % 3 == 1;
             for (std::size_t i = 0; i < k_block; ++i) {
                 const double far = amp * m_far.next();
                 // Delay line: newest sample at index 0.
@@ -168,12 +188,17 @@ namespace {
                 }
                 const double floor = 0.001 * m_floor.next();
                 // Round once to float; the double profile widens exactly.
-                x[i]    = static_cast<Sample>(static_cast<float>(far));
-                y[i]    = static_cast<Sample>(static_cast<float>(echo + near + floor));
-                e[i]    = static_cast<Sample>(static_cast<float>(0.05 * echo + near + floor));
-                yhat[i] = static_cast<Sample>(static_cast<float>(echo));
+                m_x[i]    = static_cast<Sample>(static_cast<float>(far));
+                m_y[i]    = static_cast<Sample>(static_cast<float>(echo + near + floor));
+                m_e[i]    = static_cast<Sample>(static_cast<float>(0.05 * echo + near + floor));
+                m_yhat[i] = static_cast<Sample>(static_cast<float>(echo));
             }
         }
+
+        const Sample* x() const noexcept { return m_x.data(); }
+        const Sample* y() const noexcept { return m_y.data(); }
+        const Sample* e() const noexcept { return m_e.data(); }
+        const Sample* yhat() const noexcept { return m_yhat.data(); }
 
       private:
         static constexpr std::size_t k_history = 3 * k_block / 2 + 1;
@@ -182,9 +207,10 @@ namespace {
         xorshift32                   m_floor;
         std::vector<double>          m_history;
         double                       m_colored = 0.0;
-
-      public:
-        std::vector<Sample> x, y, e, yhat;
+        std::vector<Sample>          m_x;
+        std::vector<Sample>          m_y;
+        std::vector<Sample>          m_e;
+        std::vector<Sample>          m_yhat;
     };
 
     /// Deterministic live weights at the shipping 48 kHz geometry (the
@@ -214,27 +240,34 @@ namespace {
 
     template <typename Sample>
     const char* profile_name() noexcept {
-        if constexpr (sizeof(Sample) == sizeof(float)) {
+        if constexpr (std::is_same_v<Sample, float>) {
             return "float";
         }
         else {
+            static_assert(std::is_same_v<Sample, double>, "two profiles: float and double");
             return "double";
         }
     }
 
-    /// Runs `step(source, out)` once per block and prints the component's
-    /// line. Selection of the component's inputs is the step's business.
+    /// Runs `step(source, out, estimate)` once per block and prints the
+    /// component's line. `out` is always hashed; `estimate` is hashed too
+    /// when the step writes it (the two cancellers' second output channel).
     template <typename Sample, typename Step>
-    void run(const char* component, Step&& step) {
+    void run(const char* component, bool hashes_estimate, Step&& step) {
         corpus_source<Sample> src;
         std::vector<Sample>   out(k_block);
+        std::vector<Sample>   estimate(k_block);
         fingerprint           fp;
         for (std::size_t blk = 0; blk < k_blocks; ++blk) {
             src.generate(blk);
-            step(src, out.data());
+            step(src, out.data(), estimate.data());
             fp.mix(out.data(), k_block);
+            if (hashes_estimate) {
+                fp.mix(estimate.data(), k_block);
+            }
         }
-        std::printf("FINGERPRINT %s %s %016llx\n", component, profile_name<Sample>(), fp.value());
+        std::printf("FINGERPRINT %s %s %016llx\n", component, profile_name<Sample>(),
+                    static_cast<unsigned long long>(fp.value()));
     }
 
     template <typename Sample>
@@ -250,53 +283,57 @@ namespace {
             cfg.ipc_freeze_threshold   = Sample(0.1);
             cfg.transient_freeze_ratio = Sample(8);
             partitioned_fdaf<Sample> f(cfg);
-            run<Sample>("fdaf", [&f](const src_t& s, Sample* out) { f.process_block(s.x.data(), s.y.data(), out); });
+            run<Sample>("fdaf", true,
+                        [&f](const src_t& s, Sample* out, Sample* est) { f.process_block(s.x(), s.y(), out, est); });
         }
         {
             partitioned_fdkf<Sample> f(aec_chain_preset<Sample>(k_block, k_partitions, k_sample_rate).canceller);
-            run<Sample>("fd_kalman",
-                        [&f](const src_t& s, Sample* out) { f.process_block(s.x.data(), s.y.data(), out); });
+            run<Sample>("fd_kalman", true,
+                        [&f](const src_t& s, Sample* out, Sample* est) { f.process_block(s.x(), s.y(), out, est); });
         }
         {
             typename pem_afc<Sample>::config cfg;
             cfg.fdaf.block_size = k_block;
             cfg.fdaf.partitions = k_partitions;
             pem_afc<Sample> f(cfg);
-            run<Sample>("pem_afc", [&f](const src_t& s, Sample* out) { f.process_block(s.x.data(), s.y.data(), out); });
+            run<Sample>("pem_afc", false,
+                        [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.x(), s.y(), out); });
         }
         {
             auto cfg       = aec_chain_preset<Sample>(k_block, k_partitions, k_sample_rate).postfilter;
             cfg.block_size = k_block;
             residual_suppressor<Sample> f(cfg);
-            run<Sample>("postfilter",
-                        [&f](const src_t& s, Sample* out) { f.process_block(s.e.data(), s.yhat.data(), out); });
+            run<Sample>("postfilter", false,
+                        [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.e(), s.yhat(), out); });
         }
         {
             auto cfg = aec_chain_nn_preset<Sample>(k_block, k_partitions, k_sample_rate, nn_weights()).postfilter;
             nn_suppressor<Sample> f(std::move(cfg));
-            run<Sample>("nn_suppressor",
-                        [&f](const src_t& s, Sample* out) { f.process_block(s.e.data(), s.yhat.data(), out); });
+            run<Sample>("nn_suppressor", false,
+                        [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.e(), s.yhat(), out); });
         }
         {
             aec_chain<Sample> f(aec_chain_preset<Sample>(k_block, k_partitions, k_sample_rate));
-            run<Sample>("aec_chain",
-                        [&f](const src_t& s, Sample* out) { f.process_block(s.x.data(), s.y.data(), out); });
+            run<Sample>("aec_chain", false,
+                        [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.x(), s.y(), out); });
         }
         {
             aec_chain_nn<Sample> f(aec_chain_nn_preset<Sample>(k_block, k_partitions, k_sample_rate, nn_weights()));
-            run<Sample>("aec_chain_nn",
-                        [&f](const src_t& s, Sample* out) { f.process_block(s.x.data(), s.y.data(), out); });
+            run<Sample>("aec_chain_nn", false,
+                        [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.x(), s.y(), out); });
         }
     }
 
 } // namespace
 
 int main() {
-    // Informational header (not part of the diffed lines): the geometry and
-    // the suppressor form this binary compiled, so a log is self-describing.
-    std::printf("# mutap_fingerprint block=%u partitions=%u rate=%u blocks=%u branchless=%d\n",
+    // Informational header (not part of the diffed lines): the geometry, the
+    // float32 FFT backend and the suppressor form this binary compiled, so a
+    // log is self-describing and the M55 legs can assert their backend.
+    std::printf("# mutap_fingerprint block=%u partitions=%u rate=%u blocks=%u backend=%s branchless=%d\n",
                 static_cast<unsigned>(k_block), static_cast<unsigned>(k_partitions),
-                static_cast<unsigned>(k_sample_rate), static_cast<unsigned>(k_blocks), MUTAP_SUPPRESSOR_BRANCHLESS);
+                static_cast<unsigned>(k_sample_rate), static_cast<unsigned>(k_blocks), k_backend,
+                MUTAP_SUPPRESSOR_BRANCHLESS);
     run_profile<float>();
     run_profile<double>();
     // CTest's pass criterion on bare metal, where semihosting does not
