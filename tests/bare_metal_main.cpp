@@ -2,7 +2,8 @@
 // qemu-system-arm): there is no argv on the target, so the
 // emulation-appropriate selection is baked in. This is a POSITIVE filter:
 // the float32 typed suites (the embedded profile this target exists for),
-// the double FFT (small; exercises the soft-float path), the LP /
+// the double Kalman core (exercises the soft-float path; the FFT suites
+// moved to DspTap with the FFT and run in its own CI), the LP /
 // conditioning suite, the float closed-loop scenarios including the PEM
 // canceller's tonal headline, the float-tracks-double oracle check, and
 // the learned suppressor's float profile with its own oracle check (the
@@ -29,8 +30,6 @@
 int main() {
     // Typed-suite naming: /0 = float, /1 = double (sample_types order).
     ::testing::GTEST_FLAG(filter) =
-        "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:"
-        "CertifiedGeometries/fft_backend_parity.*:"
         "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:"
         "fd_kalman_test/0.*:fd_kalman_test/1.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:"
         "Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:"
@@ -44,8 +43,8 @@ int main() {
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is ~57 tests; 30 leaves headroom for legitimate removals without
-    // masking a typo.
+    // is 52 tests (the FFT suites left with the FFT); 30 leaves headroom
+    // for legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {
         std::printf("only %d tests selected (expected >= 30): filter is broken\n", selected);

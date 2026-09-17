@@ -160,5 +160,5 @@ The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on
 the bare-metal M55 profile (`docs/optimization.md`) — ~42% fewer instructions
 on every layer than the previous Ooura numbers. The ratchet therefore gates the
 deployed backend. The Ooura float32 path is still available on the M55 with
-`-DMUTAP_FFT_CMSIS=OFF` (kept alive by a dedicated CI leg, not by this ratchet).
+`-DTAP_DSP_FFT_CMSIS=OFF` (kept alive by a dedicated CI leg, not by this ratchet).
 The **hexagon** baselines are unaffected — Hexagon stays on scalar Ooura.

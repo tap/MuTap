@@ -69,13 +69,31 @@ else()
     # of it the double-typed adaptive suites — target-independent math
     # already covered on every host platform. Run the same emulation-sized
     # selection as the Cortex-M55 leg (tests/bare_metal_main.cpp): the
-    # float32 typed suites, the double FFT, the LP/conditioning suites, the
-    # float closed-loop scenarios and the validation/contract tests.
+    # float32 typed suites, the double Kalman core, the LP/conditioning
+    # suites, the float closed-loop scenarios and the validation/contract
+    # tests. (The FFT suites left with the FFT: they run in DspTap's own CI.)
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "real_fft_test/0.*:real_fft_test/1.*:RealFftCrossPrecision.*:CertifiedGeometries/fft_backend_parity.*:fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*")
+            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)
+endif()
+
+# The bit-identity gate for every DspTap pin bump (tests/fingerprint_harness.cpp):
+# one FNV-1a fingerprint per (component, profile) over a fixed synthetic corpus.
+# A plain executable with its own main — no gtest — so the branchless-parity
+# CI job can also compile the same file standalone. Registered as a test on
+# every target so each CI log carries the lines; on bare metal the pass
+# criterion is the completion line, as for mutap_tests_emulated.
+add_executable(mutap_fingerprint fingerprint_harness.cpp)
+target_link_libraries(mutap_fingerprint PRIVATE
+    MuTap::MuTap
+    mutap_warnings)
+add_test(NAME mutap_fingerprint COMMAND mutap_fingerprint)
+set_tests_properties(mutap_fingerprint PROPERTIES TIMEOUT 900)
+if(MUTAP_BARE_METAL)
+    set_tests_properties(mutap_fingerprint PROPERTIES
+        PASS_REGULAR_EXPRESSION "FINGERPRINT_COMPLETE")
 endif()

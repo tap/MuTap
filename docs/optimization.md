@@ -12,7 +12,7 @@ double runs soft-float and is the desktop golden model only).
 
 The real FFT is the single hottest kernel in the chain. Profiling the M55
 (`-mcpu=cortex-m55`, GCC 13, Helium/MVE) showed GCC does autovectorize the
-vendored Ooura float FFT (`third_party/ooura/fftsg_float.c`) — but not nearly
+vendored Ooura float FFT (DspTap's `third_party/ooura/fftsg_float.c`) — but not nearly
 as well as Arm's hand-tuned CMSIS-DSP kernels. Measured, per forward transform,
 instructions under QEMU:
 
@@ -56,22 +56,26 @@ epsilon). Two things make that acceptable as the M55 default:
 
 So the backend is **default ON for the bare-metal M55 embedded profile** — the
 deployment target — and OFF everywhere else. The Ooura float32 path remains one
-flag away (`-DMUTAP_FFT_CMSIS=OFF`) and is kept alive by a dedicated CI leg.
+flag away (`-DTAP_DSP_FFT_CMSIS=OFF`) and is kept alive by a dedicated CI leg.
+(That leg once passed a misspelled `-DMUTAP_FFT_CMSIS=OFF`, which CMake ignored,
+so it silently rebuilt CMSIS; the job now checks the configure log for the
+backend line and fails if CMSIS was selected.)
 
 ### How it is wired
 
-`include/mutap/fft.h` routes `basic_real_fft<float>` through CMSIS when
-`MUTAP_FFT_CMSIS` is defined; the CMake option defaults ON for the bare-metal
-M55 profile (`CMAKE_SYSTEM_NAME=Generic` + arm) and OFF everywhere else, so
-desktop, the Max/C-ABI host builds (including Apple Silicon arm64), and Hexagon
-are untouched. `double` always keeps Ooura regardless.
+The FFT lives in DspTap (`submodules/dsptap`, `tap::dsp`; `include/mutap/fft.h`
+is a re-export). Its `fft.h` routes `basic_real_fft<float>` through CMSIS when
+`TAP_DSP_FFT_CMSIS` is defined; the CMake option of that name defaults ON for
+the bare-metal M55 profile (`CMAKE_SYSTEM_NAME=Generic` + arm) and OFF
+everywhere else, so desktop, the Max/C-ABI host builds (including Apple Silicon
+arm64), and Hexagon are untouched. `double` always keeps Ooura regardless.
 The wrapper re-presents CMSIS in **Ooura's exact numeric contract** so nothing
 downstream changes and every intermediate spectrum matches the Ooura build to
 float epsilon:
 
 - **Sign convention.** CMSIS uses the engineering convention exp(−i2π/N);
   Ooura (and our documented packed layout) uses exp(+i2π/N). The wrapper
-  conjugates the imaginary bins on every transform. Verified by
+  conjugates the imaginary bins on every transform. Verified by DspTap's
   `real_fft_test/0.SignConventionIsPlusI` running on the CMSIS backend.
 - **Inverse scaling.** CMSIS's inverse RFFT is 1/N-normalized; Ooura's is
   unnormalized (the caller applies 2/N). The wrapper scales the CMSIS inverse
@@ -79,7 +83,7 @@ float epsilon:
   trip. Both fold into passes the `_inplace` methods already do (~1% overhead).
 
 It is on automatically with the M55 toolchain; force the Ooura path with
-`-DMUTAP_FFT_CMSIS=OFF`:
+`-DTAP_DSP_FFT_CMSIS=OFF`:
 
 ```sh
 # CMSIS backend (default on M55)
@@ -87,24 +91,30 @@ cmake -B build-m55 -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
     -DCMAKE_BUILD_TYPE=Release
 # Ooura fallback
 cmake -B build-m55-ooura -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
-    -DCMAKE_BUILD_TYPE=Release -DMUTAP_FFT_CMSIS=OFF
+    -DCMAKE_BUILD_TYPE=Release -DTAP_DSP_FFT_CMSIS=OFF
 ```
 
 Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
 
 ### What is validated
 
-- **`tests/test_fft_backend.cpp`** — asserts the CMSIS forward output matches a
-  direct Ooura `rdft_f` reference bin-for-bin (<5e-6 relative) and that the
-  round trip reproduces the input, at both certified sizes (512, 2048). Runs on
-  the M55-CMSIS leg (in `tests/bare_metal_main.cpp`'s selection).
-- **The whole `test_fft.cpp` contract suite** (packing, +i sign convention,
-  Parseval, float-tracks-double) exercises `basic_real_fft<float>`, so it
-  re-validates the CMSIS backend automatically when the option is on.
+- **DspTap's `tests/test_fft_backend.cpp`** — asserts the CMSIS forward output
+  matches a direct Ooura `rdft_f` reference bin-for-bin (<5e-6 relative) and
+  that the round trip reproduces the input, at both certified sizes (512,
+  2048). The FFT suites moved to DspTap with the FFT and run in its CI, not in
+  MuTap's `tests/bare_metal_main.cpp` selection.
+- **The whole DspTap `test_fft.cpp` contract suite** (packing, +i sign
+  convention, Parseval, float-tracks-double) exercises `basic_real_fft<float>`,
+  so it re-validates the CMSIS backend automatically when the option is on.
 - **The full emulated float32 ITU battery** runs on the M55 with the CMSIS
   backend (now the default): 58/58 tests pass — the AEC still meets every
   asserted float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same
-  battery with `-DMUTAP_FFT_CMSIS=OFF` to keep the Ooura fallback honest.
+  battery with `-DTAP_DSP_FFT_CMSIS=OFF` to keep the Ooura fallback honest.
+- **`tests/fingerprint_harness.cpp`** (`mutap_fingerprint`) prints one FNV-1a
+  fingerprint per (component, profile) over a fixed corpus on every CI leg,
+  including both M55 legs, so a CMSIS-vs-Ooura or pin-to-pin difference in any
+  output sample is visible as a diff of two logs. It is the bit-identity gate
+  every DspTap pin bump runs.
 
 ### Hexagon: deferred
 
@@ -116,19 +126,26 @@ shape. Hexagon stays on scalar Ooura until an HVX FFT is available.
 
 ### Refreshing the vendored CMSIS subset
 
-`third_party/cmsis-dsp/` is a minimal subset (8 sources + header closure),
-pinned by commit in `third_party/cmsis-dsp/VENDOR.md`. To bump it: re-run the
-`gcc -M` closure over the eight sources for `-mcpu=cortex-m55`, copy exactly the
-files it opens, update `VENDOR.md`, then re-run `tests/test_fft_backend.cpp` and
-the full float32 battery on the M55 leg. Do not hand-edit vendored sources.
+DspTap's `third_party/cmsis-dsp/` is a minimal subset (8 sources + header
+closure), pinned by commit in its `VENDOR.md`. To bump it (in DspTap): re-run
+the `gcc -M` closure over the eight sources for `-mcpu=cortex-m55`, copy exactly
+the files it opens, update `VENDOR.md`, then re-run DspTap's
+`tests/test_fft_backend.cpp` and, after bumping the pin here, the full float32
+battery on the M55 leg. Do not hand-edit vendored sources.
 
 ## FFT backend: Apple vDSP on macOS
 
-The same seam carries a second backend: on macOS the float32 real FFT routes
-through Apple's **vDSP** (Accelerate) instead of Ooura (`MUTAP_FFT_ACCELERATE`,
-default ON for Apple). This is the FFT the `mutap.aec~` Max external runs, and
-it is the *only* fast FFT Apple Silicon gets — the CMSIS backend is scoped to
-the bare-metal M55, so arm64 macOS was on Ooura before this.
+The same seam carries a second backend: on macOS the float32 real FFT can
+route through Apple's **vDSP** (Accelerate) instead of Ooura
+(`TAP_DSP_FFT_ACCELERATE`, DspTap's default ON for Apple). It is the *only*
+fast FFT Apple Silicon gets — the CMSIS backend is scoped to the bare-metal
+M55, so arm64 macOS was on Ooura before this. **MuTap now turns it back OFF**
+(root `CMakeLists.txt`, tap/MuTap#31): on spectra with exactly-empty bins the
+alignment-selected vDSP kernel measured far less accurate than Ooura and the
+G.168 tone rows failed on it, and Apple documents the routines as free to
+rearrange arithmetic. The numbers below stand as the measurement behind that
+decision; `-DTAP_DSP_FFT_ACCELERATE=ON` still selects it for anyone who wants
+to re-measure.
 
 ### Measured (Apple Silicon, macOS CI runner)
 
@@ -168,13 +185,15 @@ deployment precision *through vDSP itself*, not merely parity against Ooura.
 
 ### How it is wired / validated
 
-Default ON for Apple (`APPLE` in CMake), OFF elsewhere, mutually exclusive with
-the CMSIS backend; CMake links `-framework Accelerate` and defines the macro on
-the `mutap` interface target. Force Ooura with `-DMUTAP_FFT_ACCELERATE=OFF`.
-Validation is automatic: the `macos-latest` CI job builds with the backend on by
-default, so `tests/test_fft_backend.cpp` (bin-for-bin vs Ooura `rdft_f`), the
-whole `test_fft.cpp` contract suite, and the full float32 battery all run on
-vDSP there. The vDSP setup's read-only twiddle tables are held by a shared_ptr
+In DspTap: default ON for Apple (`APPLE` in CMake), OFF elsewhere, mutually
+exclusive with the CMSIS backend; CMake links `-framework Accelerate` and
+defines the macro on the `tap::dsp` interface target. MuTap's root
+`CMakeLists.txt` sets `TAP_DSP_FFT_ACCELERATE` OFF (not FORCE), so an explicit
+`-DTAP_DSP_FFT_ACCELERATE=ON` still wins. DspTap's `tests/test_fft_backend.cpp`
+(bin-for-bin vs Ooura `rdft_f`) and `test_fft.cpp` contract suite validate the
+backend in DspTap's own macOS CI; MuTap's `macos-latest` job gates the Ooura
+float32 path it actually ships and records the backend it built. The vDSP
+setup's read-only twiddle tables are held by a shared_ptr
 so `basic_real_fft` keeps value semantics; transforms are noexcept and
 allocation-free.
 
