@@ -44,9 +44,10 @@
 // stage of the FFT plan (DspTap docs/audit-fft-and-code-smells.md) states
 // which lines here must be unchanged and which are expected to move (the
 // float profile through an FFT port; never the double golden model unless
-// the plan says so). CI runs this binary on every hosted leg (the
-// "Fingerprints" step records the lines in the log, so two CI logs can be
-// diffed the same way) and once more, compiled twice, as the suppressor's
+// the plan says so). CI runs this binary on every leg, hosted and emulated
+// (a "Fingerprints" step records the lines in each log, so two CI logs can
+// be diffed the same way, and the M55's CMSIS and Ooura legs against each
+// other) and once more, compiled twice, as the suppressor's
 // branch-free/branchy parity check (MUTAP_SUPPRESSOR_BRANCHLESS, see
 // include/mutap/postfilter.h): the two builds must print identical lines.
 //

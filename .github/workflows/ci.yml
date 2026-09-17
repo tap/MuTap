@@ -173,6 +173,12 @@ jobs:
       - name: Test under emulation (CMSIS Helium FFT — default)
         run: ctest --test-dir build --output-on-failure
 
+      # ctest hides a passing test's output, so re-run the fingerprint harness
+      # verbosely: the log then carries the on-target FINGERPRINT lines for
+      # this backend, diffable against the Ooura leg below and across pins.
+      - name: Fingerprints (CMSIS Helium FFT)
+        run: ctest --test-dir build -R '^mutap_fingerprint$' -V
+
       # Second leg keeps the Ooura float32 fallback alive: same emulated battery
       # with DspTap's backend option forced OFF. The option is TAP_DSP_FFT_CMSIS
       # (submodules/dsptap/CMakeLists.txt); this leg once passed a misspelled
@@ -196,6 +202,9 @@ jobs:
 
       - name: Test under emulation (Ooura FFT fallback)
         run: ctest --test-dir build-ooura --output-on-failure
+
+      - name: Fingerprints (Ooura FFT fallback)
+        run: ctest --test-dir build-ooura -R '^mutap_fingerprint$' -V
 
   # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
   # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
@@ -229,6 +238,9 @@ jobs:
 
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure
+
+      - name: Fingerprints
+        run: ctest --test-dir build -R '^mutap_fingerprint$' -V
 
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
@@ -291,6 +303,9 @@ jobs:
 
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure
+
+      - name: Fingerprints
+        run: ctest --test-dir build -R '^mutap_fingerprint$' -V
 
   # Keeps the benchmarks compiling and runnable; never a performance gate
   # (shared runners are noise — see bench/README.md).
