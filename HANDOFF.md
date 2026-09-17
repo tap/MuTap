@@ -111,7 +111,10 @@ carries the measured numbers; this is the map:
    merge orphans the branch SHAs. After any MuTap PR merges, re-pin
    `MuTap-Max/submodules/MuTap` to the new main tip before (or as part
    of) the next MuTap-Max merge — a dangling gitlink breaks recursive
-   clones once branches are cleaned up.
+   clones once branches are cleaned up. Every `submodules/dsptap` bump
+   pastes the `mutap_fingerprint` diff (before/after the pin; procedure
+   at the top of `tests/fingerprint_harness.cpp`) into its PR and says
+   which `FINGERPRINT` lines the stage expects to move.
 7. **min-api pin gotcha** (MuTap-Max): the pinned min-api has no scalar
    `send()` path on queue-backed outlets — send a pre-allocated `atoms`
    lvalue (see `m_ipc_atoms` in the external).

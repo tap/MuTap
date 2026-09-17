@@ -86,6 +86,12 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # The bit-identity gate for DspTap pin bumps (tests/fingerprint_harness.cpp)
+      # already ran as a test above; run it once more verbosely so the log
+      # carries the FINGERPRINT lines and two CI logs can be diffed.
+      - name: Fingerprints
+        run: ctest --test-dir build -C Release -R '^mutap_fingerprint$' -V
+
       # These three rows were the per-process bifurcation in #31. Now that the
       # alignment fix has removed the draw, repeating them says something
       # different but still worth recording: whether the remaining failures are
@@ -159,27 +165,59 @@ jobs:
       - name: Build
         run: cmake --build build -j 4
 
-      # The default leg above builds the CMSIS-DSP Helium FFT backend, which is
-      # ON by default on the bare-metal M55 profile (docs/optimization.md) — so
-      # ctest exercises the vendored third_party/cmsis-dsp subset and its
-      # Ooura-contract reconciliation on the full emulated battery.
+      # The default leg above builds DspTap's CMSIS-DSP Helium FFT backend,
+      # which is ON by default on the bare-metal M55 profile (TAP_DSP_FFT_CMSIS,
+      # docs/optimization.md) — so ctest exercises the vendored
+      # submodules/dsptap/third_party/cmsis-dsp subset and its Ooura-contract
+      # reconciliation on the full emulated battery.
+      # The battery leaves the fingerprint harness out (-E): ctest hides a
+      # passing test's output, so the harness runs once, verbosely, in the
+      # next step instead, and the log carries the on-target FINGERPRINT
+      # lines for this backend, diffable against the Ooura leg below and
+      # across pins. The harness prints the backend it was compiled with;
+      # asserting it is the positive proof of which backend ran.
       - name: Test under emulation (CMSIS Helium FFT — default)
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
+
+      - name: Fingerprints (CMSIS Helium FFT)
+        run: |
+          set -eo pipefail
+          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-cmsis.log
+          grep -q 'backend=cmsis' /tmp/fp-cmsis.log
 
       # Second leg keeps the Ooura float32 fallback alive: same emulated battery
-      # with the backend forced OFF, so -DMUTAP_FFT_CMSIS=OFF cannot bitrot.
+      # with DspTap's backend option forced OFF. The option was renamed from
+      # MUTAP_FFT_CMSIS to TAP_DSP_FFT_CMSIS when the FFT moved to DspTap
+      # (14116f0); this leg kept the old name, which CMake ignored, so from that
+      # commit until #50 it rebuilt CMSIS and the Ooura-float32-on-M55 profile
+      # had no coverage. Guards: the configure log must not select CMSIS, the
+      # cache entry must be the typed :BOOL=OFF (an unknown -D lands as
+      # :UNINITIALIZED, so a future rename fails here instead of silently
+      # rebuilding CMSIS), and the Fingerprints step below asserts the backend
+      # the binary that ran was actually compiled with.
       - name: Configure (Ooura FFT fallback)
-        run: >
-          cmake -B build-ooura
-          -DCMAKE_BUILD_TYPE=MinSizeRel
-          -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake
-          -DMUTAP_FFT_CMSIS=OFF
+        run: |
+          set -eo pipefail
+          cmake -B build-ooura \
+            -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
+            -DTAP_DSP_FFT_CMSIS=OFF | tee /tmp/configure-ooura.log
+          if grep -q 'float32 FFT backend = CMSIS' /tmp/configure-ooura.log; then
+            echo "::error::the Ooura fallback leg configured the CMSIS backend"; exit 1
+          fi
+          grep '^TAP_DSP_FFT_CMSIS:BOOL=OFF' build-ooura/CMakeCache.txt
 
       - name: Build (Ooura FFT fallback)
         run: cmake --build build-ooura -j 4
 
       - name: Test under emulation (Ooura FFT fallback)
-        run: ctest --test-dir build-ooura --output-on-failure
+        run: ctest --test-dir build-ooura --output-on-failure -E '^mutap_fingerprint$'
+
+      - name: Fingerprints (Ooura FFT fallback)
+        run: |
+          set -eo pipefail
+          ctest --test-dir build-ooura -R '^mutap_fingerprint$' -V | tee /tmp/fp-ooura.log
+          grep -q 'backend=ooura' /tmp/fp-ooura.log
 
   # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
   # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
@@ -212,7 +250,14 @@ jobs:
         run: cmake --build build -j 4
 
       - name: Test under emulation
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
+
+      # The toolchain file pins CMSIS off (no MVE); the harness must say so.
+      - name: Fingerprints
+        run: |
+          set -eo pipefail
+          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-m33.log
+          grep -q 'backend=ooura' /tmp/fp-m33.log
 
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
@@ -274,7 +319,13 @@ jobs:
         run: cmake --build build -j 4
 
       - name: Test under emulation
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
+
+      - name: Fingerprints
+        run: |
+          set -eo pipefail
+          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-hexagon.log
+          grep -q 'backend=ooura' /tmp/fp-hexagon.log
 
   # Keeps the benchmarks compiling and runnable; never a performance gate
   # (shared runners are noise — see bench/README.md).
@@ -303,8 +354,9 @@ jobs:
   # The suppressor's pass-1 estimator has two bit-identical forms selected by
   # MUTAP_SUPPRESSOR_BRANCHLESS (branch-free on Arm Helium, branchy elsewhere;
   # see include/mutap/postfilter.h). No single build compiles both, so this job
-  # compiles tests/branchless_parity_check.cpp once per macro value and diffs
-  # its output fingerprint — the guard that the two forms cannot drift apart.
+  # compiles the fingerprint harness (tests/fingerprint_harness.cpp — the same
+  # binary that gates DspTap pin bumps) once per macro value and diffs every
+  # FINGERPRINT line — the guard that the two forms cannot drift apart.
   branchless-parity:
     name: Suppressor branch-free/branchy parity
     runs-on: ubuntu-latest
@@ -313,22 +365,31 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           submodules: recursive
-      - name: Compile both forms and diff the fingerprint
+      - name: Compile both forms and diff the fingerprints
         run: |
-          set -e
-          # Ooura is C: compile with gcc so g++ does not name-mangle rdft/rdft_f.
+          # GitHub's default run shell is `bash -e {0}` without pipefail, so
+          # the pipes through tee below would mask a harness crash without it.
+          set -eo pipefail
+          # Compiles DspTap's C by path; Stage 2c (P18) rewrites this job when
+          # the C goes. Ooura is C: compile with gcc so g++ does not
+          # name-mangle rdft/rdft_f.
           gcc -O2 -c submodules/dsptap/third_party/ooura/fftsg.c -o /tmp/fftsg.o
           gcc -O2 -c submodules/dsptap/third_party/ooura/fftsg_float.c -o /tmp/fftsg_float.o
           for bl in 0 1; do
             g++ -std=c++20 -O2 -DMUTAP_SUPPRESSOR_BRANCHLESS=$bl -Iinclude -Isubmodules/dsptap/include \
-              tests/branchless_parity_check.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/parity_$bl
+              tests/fingerprint_harness.cpp /tmp/fftsg.o /tmp/fftsg_float.o -o /tmp/parity_$bl
             /tmp/parity_$bl | tee /tmp/out_$bl
           done
-          a=$(awk '{print $2}' /tmp/out_0); b=$(awk '{print $2}' /tmp/out_1)
-          if [ "$a" != "$b" ]; then
-            echo "::error::branchy ($a) and branch-free ($b) suppressor forms diverged"; exit 1
+          # Only the FINGERPRINT lines are compared (the '#' header names the
+          # form and differs by design); an empty run must not pass either.
+          grep '^FINGERPRINT ' /tmp/out_0 > /tmp/fp_0
+          grep '^FINGERPRINT ' /tmp/out_1 > /tmp/fp_1
+          test "$(wc -l < /tmp/fp_0)" -ge 14
+          test "$(wc -l < /tmp/fp_1)" -ge 14
+          if ! diff /tmp/fp_0 /tmp/fp_1; then
+            echo "::error::branchy and branch-free suppressor forms diverged (see diff above)"; exit 1
           fi
-          echo "both forms fingerprint $a — bit-identical"
+          echo "all $(wc -l < /tmp/fp_0) fingerprints identical across the two forms — bit-identical"
 
   # Deterministic instruction-count ratchet (bench/README.md). Unlike the
   # wall-clock bench these counts are noise-free under QEMU's TCG plugin, so
@@ -374,7 +435,7 @@ jobs:
             -o /tmp/libinsncount.so tools/qemu_insn_plugin/insn_count.c
 
       # Release (-O2) M55 workloads, matching how baselines are recorded. No
-      # -DMUTAP_FFT_CMSIS here: the M55 profile defaults it ON, so the ratchet
+      # -DTAP_DSP_FFT_CMSIS here: the M55 profile defaults it ON, so the ratchet
       # gates the deployed CMSIS-DSP Helium FFT (bench/baselines.json m55).
       - name: Build M55 workloads
         run: >
