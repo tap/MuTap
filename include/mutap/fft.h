@@ -12,6 +12,10 @@
 
 #pragma once
 
+#include <cstddef>
+#include <stdexcept>
+#include <string>
+
 #include "tap/dsp/fft.h"
 
 namespace tap::mu {
@@ -56,6 +60,49 @@ namespace tap::mu {
     //     and stop compiling if a header it includes does so); include the
     //     header instead;
     //   - anything else whose code depends on the selected engine's numbers
-    //     (its size range, say) lives inside the tag as well.
+    //     lives inside the tag as well: checked_fft_size below reads the
+    //     engine's size range, so two differently built images must not
+    //     share its definition either.
 
 } // namespace tap::mu
+
+// Inside the tag: the check's code depends on the selected engine's range.
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
+
+    namespace fft_detail {
+
+        /// The configuration gate for an FFT size (DspTap Stage 4: "supports_size
+        /// is the MANDATORY gate wherever N comes from configuration"). Returns
+        /// n when basic_real_fft<Sample> supports it in this build, and throws
+        /// std::invalid_argument naming the range otherwise, from the
+        /// constructor of the class that asked, before any buffer is sized
+        /// from n (MuTap's config-error convention). Without it a size outside
+        /// the engine's range reaches basic_real_fft's constructor, whose
+        /// precondition is a debug-only assertion: in a release build that is
+        /// undefined behaviour, and under CMSIS-DSP on the Cortex-M55 a
+        /// HardFault at the first transform.
+        ///
+        /// The ranges (basic_real_fft<Sample>::k_min_size / k_max_size, powers
+        /// of two): split-radix (double always; float by default) 4 ... 2^30;
+        /// vDSP (float, TAP_DSP_FFT_ACCELERATE) 4 ... 2^20; CMSIS-DSP (float,
+        /// TAP_DSP_FFT_CMSIS, the Cortex-M55 default) 32 ... 4096. What a
+        /// MuTap block size maps to: N = 2 * block_size for the cancellers,
+        /// analysis_blocks * block_size for the residual suppressor, and
+        /// 2 * the trained hop for the learned suppressor.
+        /// @param n    the FFT size the caller is about to construct
+        /// @param what "<class>: <how n is derived>", for the message
+        template <typename Sample>
+        std::size_t checked_fft_size(std::size_t n, const char* what) {
+            using fft = basic_real_fft<Sample>;
+            if (!fft::supports_size(n)) {
+                throw std::invalid_argument(std::string(what) + " = " + std::to_string(n)
+                                            + " is not an FFT size this build supports: a power of two in ["
+                                            + std::to_string(fft::k_min_size) + ", " + std::to_string(fft::k_max_size)
+                                            + "] (CMSIS-DSP on the Cortex-M55: 32 ... 4096)");
+            }
+            return n;
+        }
+
+    } // namespace fft_detail
+
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI

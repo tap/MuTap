@@ -118,7 +118,10 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             /// from near-end structure — at block 256 / 48 kHz one block
             /// is 93.75 Hz per bin, too coarse for the AM-FM double-talk
             /// combs (~90-160 Hz interleave); 8 blocks (23.4 Hz bins,
-            /// Hann-windowed estimation) resolves them.
+            /// Hann-windowed estimation) resolves them. The FFT size is
+            /// analysis_blocks * block_size and must be one the build's
+            /// FFT engine supports (under CMSIS-DSP on the Cortex-M55,
+            /// 32 ... 4096; the constructor throws otherwise).
             size_t analysis_blocks    = 8;
             Sample max_suppression_db = 40;          ///< g_min = -this in dB (floor per bin)
             Sample over_subtraction   = Sample(1.2); ///< beta on the coherence (>= 1)
@@ -198,7 +201,8 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
         explicit residual_suppressor(const config& cfg)
             : m_cfg(validated(cfg))
-            , m_n(cfg.analysis_blocks * cfg.block_size)
+            , m_n(fft_detail::checked_fft_size<Sample>(cfg.analysis_blocks * cfg.block_size,
+                                                       "residual_suppressor: analysis_blocks * block_size"))
             , m_fft(m_n)
             , m_g_min(std::pow(Sample(10), -cfg.max_suppression_db / Sample(20)))
             , m_g_low(std::pow(Sample(10), -cfg.low_band_cap_db / Sample(20)))

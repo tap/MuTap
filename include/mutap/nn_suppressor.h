@@ -32,7 +32,7 @@ namespace tap::mu {
     /// definitions; the two must change together.
     struct nn_geometry {
         double sample_rate = 16000.0;
-        size_t hop         = 64; ///< canceller block size the model was trained at
+        size_t hop         = 64; ///< canceller block size the model was trained at (FFT size 2 * hop)
         size_t bands       = 22; ///< ERB-spaced triangular bands
         size_t dense       = 64; ///< input projection width
         size_t gru         = 96; ///< recurrent state width
@@ -138,7 +138,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         explicit nn_suppressor(config cfg)
             : m_cfg(validated(std::move(cfg)))
             , m_g(m_cfg.weights.geometry)
-            , m_fft(m_g.frame())
+            , m_fft(fft_detail::checked_fft_size<Sample>(m_g.frame(), "nn_suppressor: 2 * the weights' hop"))
             , m_dense_in(std::move(m_cfg.weights.dense_in_w), std::move(m_cfg.weights.dense_in_b), m_g.dense,
                          m_g.features(), tap::dsp::nn::activation::tanh)
             , m_gru(std::move(m_cfg.weights.gru_w_ih), std::move(m_cfg.weights.gru_w_hh),

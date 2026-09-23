@@ -71,7 +71,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             , m_predictor(cfg.predictor)
             , m_u_state(m_predictor.make_state())
             , m_y_state(m_predictor.make_state())
-            , m_n(m_fdaf.fft_size())
+            , m_n(fft_detail::checked_fft_size<Sample>(m_fdaf.fft_size(), "pem_afc: the core's fft_size()"))
             , m_fft(m_n)
             , m_input(m_n)
             , m_u_raw(cfg.fdaf.partitions * m_n)

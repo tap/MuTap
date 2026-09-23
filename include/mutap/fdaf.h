@@ -53,8 +53,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
     /// directly it is a plain acoustic echo canceller.
     ///
     /// Real-time contract: the constructor allocates and may throw
-    /// (std::invalid_argument on a bad config); process_block() and every
-    /// other post-construction entry point are noexcept and allocation-free.
+    /// (std::invalid_argument on a bad config, including a block size whose
+    /// FFT size 2 * block_size the build's FFT engine does not support —
+    /// under CMSIS-DSP on the Cortex-M55 block_size 16 ... 2048; see
+    /// fft_detail::checked_fft_size in mutap/fft.h); process_block() and
+    /// every other post-construction entry point are noexcept and
+    /// allocation-free.
     ///
     /// Per-bin NLMS normalization: the update divides by the regressor power
     /// in that bin summed over all partitions (optionally smoothed across
@@ -109,7 +113,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
         explicit partitioned_fdaf(const config& cfg)
             : m_cfg(validated(cfg))
-            , m_n(2 * cfg.block_size)
+            , m_n(fft_detail::checked_fft_size<Sample>(2 * cfg.block_size, "partitioned_fdaf: 2 * block_size"))
             , m_fft(m_n)
             , m_input(m_n)
             , m_u(cfg.partitions * m_n)
