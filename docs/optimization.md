@@ -154,9 +154,9 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
   convention, Parseval, float-tracks-double) exercises `basic_real_fft<float>`,
   so it re-validates the CMSIS backend automatically wherever it runs with the
   option on (same status as above for the M55).
-- **The emulated float32 battery** (`mutap_tests_emulated`, the 52-test
+- **The emulated float32 battery** (`mutap_tests_emulated`, the 58-test
   selection in `tests/bare_metal_main.cpp`) runs on the M55 with the CMSIS
-  backend (the default): 52/52 pass — the AEC still meets every asserted
+  backend (the default): 58/58 pass — the AEC still meets every asserted
   float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same battery with
   `-DTAP_DSP_FFT_CMSIS=OFF` to keep the split-radix fallback honest.
 - **`tests/fingerprint_harness.cpp`** (`mutap_fingerprint`) prints one FNV-1a
