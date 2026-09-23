@@ -144,8 +144,8 @@ scalar (0 HVX), so an FFT backend would be the biggest single lever there too â€
 but there is no free HVX FFT: Qualcomm's is a proprietary SDK component, and
 HVX-float autovectorization does not fire on the strided packed-complex loop
 shape. Hexagon stays on the scalar Ooura-lineage engine (the vendored C when
-this was measured; from DspTap `bbfa48d` the bit-identical split-radix port,
-at an unchanged instruction count on the ratchet) until an HVX FFT is available.
+this was measured; from DspTap `bbfa48d` the bit-identical split-radix port)
+until an HVX FFT is available.
 
 ### Refreshing the vendored CMSIS subset
 
