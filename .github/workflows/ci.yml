@@ -635,3 +635,16 @@ jobs:
         run: |
           pipx install pre-commit
           pre-commit run --all-files --show-diff-on-failure
+
+      # The ABI-tag rule's one gap the compiler cannot see (include/mutap/fft.h,
+      # HANDOFF.md working note 6): a forward declaration of a tagged class in
+      # plain tap::mu declares a DIFFERENT class. A TU that also sees the
+      # definition fails to compile (clang: ambiguous; g++: a parse error), but a header that
+      # forward-declares and never includes the definition compiles and is an
+      # ODR hazard across images. Include the header instead.
+      - name: No forward declarations of the ABI-tagged classes
+        run: |
+          if git grep -nE '(^|[{;])\s*(template\s*<[^>]*>\s*)?(class|struct)\s+(partitioned_fdaf|partitioned_fdkf|pem_afc|residual_suppressor|nn_suppressor)\s*;' -- include tools tests bench; then
+            echo "::error::forward declaration of an ABI-tagged class (see include/mutap/fft.h); include its header instead"; exit 1
+          fi
+          echo "no forward declarations of the five tagged classes"

@@ -82,9 +82,11 @@ namespace tap::mu {
     // enforced by review. Two more rules follow:
     //   - never forward-declare a tagged class in plain tap::mu
     //     (`template <typename> class partitioned_fdaf;` there declares a
-    //     DIFFERENT class, and the test's qualified names turn ambiguous
-    //     and stop compiling if a header it includes does so); include the
-    //     header instead;
+    //     DIFFERENT class; the test's qualified names stop compiling if a
+    //     header it includes does so, clang reporting an ambiguous name and
+    //     g++ a parse error; CI's clang-format job greps for the header that
+    //     forward-declares without ever including the definition, the case
+    //     no compiler sees); include the header instead;
     //   - anything else whose code depends on the selected engine's numbers
     //     lives inside the tag as well: checked_fft_size below reads the
     //     engine's size range, so two differently built images must not
