@@ -1,0 +1,7 @@
+# Room-measurement tools (measure_rir.py, howl_criterion.py) and their tests.
+# Pinned to the versions the tests were measured with. sounddevice is needed
+# only by measure_rir.py's live subcommands (loopback, measure) and is not
+# installed here: `python3 -m pip install sounddevice` on the measuring machine.
+numpy==2.2.6
+scipy==1.15.3
+matplotlib==3.10.8
