@@ -233,12 +233,42 @@ job red on #54 and forced this record; the DspTap FFT plan had predicted
 0 % for this bump (same instruction stream as the C), and this table is the
 measured correction to that prediction.
 
+**2026-09-23 — DspTap 6f6f77f (Stage 6 + Stage 4, tap/DspTap#34 / #35), tap/MuTap#58: no re-record.**
+Stage 4 made the engine a template parameter and added the ABI tag; neither
+changes an instruction of any transform, and MuTap's size gate adds one
+predicate per constructor. Measured against the committed baselines on the
+PR's `pull_request` run
+[35918701246](https://github.com/tap/MuTap/actions/runs/35918701246)
+(head `82ebabc`; m33 and m55 also reproduced locally on the same
+toolchain/QEMU pair, count for count on m33), in instructions:
+
+| key | chain 16k / 48k | fdkf 16k / 48k | nn_suppressor 16k / 48k | shadow 16k / 48k | suppressor 16k / 48k |
+|---|---:|---:|---:|---:|---:|
+| m55 | −42 / −38 | −12 / −8 | −1,029 / −4,824 | −14 / −14 | −16 / −16 |
+| m33 | +25,423 / +33,871 | +20 / +20 | −16 / −3,182 | +20 / +20 | +3,237 / +3,237 |
+| hexagon | +189 / +189 | +214 / +214 | +2 / +2 | +214 / +214 | +8 / +8 |
+
+Every cell is within ±0.005 %, so nothing is re-recorded. One lesson for
+reading deltas of this size, measured on the way: the first form of the size
+gate built its exception message with `std::string` / `std::to_string`, and
+that alone moved m33 `fdkf` and `shadow` by +0.37 % (`shadow_16k`
++406,589, ~3 instructions per sample over 528 blocks) with `run()` and every
+MuTap loop disassembling identically. The extra library code in the
+translation unit made GCC 13.2 re-decide its inlining inside the
+split-radix engine (`split_radix_rdft<float>::cftleaf`, 2,060 → 1,465
+disassembly lines). The pin bump alone, before any MuTap change, read
+m33 `suppressor` +0.06 % for the same reason. A ratchet move of a few tenths
+of a percent on m33 with no loop change is therefore TU composition until
+shown otherwise (DspTap #35 found the harness-side version of the same
+effect); the gate's message is a literal for this reason
+(`include/mutap/fft.h`).
+
 ## FFT backend (Arm Helium)
 
 The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on
 the bare-metal M55 profile (`docs/optimization.md`) — ~42% fewer instructions
 on every layer than the previous Ooura numbers. The ratchet therefore gates the
-deployed backend. The Ooura float32 path is still available on the M55 with
+deployed backend. The split-radix float32 path is still available on the M55 with
 `-DTAP_DSP_FFT_CMSIS=OFF` (kept alive by a dedicated CI leg, not by this ratchet).
 The **hexagon** baselines are unaffected by that swap — Hexagon stays on the
 scalar split-radix engine (the vendored Ooura C until DspTap `b08f6c6`, its
