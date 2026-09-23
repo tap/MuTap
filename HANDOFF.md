@@ -40,9 +40,11 @@ Everything below exists, is regression-tested, and is green in CI
 Cortex-M55 under QEMU, Hexagon under QEMU). The README's Status section
 carries the measured numbers; this is the map:
 
-- `include/mutap/` — `fft.h` (Ooura wrapper), `fdaf.h` (partitioned-block
-  NLMS core + the M4 control stack: IPC, IPC-scaled stepping, transient
-  gate, variable regularization), `fd_kalman.h` (**the v2 Kalman core** —
+- `include/mutap/` — `fft.h` (re-export of DspTap's `tap::dsp::basic_real_fft`;
+  since DspTap `bbfa48d`, Stage 2b of the FFT plan, that is the C++20
+  split-radix port of Ooura, bit-identical to the vendored C it replaced),
+  `fdaf.h` (partitioned-block NLMS core + the M4 control stack: IPC,
+  IPC-scaled stepping, transient gate, variable regularization), `fd_kalman.h` (**the v2 Kalman core** —
   no step size, no IPC; per-bin state uncertainty + near-end PSD replace
   the control stack; opt-in `transient_floor_ratio` trades tonal ASG for
   burst hardening), `lpc.h` (ridge-guarded Levinson + the two pluggable

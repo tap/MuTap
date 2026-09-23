@@ -663,6 +663,19 @@ Cortex-M55 leg — which together cover every deployment target that ships
 today. All are deterministic across processes, which is the property that
 makes a single run of a row count as evidence at all.
 
+**Glossary — "Ooura".** Wherever this document (and the `backend=ooura`
+header the fingerprint harness prints) says a number was measured on Ooura,
+the word names one numeric engine across two implementations: the vendored
+C (`third_party/ooura/fftsg.c` / `fftsg_float.c`) at DspTap pins ≤ `5ca3b1c`
+and every pin up to `b08f6c6`, and the bit-identical C++20 split-radix port
+(`include/tap/dsp/fft/split_radix.h`) that `basic_real_fft` routes to from
+the Stage 2b SHA, DspTap `bbfa48d` (tap/DspTap#31), onward. The port is
+pinned bit-identical to the C in both precisions by DspTap's parity gate and
+by this repository's fingerprint harness at the bump (all 14 lines, float
+rows included, unchanged), so the certified rows below are the same numbers
+on either side of that SHA; the word is kept rather than scrubbed so each
+row stays traceable to the backend it was measured on.
+
 **On Apple, MuTap uses Ooura for float32, not vDSP** — DspTap defaults vDSP
 ON for Apple and MuTap's root `CMakeLists.txt` turns it back off. The
 certified Apple numbers are therefore Ooura numbers, and the macOS CI leg

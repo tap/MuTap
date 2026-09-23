@@ -12,7 +12,9 @@ double runs soft-float and is the desktop golden model only).
 
 The real FFT is the single hottest kernel in the chain. Profiling the M55
 (`-mcpu=cortex-m55`, GCC 13, Helium/MVE) showed GCC does autovectorize the
-vendored Ooura float FFT (DspTap's `third_party/ooura/fftsg_float.c`) — but not nearly
+vendored Ooura float FFT (DspTap's `third_party/ooura/fftsg_float.c` as measured;
+since DspTap `bbfa48d`, Stage 2b, the same engine ships as the bit-identical C++20
+port `fft/split_radix.h`) — but not nearly
 as well as Arm's hand-tuned CMSIS-DSP kernels. Measured, per forward transform,
 instructions under QEMU:
 
@@ -71,7 +73,11 @@ is a re-export). Its `fft.h` routes `basic_real_fft<float>` through CMSIS when
 `TAP_DSP_FFT_CMSIS` is defined; the CMake option of that name defaults ON for
 the bare-metal M55 profile (`CMAKE_SYSTEM_NAME=Generic` + arm) and OFF
 everywhere else, so desktop, the Max/C-ABI host builds (including Apple Silicon
-arm64), and Hexagon are untouched. `double` always keeps Ooura regardless.
+arm64), and Hexagon are untouched. Everywhere the option is off, and for
+`double` always, `basic_real_fft` is the split-radix engine
+(`fft/split_radix.h`, DspTap's C++20 port of the vendored Ooura C, routed since
+DspTap `bbfa48d`, Stage 2b; the C stays in the tree only as the parity
+reference until Stage 2c).
 The wrapper re-presents CMSIS in **Ooura's exact numeric contract** so nothing
 downstream changes and every intermediate spectrum matches the Ooura build to
 float epsilon:
@@ -102,15 +108,17 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
 ### What is validated
 
 - **DspTap's `tests/test_fft_backend.cpp`** (`CertifiedGeometries/
-  fft_backend_parity`) asserts the CMSIS forward output matches a direct Ooura
-  `rdft_f` reference bin-for-bin (<5e-6 relative) and that the round trip
-  reproduces the input, at both certified sizes (512, 2048). Honest status: at
-  the current DspTap pin this gate on the CMSIS backend is executed by **no
-  CI** — the suites moved to DspTap with the FFT (so they are gone from
-  MuTap's `tests/bare_metal_main.cpp` selection), and DspTap's own M55 leg is
-  compile-only with its tests off; it will run once DspTap's embedded legs land
-  (DspTap #17, plan Part 10). Until then the float32 battery below is the only
-  CMSIS gate anywhere.
+  fft_backend_parity`) asserts the CMSIS forward output matches the reference
+  float engine bin-for-bin (<5e-6 relative) and that the round trip
+  reproduces the input, at both certified sizes (512, 2048). The reference is
+  `detail::split_radix_rdft<float>`, the port that is bit-identical to Ooura's
+  `rdft_f`; until DspTap `bbfa48d` (Stage 2b) it was the raw `rdft_f` of
+  `fftsg_float.c`. Since DspTap's embedded legs landed the suite runs under
+  QEMU on DspTap's own `cortex-m55` leg, where the CMSIS backend is on
+  (`test_fft_backend.cpp` is in `tap_dsp_tests`, DspTap `tests/CMakeLists.txt`);
+  before that, the float32 battery below was the only CMSIS gate anywhere and
+  the suites were gone from MuTap's `tests/bare_metal_main.cpp` selection
+  (they moved to DspTap with the FFT).
 - **The whole DspTap `test_fft.cpp` contract suite** (packing, +i sign
   convention, Parseval, float-tracks-double) exercises `basic_real_fft<float>`,
   so it re-validates the CMSIS backend automatically wherever it runs with the
@@ -135,7 +143,9 @@ The swap is **Arm-only**. On Hexagon (HVX V68) the Ooura FFT compiles fully
 scalar (0 HVX), so an FFT backend would be the biggest single lever there too —
 but there is no free HVX FFT: Qualcomm's is a proprietary SDK component, and
 HVX-float autovectorization does not fire on the strided packed-complex loop
-shape. Hexagon stays on scalar Ooura until an HVX FFT is available.
+shape. Hexagon stays on the scalar Ooura-lineage engine (the vendored C when
+this was measured; from DspTap `bbfa48d` the bit-identical split-radix port)
+until an HVX FFT is available.
 
 ### Refreshing the vendored CMSIS subset
 
