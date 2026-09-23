@@ -41,7 +41,7 @@ rescue trigger or guard ever fires inside the timed loop. Items
 processed are samples: Google Benchmark's `items_per_second / fs` is
 the x-realtime figure.
 
-## Scalar baselines (reference container, 2.8 GHz x86, GCC -O2, medians of 5, idle machine)
+## Scalar baselines (reference container, 2.8 GHz x86, GCC Release: -O3 -DNDEBUG, medians of 5, idle machine)
 
 | layer | 48 kHz f64 | 48 kHz f32 | 16 kHz f64 | 16 kHz f32 |
 |---|---|---|---|---|
@@ -258,12 +258,22 @@ that alone moved m33 `fdkf` and `shadow` by +0.37 % (`shadow_16k`
 MuTap loop disassembling identically. The extra library code in the
 translation unit made GCC 13.2 re-decide its inlining inside the
 split-radix engine (`split_radix_rdft<float>::cftleaf`, 2,060 → 1,465
-disassembly lines). The pin bump alone, before any MuTap change, read
-m33 `suppressor` +0.06 % for the same reason. A ratchet move of a few tenths
-of a percent on m33 with no loop change is therefore TU composition until
-shown otherwise (DspTap #35 found the harness-side version of the same
-effect); the gate's message is a literal for this reason
-(`include/mutap/fft.h`).
+disassembly lines). The review of #58 measured the mechanism: recompiling
+that `shadow_16k` object with only `--param large-unit-insns=1000000`
+restores `cftleaf` (2,723 lines) and takes the count from 111,427,739 back to
+111,309,467, while `-fno-inline-functions` changes nothing. Each workload is
+one TU of roughly GCC's `large-unit-insns` budget (default 10,000); once a
+change grows the TU past it, GCC rations inlining inside DspTap's engine.
+The pin bump alone, before any MuTap change, read m33 `suppressor` +0.06 %
+for the same reason. **So the m33 key has a TU-composition noise floor of
+about 0.4 %**: a move of that size with no loop change is that budget until
+shown otherwise. It is not the DspTap #35 class (register allocation in the
+harness's `main`, fixed by a non-inlined factory); nothing on the harness
+side reaches inlining inside the engine, and pinning the `--param` in
+`bench/icount/CMakeLists.txt` would move the gate away from what a Release
+build emits, so it is recorded here instead. (The size gate's message is a
+literal because that is MuTap's config-error form; `include/mutap/fft.h`.)
+The workloads compile at CMake's Release flags, `-O3 -DNDEBUG`.
 
 ## FFT backend (Arm Helium)
 

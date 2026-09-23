@@ -154,13 +154,15 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// 2 * the trained hop for the learned suppressor.
         ///
         /// The message is a string literal from the call site, naming the
-        /// class and how n is derived, followed by MUTAP_FFT_SIZE_RANGES. It
-        /// is deliberately not formatted here (no std::string, no
-        /// to_string): a first version that composed it pulled enough
-        /// library code into every translation unit that GCC 13.2 re-decided
-        /// its inlining inside the split-radix engine's cftleaf in the
-        /// Cortex-M33 ratchet binaries, +0.37 % on the fdkf and shadow
-        /// scenarios with no MuTap loop changed (bench/README.md).
+        /// class and how n is derived, followed by MUTAP_FFT_SIZE_RANGES:
+        /// MuTap's config-error form, the one every validated() in
+        /// include/mutap throws (a const char* literal; nothing in the
+        /// library formats text). Observed on the way, not the reason: a
+        /// first version that formatted the size with std::to_string grew
+        /// the one-TU Cortex-M33 ratchet workloads past GCC's
+        /// large-unit-insns budget, which then rationed inlining inside the
+        /// split-radix engine (+0.37 % on fdkf and shadow, no MuTap loop
+        /// changed; bench/README.md).
         /// @param n       the FFT size the caller is about to construct
         /// @param message the exception text, a literal
         template <typename Sample>

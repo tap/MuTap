@@ -433,7 +433,7 @@ jobs:
           gcc -shared -fPIC $(pkg-config --cflags glib-2.0) -I/tmp \
             -o /tmp/libinsncount.so tools/qemu_insn_plugin/insn_count.c
 
-      # Release (-O2) M55 workloads, matching how baselines are recorded. No
+      # Release (-O3 -DNDEBUG, CMake's Release flags) M55 workloads, matching how baselines are recorded. No
       # -DTAP_DSP_FFT_CMSIS here: the M55 profile defaults it ON, so the ratchet
       # gates the deployed CMSIS-DSP Helium FFT (bench/baselines.json m55).
       - name: Build M55 workloads
@@ -455,7 +455,7 @@ jobs:
           python3 scripts/icount.py --target m55
           --build-dir build-m55 --plugin /tmp/libinsncount.so
 
-      # Release (-O2) M33 workloads on the MPS2+ AN505 model: the Pico 2 W
+      # Release (-O3 -DNDEBUG) M33 workloads on the MPS2+ AN505 model: the Pico 2 W
       # class core, split-radix float32 FFT (the toolchain file pins CMSIS off —
       # no Helium). bench/baselines.json m33 was seeded from this exact
       # toolchain/QEMU pair (gcc-arm-none-eabi 13.2.rel1, QEMU 8.2.2).
