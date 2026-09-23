@@ -29,6 +29,15 @@ This is a permissive grant, compatible with redistribution inside an
 MIT-licensed project. The copyright/permission notice is retained at the top of
 `fftsg.c`.
 
+Since DspTap `bbfa48d` (Stage 2b of the FFT plan, tap/DspTap#31) every
+floating-point transform MuTap runs is DspTap's C++20 port of `rdft`
+(`include/tap/dsp/fft/split_radix.h`, header-only, a derivative work carrying
+Ooura's notice verbatim under `SPDX-License-Identifier: LicenseRef-Ooura AND
+MIT`); the two C files above remain bundled in the submodule and compiled into
+DspTap's `tap_dsp_fft` static library only as the parity reference. DspTap's
+`NOTICE.md` states the derivative's licensing position; this section is
+rewritten when the C leaves the tree at Stage 2c.
+
 ### Toy dataset fixture — `tools/ml/kws/fixtures/toy/`
 The wake-word dataset builder's bring-up corpus (wake-word plan §6 M4a): four
 small archives of third-party audio and text (662,293 bytes in all, measured
