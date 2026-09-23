@@ -49,6 +49,17 @@ target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)
 
+# The vendored FAUST material (third_party/faust/: the anti-howl PoC's
+# reference reverb and baseline suppressor) is host-only: its generated
+# classes carry 256-512 KB class-static oscillator tables and belong to no
+# embedded profile, so the cross and bare-metal builds do not compile it, and
+# neither emulated selection (bare_metal_main.cpp's filter, TEST_FILTER below)
+# names its FaustVendored suite.
+if(NOT MUTAP_BARE_METAL AND NOT CMAKE_CROSSCOMPILING)
+    target_sources(mutap_tests PRIVATE test_faust_vendored.cpp)
+    target_include_directories(mutap_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party/faust)
+endif()
+
 if(MUTAP_BARE_METAL)
     # One-shot mode (Cortex-M55 under qemu-system-arm): a custom main bakes
     # in the emulation-appropriate test selection (no argv on the target),

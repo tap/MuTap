@@ -1,0 +1,125 @@
+//################################ icc_48k.lib ################################
+// faust-icc's icc.lib (vendored pristine in ../faust-icc/) with three
+// functions overridden so the suppressor is correct at any sample rate, and
+// at 48 kHz in particular. Everything else is forwarded unchanged.
+//
+// The overrides and the phase-0 numbers behind them (MuTap
+// _afc_poc/PHASE0.md section 4; faust-icc's own msg_sweep method, its cabin,
+// parameters as in its loopManager):
+//
+// * freqShift(order, guardHz, shiftHz) replaces freqShift(order, shiftHz).
+//   Upstream (icc.lib:285-290) has three defects:
+//   1. It takes the real part of fi.pospass's complex output without the x2
+//      that FAUST documents (filters.lib: `hilbert(N) = pospass(N) : !,*(2)`).
+//      A real sinusoid's positive-frequency half has amplitude 1/2, so the
+//      passband sits at -6 dB: a flat loss inside the loop that reads as about
+//      6 dB of "stable gain". Restored here.
+//   2. Its guard band is hard-wired to fc = SR/(2*order): 1333 Hz at 16 kHz,
+//      4 kHz at 48 kHz. Below fc content is attenuated, not shifted: measured
+//      -14.4 dB at 1 kHz and -28.1 dB at 310 Hz (the cabin mode) at 16 kHz;
+//      -17.7 dB at 2.5 kHz at 48 kHz. Here the guard is a parameter.
+//   3. The modulator is passed to si.cmul as (sin, cos), so "+shift" shifts
+//      down (1000 -> 996 Hz at +4 Hz). Here it is (cos, sin): +shift is up.
+//   Of faust-icc's published "+12 dB" (16 kHz: +4.0 bypassed, +16.0
+//   suppressed), the ablation attributes about 6 dB to defect 1, about 5 dB to
+//   defect 2 removing the 310 Hz cabin mode, about 1 dB to the notches (+1.1
+//   alone) and under 1 dB to decorrelation. At 48 kHz as shipped the chain
+//   adds +17.5 dB, of which +16.6 is the shifter at 0 Hz (a filter only); with
+//   the guard at 100 Hz (x2 not restored) it adds +9.9 dB, +3.9 of it the
+//   0 Hz shifter, whose passband is then -3.4 dB.
+//
+// * notchSlot / notchBank: upstream's si.smooth(0.999) (the latched notch
+//   frequency) and si.smooth(0.9995) (the notch depth) are per-sample poles,
+//   tuned at 16 kHz, where they are time constants of 62.47 ms and 124.97 ms
+//   (-1/(16000 ln s); FAUST's 1/(1-s)-sample rule of thumb gives 62.5 and
+//   125 ms). At 48 kHz the same poles run 3x faster. Here each pole comes from
+//   its 16 kHz time constant through ba.tau2pole, so it holds at any rate and
+//   is upstream's pole exactly at 16 kHz. The phase-0 48 kHz ablation above
+//   did NOT retune these (its notch rows latch and fade 3x faster). notchBank
+//   is re-declared only so that it cascades this file's notchSlot.
+//
+// Not forwarded: loopManager, which calls the defective two-argument
+// freqShift; compose gainCeiling : notchBank : freqShift from this file
+// instead. gainCeiling is forwarded unchanged and keeps upstream's per-sample
+// si.smooth(0.999) on its gain (a parameter smoother, not overridden here).
+//
+// License: MIT, as icc.lib (Copyright (c) 2026 Ashmita Chakraborty; see
+// ../faust-icc/LICENSE). The overrides are MuTap's, MIT.
+//
+// #### Usage
+//
+// ```
+// ic = library("icc_48k.lib");   // with -I pointing at ../faust-icc
+// ```
+//##############################################################################
+
+declare name "ICC (48 kHz retuning)";
+
+icc = library("icc.lib");
+ma = library("maths.lib");
+ba = library("basics.lib");
+si = library("signals.lib");
+fi = library("filters.lib");
+os = library("oscillators.lib");
+
+//======================== Overrides ==========================================
+
+//---------------------------`(ic.)freqShift`---------------------------------
+// Single-sideband frequency shift by `shiftHz` (positive = up), unity
+// passband, guard band `guardHz` as a parameter.
+//
+// ```
+// _ : freqShift(order, guardHz, shiftHz) : _
+// ```
+//
+// * `order`: pospass (Butterworth) order; faust-icc uses 6
+// * `guardHz`: pospass lower cutoff in Hz; content below it is attenuated,
+//   not shifted. Must stay below SR/4.
+// * `shiftHz`: shift in Hz; may be runtime and negative
+//-----------------------------------------------------------------------------
+freqShift(order, guardHz, shiftHz) = analytic , modulator : si.cmul : *(2.0) , !
+with {
+    analytic = fi.pospass(order, guardHz);
+    modulator = os.osccos(shiftHz), os.oscsin(shiftHz);
+};
+
+//---------------------------`(ic.)notchSlot`---------------------------------
+// icc.lib's notchSlot, unchanged except for the two smoothing poles, which
+// come from their 16 kHz time constants instead of fixed per-sample values.
+//-----------------------------------------------------------------------------
+notchSlot(nBands, fmin, fmax, q, promThresh, holdTime, width, maxDepth) =
+    _ <: (_, icc.howlDetect(nBands, fmin, fmax, q, promThresh, holdTime)) : engage
+with {
+    // upstream's poles at 16 kHz, as time constants in seconds
+    tauLatch = -1.0 / (16000.0 * log(0.999));    // 62.47 ms
+    tauDepth = -1.0 / (16000.0 * log(0.9995));   // 124.97 ms
+
+    engage(x, conf, pf, prom) = notched * g + x * (1.0 - g)
+    with {
+        latched = ba.sAndH(conf > 0.5, pf) : max(fmin) : min(fmax) : si.smooth(ba.tau2pole(tauLatch));
+        notched = x : fi.notchw(width, latched);
+        depthLin = 1.0 - pow(10.0, -maxDepth/20.0);
+        g = conf : min(1.0) : max(0.0) : *(depthLin) : si.smooth(ba.tau2pole(tauDepth));
+    };
+};
+
+//---------------------------`(ic.)notchBank`---------------------------------
+// icc.lib's notchBank, cascading this file's notchSlot.
+//-----------------------------------------------------------------------------
+notchBank(k, nBands, fmin, fmax, q, promThresh, holdTime, width, maxDepth) =
+    seq(j, k, notchSlot(nBands, fmin, fmax, q, promThresh, holdTime, width, maxDepth));
+
+//======================== Forwarded unchanged ================================
+
+bandProbe = icc.bandProbe;
+pickLouder = icc.pickLouder;
+argmaxBands = icc.argmaxBands;
+meanBands = icc.meanBands;
+logBandFreq = icc.logBandFreq;
+howlDetect = icc.howlDetect;
+phaseModDelay = icc.phaseModDelay;
+gainCeiling = icc.gainCeiling;
+speechAgc = icc.speechAgc;
+cabinPath = icc.cabinPath;
+closedLoop = icc.closedLoop;
+loudspeakerSat = icc.loudspeakerSat;

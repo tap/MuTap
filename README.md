@@ -382,6 +382,10 @@ book/                "Quieting the Loop" (mdBook) — the user-facing field guid
 platform/            Cortex-M55 bare-metal board support (startup, linker)
 cmake/               cross toolchain files (Cortex-M55 MPS3, Hexagon musl)
 tests/fixtures/      RIR fixtures (committed rooms; tools/fixtures regenerates)
+third_party/faust/   anti-howl PoC reference material, never part of the library:
+                     FAUST's Dattorro plate and faust-icc's suppressor (corrected),
+                     their FAUST-generated C++ and a shim; host tests only
+                     (third_party/faust/README.md, THIRD_PARTY_NOTICES.md)
 ```
 
 Planned as the milestones land: `examples/`, `bench/`, `docs/`.
