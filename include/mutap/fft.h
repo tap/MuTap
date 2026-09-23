@@ -92,11 +92,42 @@ namespace tap::mu {
 
 } // namespace tap::mu
 
+/// The float engine's size range in this build, as text, selected by the same
+/// defines tap/dsp/fft.h selects the engine by (a string literal: no code).
+#if defined(TAP_DSP_FFT_CMSIS)
+#define MUTAP_FFT_FLOAT_RANGE "32 ... 4096"
+#elif defined(TAP_DSP_FFT_ACCELERATE)
+#define MUTAP_FFT_FLOAT_RANGE "4 ... 2^20"
+#else
+#define MUTAP_FFT_FLOAT_RANGE "4 ... 2^30"
+#endif
+
 /// The tail of every configured-FFT-size error message
-/// (fft_detail::checked_fft_size, below): the engines' ranges, as text.
-#define MUTAP_FFT_SIZE_RANGES                                                                                          \
-    " is not an FFT size this build supports (basic_real_fft::supports_size: split-radix 4 ... 2^30;"                  \
-    " CMSIS-DSP on the Cortex-M55 32 ... 4096; vDSP 4 ... 2^20)"
+/// (fft_detail::checked_fft_size, below): the engine this build selected for
+/// float (TAP_DSP_FFT_ABI_NAME, DspTap's literal of k_real_fft_abi_tag) and
+/// its range, the double profile's range, and the CMSIS numbers, all as one
+/// string literal.
+#define MUTAP_FFT_SIZE_RANGES                                                                                           \
+    " is not an FFT size this build supports (basic_real_fft::supports_size: the float engine is " TAP_DSP_FFT_ABI_NAME \
+    ", " MUTAP_FFT_FLOAT_RANGE "; double runs split-radix, 4 ... 2^30; CMSIS-DSP on the"                                \
+    " Cortex-M55 takes 32 ... 4096)"
+
+// The literals above restate DspTap's numbers; these keep them honest.
+static_assert(tap::dsp::basic_real_fft<double>::k_min_size == 4
+                  && tap::dsp::basic_real_fft<double>::k_max_size == (std::size_t{1} << 30),
+              "MUTAP_FFT_SIZE_RANGES states the double range as 4 ... 2^30");
+#if defined(TAP_DSP_FFT_CMSIS)
+static_assert(tap::dsp::basic_real_fft<float>::k_min_size == 32 && tap::dsp::basic_real_fft<float>::k_max_size == 4096,
+              "MUTAP_FFT_FLOAT_RANGE states the CMSIS range as 32 ... 4096");
+#elif defined(TAP_DSP_FFT_ACCELERATE)
+static_assert(tap::dsp::basic_real_fft<float>::k_min_size == 4
+                  && tap::dsp::basic_real_fft<float>::k_max_size == (std::size_t{1} << 20),
+              "MUTAP_FFT_FLOAT_RANGE states the vDSP range as 4 ... 2^20");
+#else
+static_assert(tap::dsp::basic_real_fft<float>::k_min_size == 4
+                  && tap::dsp::basic_real_fft<float>::k_max_size == (std::size_t{1} << 30),
+              "MUTAP_FFT_FLOAT_RANGE states the split-radix range as 4 ... 2^30");
+#endif
 
 // Inside the tag: the check's code depends on the selected engine's range.
 namespace tap::mu::inline TAP_DSP_FFT_ABI {

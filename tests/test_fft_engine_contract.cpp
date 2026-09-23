@@ -105,9 +105,9 @@ namespace {
     using fft = tap::mu::basic_real_fft<Sample>;
 
     /// Constructs `make()` and reports whether it was accepted. A rejection
-    /// must be the size gate's std::invalid_argument, whose text carries the
-    /// engines' ranges, the CMSIS numbers included (any other exception fails
-    /// the test).
+    /// must be the size gate's std::invalid_argument, whose text names this
+    /// build's float engine (k_real_fft_abi_tag) and carries the ranges, the
+    /// CMSIS numbers included (any other exception fails the test).
     template <typename Make>
     bool accepted(Make make) {
         try {
@@ -117,7 +117,9 @@ namespace {
         catch (const std::invalid_argument& e) {
             const std::string what = e.what();
             EXPECT_NE(what.find(MUTAP_FFT_SIZE_RANGES), std::string::npos) << what;
-            EXPECT_NE(what.find("CMSIS-DSP on the Cortex-M55 32 ... 4096"), std::string::npos) << what;
+            EXPECT_NE(what.find("CMSIS-DSP on the Cortex-M55 takes 32 ... 4096"), std::string::npos) << what;
+            // The engine this build selected, by name (the float profile's).
+            EXPECT_NE(what.find(tap::dsp::k_real_fft_abi_tag), std::string::npos) << what;
             return false;
         }
     }
