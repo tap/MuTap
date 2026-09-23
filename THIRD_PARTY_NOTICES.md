@@ -24,7 +24,9 @@ What MuTap ships is not the C: since DspTap Stage 2c (tap/DspTap#32, pin
 runs on its default engine is DspTap's C++20 port of `rdft`,
 `submodules/dsptap/include/tap/dsp/fft/split_radix.h` — a statement-for-statement
 transliteration that landed beside the vendored C at Stage 2a (tap/DspTap#28),
-bit-identical to it in both precisions under DspTap's parity gate, and that
+bit-identical to it in both precisions (held by DspTap's parity gate against
+the C until Decision D6, and since then by the pinned fingerprints that gate
+measured, `submodules/dsptap/tests/test_fft_split_radix_fingerprint.cpp`), and that
 `basic_real_fft` has routed to since Stage 2b (tap/DspTap#31, `bbfa48d`; this
 repository's fingerprint harness held all 14 lines, float rows included,
 across every bump since). The double profile always runs the port; the float
@@ -59,12 +61,15 @@ Copyright:
     without fee. You may distribute this ORIGINAL package.
 ```
 
-**Not shipped:** Ooura's C (`fftsg.c`, and DspTap's single-precision wrapper
-around it) is not compiled into anything a MuTap build produces, on any
-target, and has not been since the Stage 2c pin. At this pin DspTap still
-keeps a reference copy under `submodules/dsptap/tests/reference/ooura/`,
-compiled only by DspTap's own test of the port against it; DspTap Decision D6
-retires that copy now that MuTap and MuTap-Max both pin a Stage 2c tree.
+**Not shipped, not present:** Ooura's C (`fftsg.c`, and DspTap's
+single-precision wrapper around it) is compiled into nothing a MuTap build
+produces, on any target, and has not been since the Stage 2c pin; since DspTap
+Decision D6 (tap/DspTap#36) it exists nowhere in the tree either — the
+reference copy DspTap kept under `tests/reference/ooura/` for its parity gate
+was deleted once MuTap and MuTap-Max both pinned a Stage 2c tree. What remains
+of the package is the derived port above, shipped under `LicenseRef-Ooura AND
+MIT`, and DspTap's license record for it: `third_party/ooura/readme.txt` and
+`LICENSES/LicenseRef-Ooura.txt`.
 
 ### Toy dataset fixture — `tools/ml/kws/fixtures/toy/`
 The wake-word dataset builder's bring-up corpus (wake-word plan §6 M4a): four

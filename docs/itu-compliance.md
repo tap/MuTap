@@ -664,13 +664,16 @@ today. All are deterministic across processes, which is the property that
 makes a single run of a row count as evidence at all.
 
 **Glossary — "Ooura".** Wherever this document (and the `backend=ooura`
-header the fingerprint harness prints) says a number was measured on Ooura,
+header the fingerprint harness printed up to the DspTap `8350f13` pin;
+`backend=split_radix` since) says a number was measured on Ooura,
 the word names one numeric engine across two implementations: the vendored
 C (`third_party/ooura/fftsg.c` / `fftsg_float.c`) at DspTap pins ≤ `5ca3b1c`
 and every pin up to `b08f6c6`, and the bit-identical C++20 split-radix port
 (`include/tap/dsp/fft/split_radix.h`) that `basic_real_fft` routes to from
 the Stage 2b SHA, DspTap `bbfa48d` (tap/DspTap#31), onward. The port is
-pinned bit-identical to the C in both precisions by DspTap's parity gate and
+pinned bit-identical to the C in both precisions by DspTap's parity gate
+(since DspTap Decision D6 deleted the C, by the fingerprints that gate
+measured, DspTap's `tests/test_fft_split_radix_fingerprint.cpp`) and
 by this repository's fingerprint harness at the bump (all 14 lines, float
 rows included, unchanged), so the certified rows below are the same numbers
 on either side of that SHA; the word is kept rather than scrubbed so each
