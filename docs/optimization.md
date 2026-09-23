@@ -110,8 +110,8 @@ build to float epsilon:
   `include/mutap/fft.h`): under CMSIS the cancellers take block sizes
   16 … 2048 (N = 2B), the residual suppressor needs
   `analysis_blocks * block_size` in 32 … 4096 (the default 8 blocks allow
-  block sizes up to 512), and a learned-suppressor model's hop must be at most
-  2048. `double`, and float on every other build, runs the split-radix engine
+  block sizes up to 512), and a learned-suppressor model's hop must be in
+  16 … 2048. `double`, and float on every other build, runs the split-radix engine
   (4 … 2^30). `tests/test_fft_engine_contract.cpp` pins each path on every leg.
 - **ABI tag.** Because `basic_real_fft<float>`'s layout follows the selected
   engine, so does the layout of every MuTap class that holds one by value;
@@ -154,9 +154,9 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
   convention, Parseval, float-tracks-double) exercises `basic_real_fft<float>`,
   so it re-validates the CMSIS backend automatically wherever it runs with the
   option on (same status as above for the M55).
-- **The emulated float32 battery** (`mutap_tests_emulated`, the 58-test
+- **The emulated float32 battery** (`mutap_tests_emulated`, the 59-test
   selection in `tests/bare_metal_main.cpp`) runs on the M55 with the CMSIS
-  backend (the default): 58/58 pass — the AEC still meets every asserted
+  backend (the default): 59/59 pass — the AEC still meets every asserted
   float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same battery with
   `-DTAP_DSP_FFT_CMSIS=OFF` to keep the split-radix fallback honest.
 - **`tests/fingerprint_harness.cpp`** (`mutap_fingerprint`) prints one FNV-1a

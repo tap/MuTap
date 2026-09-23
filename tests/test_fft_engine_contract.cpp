@@ -36,7 +36,8 @@
 // split-radix engine) are stated explicitly per build. What each path maps
 // to an FFT size:
 //     partitioned_fdaf, partitioned_fdkf  N = 2 * block_size
-//     pem_afc                             N = the core's fft_size()
+//     pem_afc                             N = 2 * fdaf.block_size (its own gate,
+//                                         checked before the core is built)
 //     residual_suppressor                 N = analysis_blocks * block_size
 //     nn_suppressor                       N = 2 * the weights' hop
 
@@ -285,4 +286,21 @@ TEST(FftEngineContract, ConfiguredSizesThisBuildRejects) {
     EXPECT_TRUE(suppressor_accepts<float>(4, 4));
     EXPECT_TRUE(nn_accepts<float>(4096));
 #endif
+}
+
+// pem_afc states its own gate before its core is constructed, so the
+// rejection names pem_afc, not the core it wraps.
+TEST(FftEngineContract, PemAfcRejectsBeforeItsCore) {
+    tap::mu::pem_afc<float>::config cfg;
+    cfg.fdaf.block_size             = std::size_t{1} << 30;
+    cfg.fdaf.partitions             = 1;
+    cfg.analysis_window             = 2 * cfg.fdaf.block_size;
+    cfg.predictor.analysis_capacity = cfg.analysis_window;
+    try {
+        tap::mu::pem_afc<float> afc(cfg);
+        ADD_FAILURE() << "an unsupported FFT size was accepted";
+    }
+    catch (const std::invalid_argument& e) {
+        EXPECT_EQ(std::string(e.what()).rfind("pem_afc: ", 0), 0U) << e.what();
+    }
 }

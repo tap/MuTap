@@ -71,8 +71,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             , m_predictor(cfg.predictor)
             , m_u_state(m_predictor.make_state())
             , m_y_state(m_predictor.make_state())
-            , m_n(fft_detail::checked_fft_size<Sample>(m_fdaf.fft_size(),
-                                                       "pem_afc: the core's fft_size()" MUTAP_FFT_SIZE_RANGES))
+            , m_n(m_fdaf.fft_size())
             , m_fft(m_n)
             , m_input(m_n)
             , m_u_raw(cfg.fdaf.partitions * m_n)
@@ -191,6 +190,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
       private:
         static config validated(const config& cfg) {
+            // First, before the core is constructed: this class's own FFT
+            // runs at 2 * block_size (the core's fft_size() for both shipped
+            // cores), so the size gate is pem_afc's to state, whatever Core
+            // checks for itself.
+            fft_detail::checked_fft_size<Sample>(2 * cfg.fdaf.block_size,
+                                                 "pem_afc: 2 * fdaf.block_size" MUTAP_FFT_SIZE_RANGES);
             if (cfg.analysis_window < 2 * cfg.fdaf.block_size) {
                 throw std::invalid_argument("pem_afc: analysis_window must be >= 2 * block_size");
             }
