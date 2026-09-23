@@ -45,7 +45,7 @@ int main() {
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
     // is 58 tests (the FFT suites left with the FFT; FftEngineContract, the
-    // engine-contract rows MuTap owns, joined at the DspTap 6f6f77f bump);
+    // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump);
     // 30 leaves headroom for legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {

@@ -43,7 +43,7 @@ carries the measured numbers; this is the map:
 - `include/mutap/` — `fft.h` (re-export of DspTap's `tap::dsp::basic_real_fft`;
   since DspTap `bbfa48d`, Stage 2b of the FFT plan, that is the C++20
   split-radix port of Ooura, bit-identical to the vendored C it replaced;
-  since the `6f6f77f` pin, Stage 4, it also carries MuTap's side of the
+  since the `0db95b6` pin, Stage 4 plus D6, it also carries MuTap's side of the
   engine contract: the ABI tag and `fft_detail::checked_fft_size`),
   `fdaf.h` (partitioned-block NLMS core + the M4 control stack: IPC,
   IPC-scaled stepping, transient gate, variable regularization), `fd_kalman.h` (**the v2 Kalman core** —
@@ -119,7 +119,7 @@ carries the measured numbers; this is the map:
    pastes the `mutap_fingerprint` diff (before/after the pin; procedure
    at the top of `tests/fingerprint_harness.cpp`) into its PR and says
    which `FINGERPRINT` lines the stage expects to move.
-   Since the DspTap `6f6f77f` pin (Stage 4, tap/DspTap#35) two rules hold
+   Since the DspTap `0db95b6` pin (Stage 4, tap/DspTap#35) two rules hold
    for any class that holds a `basic_real_fft` by value (today
    `partitioned_fdaf`, `partitioned_fdkf`, `pem_afc`, `residual_suppressor`,
    `nn_suppressor`): define it inside `namespace tap::mu::inline

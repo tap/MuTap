@@ -233,14 +233,16 @@ job red on #54 and forced this record; the DspTap FFT plan had predicted
 0 % for this bump (same instruction stream as the C), and this table is the
 measured correction to that prediction.
 
-**2026-09-23 — DspTap 6f6f77f (Stage 6 + Stage 4, tap/DspTap#34 / #35), tap/MuTap#58: no re-record.**
+**2026-09-23 — DspTap 0db95b6 (Stage 6 + Stage 4 + D6, tap/DspTap#34 / #35 / #36), tap/MuTap#58: no re-record.**
 Stage 4 made the engine a template parameter and added the ABI tag; neither
 changes an instruction of any transform, and MuTap's size gate adds one
-predicate per constructor. Measured against the committed baselines on the
-PR's `pull_request` run
+predicate per constructor; D6 changed only comments under DspTap's
+`include/`. Measured against the committed baselines on the PR's
+`pull_request` run
 [35918701246](https://github.com/tap/MuTap/actions/runs/35918701246)
-(head `82ebabc`; m33 and m55 also reproduced locally on the same
-toolchain/QEMU pair, count for count on m33), in instructions:
+(head `82ebabc`, pin `6f6f77f`; m33 and m55 reproduced locally on the same
+toolchain/QEMU pair count for count, and re-measured locally at `0db95b6`:
+identical count for count), in instructions:
 
 | key | chain 16k / 48k | fdkf 16k / 48k | nn_suppressor 16k / 48k | shadow 16k / 48k | suppressor 16k / 48k |
 |---|---:|---:|---:|---:|---:|

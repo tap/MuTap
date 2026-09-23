@@ -80,10 +80,10 @@ arm64), and Hexagon are untouched. Everywhere the option is off, and for
 `double` always, `basic_real_fft` is the split-radix engine
 (`fft/split_radix.h`, DspTap's C++20 port of the vendored Ooura C, routed since
 DspTap `bbfa48d`, Stage 2b; the C left the shipping tree at Stage 2c, `8350f13`,
-and DspTap Decision D6, tap/DspTap#36, deleted the reference copy its parity
+and DspTap Decision D6, tap/DspTap#36 (`0db95b6`), deleted the reference copy its parity
 gate compiled; the bit identity is now held by pinned fingerprints,
 DspTap's `tests/test_fft_split_radix_fingerprint.cpp`).
-Since DspTap Stage 4 (tap/DspTap#35, pinned here from `6f6f77f`) the engine is
+Since DspTap Stage 4 (tap/DspTap#35, pinned here from `0db95b6`) the engine is
 a template parameter, `basic_real_fft<Sample, Engine>`, whose default is what
 the option selects; the CMSIS engine is `detail::cmsis_real_fft_f32` in DspTap's
 `fft/backends/cmsis.h`.
