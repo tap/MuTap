@@ -189,7 +189,7 @@ are brought to the measured numbers by the same `--update`. Toolchain/QEMU: m33 
 (1:8.2.2+ds-0ubuntu1.18)`; hexagon
 `clang+llvm-19.1.5-cross-hexagon-unknown-linux-musl`, `qemu-hexagon` built
 from `qemu-8.2.2.tar.xz` with `--enable-plugins` (the job's pinned source).
-`main SHA`: **pending** (the #54 squash). Cross-check: the m33 and m55
+`main SHA`: `74840f1` (the #54 squash). Cross-check: the m33 and m55
 workloads rebuilt and counted locally on the same toolchain/QEMU pair
 (`15:13.2.rel1-2`, `1:8.2.2+ds-0ubuntu1.18`, the plugin built against the
 job's pinned `qemu-plugin.h`) reproduce all 20 committed counts exactly;
