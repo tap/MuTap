@@ -3,12 +3,21 @@
 // SPDX-License-Identifier: MIT
 // Copyright 2026 MuTap contributors
 //
-// The real FFT (the Ooura wrapper with its CMSIS-DSP Helium / Apple vDSP float32
-// backends) used to live here as a vendored copy. It now lives in DspTap
-// (tap::dsp), consumed via the submodules/dsptap submodule — one wrapper shared
-// with AmbiTap and the rest of the family. This header keeps the historical
-// include path (`mutap/fft.h`) and the unqualified names (`real_fft`,
-// `real_fft32`, `basic_real_fft`) working inside tap::mu.
+// The real FFT used to live here as a vendored copy of Ooura's C with a
+// wrapper. It now lives in DspTap (tap::dsp), consumed via the
+// submodules/dsptap submodule and shared with the rest of the family:
+// header-only, one numeric contract (Ooura's packing, exp(+i) sign and
+// unnormalized inverse) over an engine selected per build. The double profile
+// always runs the split-radix engine (tap/dsp/fft/split_radix.h, DspTap's
+// C++20 port of Ooura's rdft, bit-identical to the C it replaced); the float
+// profile runs the same engine unless the build selects CMSIS-DSP Helium
+// (TAP_DSP_FFT_CMSIS, the default on the bare-metal Cortex-M55; FFT sizes
+// 32 ... 4096 only) or Apple vDSP (TAP_DSP_FFT_ACCELERATE, which MuTap's root
+// CMakeLists.txt turns off by default; see there). This header keeps the
+// historical include path (`mutap/fft.h`) and the unqualified names
+// (`real_fft`, `real_fft32`, `basic_real_fft`) working inside tap::mu, and
+// carries MuTap's side of DspTap's Stage 4 contract: the ABI tag and the
+// configured-size gate below.
 
 #pragma once
 
