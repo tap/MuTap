@@ -96,7 +96,7 @@ Read from the checkouts, with the audit's corrections applied.
 | Cortex-M55 QEMU rig + `scripts/icount.py` | On-target positive-filter test subset in CI; whole-binary instruction count per scenario with a ±3 % drift gate against `bench/baselines.json` (`fdkf`, `chain` at 16 k and 48 k, on m55 and hexagon). ~~No learned-path scenario; `NnSuppressor` not in the on-target filter~~ — *M2 added the `nn_suppressor` scenario at both geometries, the M33 leg, and the float suppressor suite to every on-target filter.* | The rig the embedded profile runs on, once M2 adds the learned scenarios. The ratchet is a drift gate; the budget is a separate absolute assertion (§7). |
 | DspTap `fft.h` backend pattern | Ooura golden model; CMSIS-Helium and vDSP float32 backends re-presenting the exact contract, certified by parity tests. | The mel front end's FFT, and the rule for any accelerated NN backend: optional, opt-in, parity-pinned against the scalar golden path. |
 | RatioTap | Synchronous 44.1 ↔ 48 kHz, one rational pair by charter ("no other ratios"), compile-time direction type, Kaiser prototype over the DspTap substrate, instruction-count ratchet on M33/M55/Hexagon. SampleRateTap beside it is near-unity async only. | Composed by `mutap.wake~` for 44.1 kHz hosts (44.1 → 48, then 3:1 to 16 kHz), and the *design template* for the decimator: fixed ratios as types, speed-first profiles, ratchet-gated. |
-| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. No fixed-point FFT; the rate converters themselves live in SampleRateTap and RatioTap. | The *convention* for any later Q15 front end — not a fixed-point front end in itself — and the substrate the integer-ratio decimator of M1 is built on, exactly as RatioTap builds on it. |
+| DspTap `sample_traits.h`, `kaiser.h`, `fir_kernels.h` | The FIR substrate: float / Q15 / Q31 format core with documented Q-format ladders, Kaiser prototype design, dot kernels. The Q15/Q31 real FFT arrived with DspTap's Stage 3b (`fft/fixed_point.h`, pin `b08f6c6`); nothing in MuTap consumes it yet. The rate converters themselves live in SampleRateTap and RatioTap. | The *convention* for any later Q15 front end — not a fixed-point front end in itself — and the substrate the integer-ratio decimator of M1 is built on, exactly as RatioTap builds on it. |
 
 **What this rules out:** TFLite Micro and ONNX runtime as dependencies. The
 family's demonstrated position is hand-written inference against a documented
@@ -977,8 +977,9 @@ three; the per-hop figure derived by dividing the scenario's count by its hop
 count. The §7 ceilings asserted as absolute checks beside the drift gate.
 Float32 is the profile on every target, the RP2350 included; an int8 backend
 or a Q15 front end only if the measured M33 count misses the ceiling *and* the
-M6 architecture admits it (a Q15 front end is a new Q-format design, since
-DspTap has no fixed-point FFT).
+M6 architecture admits it (a Q15 front end is a new Q-format design over
+DspTap's Q15/Q31 real FFT, Stage 3b of its FFT plan; nothing in MuTap
+consumes those profiles yet).
 
 **On hardware — the named M33 target is the Raspberry Pi Pico 2 W.**
 `examples/pico2w/` in MuTap: a Pico SDK application reading an **I²S MEMS
