@@ -7,17 +7,38 @@ LGPL-encumbered.
 
 If you redistribute binaries built from MuTap, you are responsible for
 carrying forward the notices of whichever components you link in (notably the
-Ooura FFT, which compiles into every consumer via `MuTap::fft`).
+Ooura FFT, whose derived port compiles into every consumer via the header
+`tap::dsp` provides).
 
 ---
 
 ## Vendored (committed into this repository)
 
-### Ooura FFT — `third_party/ooura/fftsg.c`
+### Ooura FFT — the C++20 port in `submodules/dsptap/include/tap/dsp/fft/split_radix.h`
 Takuya Ooura's General Purpose FFT Package (split-radix "Fast Version III").
-Only the single file `fftsg.c` is bundled (plus `fftsg_float.c`, an in-house
-single-precision instantiation of the same source); `third_party/ooura/readme.txt`
-is the upstream package description.
+What MuTap ships is not the C: since DspTap Stage 2c (tap/DspTap#32, pin
+`8350f13`) the library is header-only and every floating-point transform MuTap
+runs is DspTap's C++20 port of `rdft`,
+`submodules/dsptap/include/tap/dsp/fft/split_radix.h` — a statement-for-statement
+transliteration that landed beside the vendored C at Stage 2a (tap/DspTap#28),
+bit-identical to it in both precisions under DspTap's parity gate, and that
+`basic_real_fft` has routed to since Stage 2b (tap/DspTap#31, `bbfa48d`; this
+repository's fingerprint harness held all 14 lines, float rows included,
+across both bumps). It is compiled into every consumer through the header
+`tap::dsp` provides; no `MuTap::fft` or `tap_dsp_fft` target exists in a MuTap
+build (the latter appears only under DspTap's opt-in `TAP_DSP_FFT_CMSIS`
+backend for the bare-metal Cortex-M55 and carries only Arm's Apache-2.0
+CMSIS-DSP objects).
+
+The port is a **derivative work, not the ORIGINAL package**. It carries
+`SPDX-License-Identifier: LicenseRef-Ooura AND MIT` — Ooura's notice verbatim
+as the governing terms for the derived portion, MIT for the wrapper and
+DspTap's additions — plus a line stating that it is a derivative work with the
+modification copyright. Its redistribution relies on the **modification grant**
+of the notice ("modify this code for any purpose"), since distribution of a
+modified derivative is not expressly granted; `submodules/dsptap/NOTICE.md` is
+the canonical statement of that position and of its reasoning. The notice, the
+only upstream license text, reads:
 
 > Copyright(C) 1996-2001 Takuya OOURA
 > (email: ooura@mmm.t.u-tokyo.ac.jp,
@@ -25,18 +46,18 @@ is the upstream package description.
 > You may use, copy, modify this code for any purpose and without fee.
 > You may distribute this ORIGINAL package.
 
-This is a permissive grant, compatible with redistribution inside an
-MIT-licensed project. The copyright/permission notice is retained at the top of
-`fftsg.c`.
+It lives in the upstream package readme, kept permanently at
+`submodules/dsptap/third_party/ooura/readme.txt` as the license record for the
+derived code (and reproduced as `submodules/dsptap/LICENSES/LicenseRef-Ooura.txt`
+so the SPDX reference resolves).
 
-Since DspTap `bbfa48d` (Stage 2b of the FFT plan, tap/DspTap#31) every
-floating-point transform MuTap runs is DspTap's C++20 port of `rdft`
-(`include/tap/dsp/fft/split_radix.h`, header-only, a derivative work carrying
-Ooura's notice verbatim under `SPDX-License-Identifier: LicenseRef-Ooura AND
-MIT`); the two C files above remain bundled in the submodule and compiled into
-DspTap's `tap_dsp_fft` static library only as the parity reference. DspTap's
-`NOTICE.md` states the derivative's licensing position; this section is
-rewritten when the C leaves the tree at Stage 2c.
+**Not shipped:** the reference copy of the C, `fftsg.c` and DspTap's 65-line
+single-precision wrapper `fftsg_float.c`, sits under
+`submodules/dsptap/tests/reference/ooura/` and is compiled only by DspTap's own
+parity test against the port. Nothing in a MuTap build compiles it — the CI
+job that once compiled it by path (`branchless-parity`) is header-only since
+this pin — and DspTap retires the reference copy once both MuTap and MuTap-Max
+pin a Stage 2c tree (DspTap Decision D6).
 
 ### Toy dataset fixture — `tools/ml/kws/fixtures/toy/`
 The wake-word dataset builder's bring-up corpus (wake-word plan §6 M4a): four

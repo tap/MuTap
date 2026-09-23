@@ -6,8 +6,7 @@
 
 Portable adaptive filters for audio cleaning: acoustic feedback (howling)
 suppression and echo cancellation, from Max/MSP to embedded DSP. Header-only
-C++20 apart from one tiny static target (`MuTap::fft`, the vendored Ooura
-`fftsg.c`).
+C++20.
 
 The name is literal: **μ ("mu") is the LMS/NLMS step-size that adapts the
 filter taps**.
@@ -372,7 +371,9 @@ battery.
 
 ```
 include/mutap/       the library (header-only; umbrella header mutap.h)
-third_party/ooura/   vendored Ooura FFT (see THIRD_PARTY_NOTICES.md)
+submodules/dsptap/   DspTap submodule: the shared FFT (the header-only split-radix
+                     port under include/tap/dsp/fft/; its Ooura readme at
+                     third_party/ooura/readme.txt — see THIRD_PARTY_NOTICES.md)
 tests/               GoogleTest suite (fetched at configure time)
 tools/capi/          C ABI shared library for FFI consumers (notebooks)
 tools/notebook/      notebook builders + the ITU measurement dump (C++)
