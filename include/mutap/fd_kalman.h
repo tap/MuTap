@@ -15,7 +15,11 @@
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
 
-namespace tap::mu {
+// The ABI tag (mutap/fft.h): partitioned_fdkf holds a basic_real_fft<Sample>
+// by value, so its layout follows the build's float FFT engine, and it is
+// defined inside DspTap's inline namespace for that engine (fft_split_radix /
+// fft_cmsis / fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
     /// Partitioned-block frequency-domain Kalman filter (after Enzner & Vary
     /// 2006; Kuech, Mabande & Enzner 2014; PEM-wrapped for feedback
@@ -549,4 +553,4 @@ namespace tap::mu {
         bool                   m_adapt    = true;
     };
 
-} // namespace tap::mu
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI

@@ -41,7 +41,11 @@
 #endif
 #endif
 
-namespace tap::mu {
+// The ABI tag (mutap/fft.h): residual_suppressor holds a
+// basic_real_fft<Sample> by value, so its layout follows the build's float FFT
+// engine, and it is defined inside DspTap's inline namespace for that engine
+// (fft_split_radix / fft_cmsis / fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
     /// Residual-echo suppressor with matched comfort noise
     /// (docs/itu-compliance.md, Stage 2).
@@ -750,6 +754,12 @@ namespace tap::mu {
         Sample                 m_echo_explained = Sample(0);
         std::uint32_t          m_rng            = 0x2545F491U;
     };
+
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI
+
+// aec_chain is not tagged itself: it holds its Canceller and Post as template
+// arguments, which are in its mangled name and carry the tag.
+namespace tap::mu {
 
     /// The unit the compliance matrix measures: a linear canceller
     /// followed by the residual suppressor, sharing one block size.

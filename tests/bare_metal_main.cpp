@@ -37,7 +37,8 @@ int main() {
         "closed_loop_test/0.*:"
         "AdaptationControlConfigValidation.*:"
         "kalman_loop_test/0.*:pem_afc_test/0.*:burst_test/0.*:aec_test/0.*:"
-        "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*";
+        "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:"
+        "FftEngineContract.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an

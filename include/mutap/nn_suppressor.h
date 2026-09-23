@@ -71,6 +71,14 @@ namespace tap::mu {
         inline constexpr double k_scale     = 5.0;
     } // namespace nn_detail
 
+} // namespace tap::mu
+
+// The ABI tag (mutap/fft.h): nn_suppressor holds a basic_real_fft<Sample> by
+// value, so its layout follows the build's float FFT engine, and it is defined
+// inside DspTap's inline namespace for that engine (fft_split_radix /
+// fft_cmsis / fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
+
     /// Learned post-filter with the classical suppressor's contract:
     /// config-only construction (the weights ride in the config, so
     /// aec_chain<Sample, Canceller, nn_suppressor<Sample>> composes it like
@@ -449,6 +457,10 @@ namespace tap::mu {
         Sample                            m_sdd       = Sample(0);
         std::uint32_t                     m_rng       = 0x2545F491U;
     };
+
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI
+
+namespace tap::mu {
 
     /// Parse weights from an in-memory MUNN image (the format
     /// tools/ml/export_weights.py writes). MUNN0002 carries the geometry

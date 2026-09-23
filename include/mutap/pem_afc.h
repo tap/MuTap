@@ -15,7 +15,11 @@
 #include "mutap/fft.h"
 #include "mutap/lpc.h"
 
-namespace tap::mu {
+// The ABI tag (mutap/fft.h): pem_afc holds a basic_real_fft<Sample> by value,
+// so its layout follows the build's float FFT engine, and it is defined inside
+// DspTap's inline namespace for that engine (fft_split_radix / fft_cmsis /
+// fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
     /// Acoustic feedback canceller with PEM decorrelation (the FDAF-PEM-AFROW
     /// structure; Gil-Cacho et al. 2014, Rombouts et al. 2007).
@@ -213,4 +217,4 @@ namespace tap::mu {
         size_t                    m_head = 0;
     };
 
-} // namespace tap::mu
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI
