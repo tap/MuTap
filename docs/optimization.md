@@ -12,9 +12,10 @@ double runs soft-float and is the desktop golden model only).
 
 The real FFT is the single hottest kernel in the chain. Profiling the M55
 (`-mcpu=cortex-m55`, GCC 13, Helium/MVE) showed GCC does autovectorize the
-vendored Ooura float FFT (DspTap's `third_party/ooura/fftsg_float.c` as measured;
-since DspTap `bbfa48d`, Stage 2b, the same engine ships as the bit-identical C++20
-port `fft/split_radix.h`) — but not nearly
+Ooura float FFT (measured on the vendored Ooura C, `fftsg_float.c`, at that
+pin; since replaced by the bit-identical C++20 port `fft/split_radix.h` — routed
+to at DspTap `bbfa48d`, Stage 2b, with the C leaving the shipping tree at Stage
+2c, `8350f13`) — but not nearly
 as well as Arm's hand-tuned CMSIS-DSP kernels. Measured, per forward transform,
 instructions under QEMU:
 
