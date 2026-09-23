@@ -38,8 +38,8 @@ full sweeps behind the comments ran the same functions over all nine
 rooms (and the rt rooms) in a scratch harness.
 
 The frequency-shifter oracle (class ShifterOracle) puts an SSB shifter - the
-review's Niemitalo 4+4 IIR allpass-pair Hilbert, coefficients read from
-_afc_poc/phase0-data/review/dl_iir.h - in the forward path. That loop is
+Niemitalo 4+4 IIR allpass-pair Hilbert (coefficients in hilbert_coefficients) - in the
+forward path. That loop is
 time-variant, so its reference limit is bisected (80 s unit-RMS white
 near-end, MuTap's rule: any 64-sample block RMS >= 100, speaker limited at
 1000). It takes ~10 min on 12 cores and runs only with HOWL_SLOW=1:
@@ -253,12 +253,12 @@ HOWL_BLOCK = 64  # MuTap's howl rule (tests/support/closed_loop.h): any 64-sampl
 HOWL_RMS = 100.0  # i.e. 40 dB over a unit-RMS white near-end, with the speaker limited at 1000
 
 
-@functools.lru_cache(maxsize=None)
 def hilbert_coefficients() -> tuple[tuple[float, ...], tuple[float, ...]]:
-    """Niemitalo 4+4 allpass-pair coefficients, read from the review's dl_iir.h (not included)."""
-    txt = (REPO / "_afc_poc" / "phase0-data" / "review" / "dl_iir.h").read_text()
-    grab = lambda name: tuple(float(v) for v in re.search(name + r"\[4\]\s*=\s*\{([^}]*)\}", txt).group(1).split(","))
-    return grab("k_a"), grab("k_b")
+    """Olli Niemitalo's 4+4 allpass-pair Hilbert coefficients (the published 90-degree phase
+    difference network; image rejection >= 44 dB from 50 Hz to 20 kHz at 48 kHz, see test_ssb)."""
+    k_a = (0.6923878, 0.9360654322959, 0.9882295226860, 0.9987488452737)
+    k_b = (0.4021921162426, 0.8561710882420, 0.9722909545651, 0.9952884791278)
+    return k_a, k_b
 
 
 class Shifter:
