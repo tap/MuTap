@@ -37,6 +37,7 @@ add_executable(mutap_tests
     test_adaptation_control.cpp
     test_closed_loop.cpp
     test_rir_fixtures.cpp
+    test_afc_decorrelation.cpp
     test_aec.cpp
     test_itu_signals.cpp
     test_postfilter.cpp
