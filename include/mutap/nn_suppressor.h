@@ -138,7 +138,8 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         explicit nn_suppressor(config cfg)
             : m_cfg(validated(std::move(cfg)))
             , m_g(m_cfg.weights.geometry)
-            , m_fft(fft_detail::checked_fft_size<Sample>(m_g.frame(), "nn_suppressor: 2 * the weights' hop"))
+            , m_fft(fft_detail::checked_fft_size<Sample>(m_g.frame(),
+                                                         "nn_suppressor: 2 * the weights' hop" MUTAP_FFT_SIZE_RANGES))
             , m_dense_in(std::move(m_cfg.weights.dense_in_w), std::move(m_cfg.weights.dense_in_b), m_g.dense,
                          m_g.features(), tap::dsp::nn::activation::tanh)
             , m_gru(std::move(m_cfg.weights.gru_w_ih), std::move(m_cfg.weights.gru_w_hh),

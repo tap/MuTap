@@ -170,7 +170,8 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
         explicit partitioned_fdkf(const config& cfg)
             : m_cfg(validated(cfg))
-            , m_n(fft_detail::checked_fft_size<Sample>(2 * cfg.block_size, "partitioned_fdkf: 2 * block_size"))
+            , m_n(fft_detail::checked_fft_size<Sample>(2 * cfg.block_size,
+                                                       "partitioned_fdkf: 2 * block_size" MUTAP_FFT_SIZE_RANGES))
             , m_fft(m_n)
             , m_input(m_n)
             , m_u(cfg.partitions * m_n)

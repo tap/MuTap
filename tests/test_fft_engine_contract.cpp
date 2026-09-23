@@ -105,18 +105,19 @@ namespace {
     using fft = tap::mu::basic_real_fft<Sample>;
 
     /// Constructs `make()` and reports whether it was accepted. A rejection
-    /// must be the size gate's std::invalid_argument, naming this build's
-    /// range for the profile (any other exception fails the test).
-    template <typename Sample, typename Make>
+    /// must be the size gate's std::invalid_argument, whose text carries the
+    /// engines' ranges, the CMSIS numbers included (any other exception fails
+    /// the test).
+    template <typename Make>
     bool accepted(Make make) {
         try {
             (void)make();
             return true;
         }
         catch (const std::invalid_argument& e) {
-            const std::string range =
-                "[" + std::to_string(fft<Sample>::k_min_size) + ", " + std::to_string(fft<Sample>::k_max_size) + "]";
-            EXPECT_NE(std::string(e.what()).find(range), std::string::npos) << e.what();
+            const std::string what = e.what();
+            EXPECT_NE(what.find(MUTAP_FFT_SIZE_RANGES), std::string::npos) << what;
+            EXPECT_NE(what.find("CMSIS-DSP on the Cortex-M55 32 ... 4096"), std::string::npos) << what;
             return false;
         }
     }
@@ -130,7 +131,7 @@ namespace {
         typename tap::mu::partitioned_fdaf<Sample>::config cfg;
         cfg.block_size = block;
         cfg.partitions = 1;
-        return accepted<Sample>([&] { return tap::mu::partitioned_fdaf<Sample>(cfg); });
+        return accepted([&] { return tap::mu::partitioned_fdaf<Sample>(cfg); });
     }
 
     template <typename Sample>
@@ -138,7 +139,7 @@ namespace {
         typename tap::mu::partitioned_fdkf<Sample>::config cfg;
         cfg.block_size = block;
         cfg.partitions = 1;
-        return accepted<Sample>([&] { return tap::mu::partitioned_fdkf<Sample>(cfg); });
+        return accepted([&] { return tap::mu::partitioned_fdkf<Sample>(cfg); });
     }
 
     template <typename Sample>
@@ -148,7 +149,7 @@ namespace {
         cfg.fdaf.partitions             = 1;
         cfg.analysis_window             = std::max<std::size_t>(1024, 2 * block);
         cfg.predictor.analysis_capacity = cfg.analysis_window;
-        return accepted<Sample>([&] { return tap::mu::pem_afc<Sample>(cfg); });
+        return accepted([&] { return tap::mu::pem_afc<Sample>(cfg); });
     }
 
     template <typename Sample>
@@ -156,7 +157,7 @@ namespace {
         typename tap::mu::residual_suppressor<Sample>::config cfg;
         cfg.block_size      = block;
         cfg.analysis_blocks = analysis_blocks;
-        return accepted<Sample>([&] { return tap::mu::residual_suppressor<Sample>(cfg); });
+        return accepted([&] { return tap::mu::residual_suppressor<Sample>(cfg); });
     }
 
     /// Zero weights at a geometry with the given hop (the network's values
@@ -180,7 +181,7 @@ namespace {
     bool nn_accepts(std::size_t hop) {
         typename tap::mu::nn_suppressor<Sample>::config cfg;
         cfg.weights = weights_at_hop(hop);
-        return accepted<Sample>([&] { return tap::mu::nn_suppressor<Sample>(cfg); });
+        return accepted([&] { return tap::mu::nn_suppressor<Sample>(cfg); });
     }
 
     /// Block sizes 4 ... 4096: FFT sizes 8 ... 8192 for the cancellers,

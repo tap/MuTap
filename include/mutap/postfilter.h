@@ -201,8 +201,9 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
         explicit residual_suppressor(const config& cfg)
             : m_cfg(validated(cfg))
-            , m_n(fft_detail::checked_fft_size<Sample>(cfg.analysis_blocks * cfg.block_size,
-                                                       "residual_suppressor: analysis_blocks * block_size"))
+            , m_n(fft_detail::checked_fft_size<Sample>(
+                  cfg.analysis_blocks * cfg.block_size,
+                  "residual_suppressor: analysis_blocks * block_size" MUTAP_FFT_SIZE_RANGES))
             , m_fft(m_n)
             , m_g_min(std::pow(Sample(10), -cfg.max_suppression_db / Sample(20)))
             , m_g_low(std::pow(Sample(10), -cfg.low_band_cap_db / Sample(20)))

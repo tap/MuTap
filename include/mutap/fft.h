@@ -23,7 +23,6 @@
 
 #include <cstddef>
 #include <stdexcept>
-#include <string>
 
 #include "tap/dsp/fft.h"
 
@@ -75,6 +74,12 @@ namespace tap::mu {
 
 } // namespace tap::mu
 
+/// The tail of every configured-FFT-size error message
+/// (fft_detail::checked_fft_size, below): the engines' ranges, as text.
+#define MUTAP_FFT_SIZE_RANGES                                                                                          \
+    " is not an FFT size this build supports (basic_real_fft::supports_size: split-radix 4 ... 2^30;"                  \
+    " CMSIS-DSP on the Cortex-M55 32 ... 4096; vDSP 4 ... 2^20)"
+
 // Inside the tag: the check's code depends on the selected engine's range.
 namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
@@ -83,10 +88,10 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// The configuration gate for an FFT size (DspTap Stage 4: "supports_size
         /// is the MANDATORY gate wherever N comes from configuration"). Returns
         /// n when basic_real_fft<Sample> supports it in this build, and throws
-        /// std::invalid_argument naming the range otherwise, from the
-        /// constructor of the class that asked, before any buffer is sized
-        /// from n (MuTap's config-error convention). Without it a size outside
-        /// the engine's range reaches basic_real_fft's constructor, whose
+        /// std::invalid_argument(message) otherwise, from the constructor of
+        /// the class that asked, before any buffer is sized from n (MuTap's
+        /// config-error convention). Without it a size outside the engine's
+        /// range reaches basic_real_fft's constructor, whose
         /// precondition is a debug-only assertion: in a release build that is
         /// undefined behaviour, and under CMSIS-DSP on the Cortex-M55 a
         /// HardFault at the first transform.
@@ -98,16 +103,21 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// MuTap block size maps to: N = 2 * block_size for the cancellers,
         /// analysis_blocks * block_size for the residual suppressor, and
         /// 2 * the trained hop for the learned suppressor.
-        /// @param n    the FFT size the caller is about to construct
-        /// @param what "<class>: <how n is derived>", for the message
+        ///
+        /// The message is a string literal from the call site, naming the
+        /// class and how n is derived, followed by MUTAP_FFT_SIZE_RANGES. It
+        /// is deliberately not formatted here (no std::string, no
+        /// to_string): a first version that composed it pulled enough
+        /// library code into every translation unit that GCC 13.2 re-decided
+        /// its inlining inside the split-radix engine's cftleaf in the
+        /// Cortex-M33 ratchet binaries, +0.37 % on the fdkf and shadow
+        /// scenarios with no MuTap loop changed (bench/README.md).
+        /// @param n       the FFT size the caller is about to construct
+        /// @param message the exception text, a literal
         template <typename Sample>
-        std::size_t checked_fft_size(std::size_t n, const char* what) {
-            using fft = basic_real_fft<Sample>;
-            if (!fft::supports_size(n)) {
-                throw std::invalid_argument(std::string(what) + " = " + std::to_string(n)
-                                            + " is not an FFT size this build supports: a power of two in ["
-                                            + std::to_string(fft::k_min_size) + ", " + std::to_string(fft::k_max_size)
-                                            + "] (CMSIS-DSP on the Cortex-M55: 32 ... 4096)");
+        std::size_t checked_fft_size(std::size_t n, const char* message) {
+            if (!basic_real_fft<Sample>::supports_size(n)) {
+                throw std::invalid_argument(message);
             }
             return n;
         }
