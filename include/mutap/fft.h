@@ -59,9 +59,27 @@ namespace tap::mu {
     // (the tag keys on the float default; double always runs the split-radix
     // engine), which costs nothing but a longer name.
     //
-    // tests/test_fft_engine_contract.cpp pins the tag on every leg (by
-    // qualified name at compile time, by typeid at run time). Two rules
-    // follow:
+    // THE RULE IS TRANSITIVE. The hazard belongs to any class whose object
+    // layout depends on the float engine and whose mangled name does not
+    // carry it: one that holds a basic_real_fft<float>, any of the five
+    // above at <float>, or an aec_chain<float, ...> by value — directly or
+    // through std::optional / std::array / std::variant / a member struct —
+    // without naming it as a template argument. Such a class must itself be
+    // defined inside the tag (or take the embedder as a template argument,
+    // as aec_chain does). Holders of the double profiles only are exempt:
+    // the tag is keyed on the float default, and double always runs the
+    // split-radix engine, so their layout is the same in every build (the
+    // C ABI's MutapFdaf / MutapAfc / MutapAec in tools/capi, the ITU dump,
+    // and MuTap-Max's externals, whose `engine` structs hold <double>
+    // instances behind a unique_ptr, are all of this kind — nothing there
+    // needs a tag). Test-local float wrappers (tests/support/itu_chain.h's
+    // compliance_dut<float>, test_float32.cpp's f32_chain) are untagged and
+    // harmless: they live in one test image with one engine.
+    //
+    // tests/test_fft_engine_contract.cpp pins the tag on every leg for the
+    // five (by qualified name at compile time, by typeid at run time); it
+    // cannot see a wrapper someone adds later, so the transitive rule is
+    // enforced by review. Two more rules follow:
     //   - never forward-declare a tagged class in plain tap::mu
     //     (`template <typename> class partitioned_fdaf;` there declares a
     //     DIFFERENT class, and the test's qualified names turn ambiguous
