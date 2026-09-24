@@ -34,8 +34,12 @@
 // two fingerprints are comparable only when both runs were produced by the
 // same build configuration on the same machine — which is exactly the pin-
 // bump workflow below. The '#' header names the float32 FFT backend the
-// binary was compiled with (backend=cmsis|vdsp|ooura), so a log is
-// self-describing and the M55 legs can assert which backend they ran.
+// binary was compiled with (backend=cmsis|vdsp|split_radix; "ooura" in logs
+// from pins up to DspTap 8350f13, when the default engine was Ooura's C or
+// its bit-identical port) and the ABI tag DspTap's fft.h compiled under
+// (abi=fft_cmsis|fft_vdsp|fft_split_radix, tap::dsp::k_real_fft_abi_tag), so
+// a log is self-describing and each emulated leg asserts which engine it
+// ran. Neither is part of the diffed FINGERPRINT lines.
 //
 // How to diff two DspTap pins (the check every submodule bump runs):
 //
@@ -53,15 +57,15 @@
 // float profile through an FFT port; never the double golden model unless
 // the plan says so). CI runs this binary on every leg, hosted and emulated
 // (a "Fingerprints" step records the lines in each log, so two CI logs can
-// be diffed the same way, and the M55's CMSIS and Ooura legs against each
-// other) and once more, compiled twice, as the suppressor's
+// be diffed the same way, and the M55's CMSIS and split-radix legs against
+// each other) and once more, compiled twice, as the suppressor's
 // branch-free/branchy parity check (MUTAP_SUPPRESSOR_BRANCHLESS, see
 // include/mutap/postfilter.h): the two builds must print identical lines.
 //
 // Builds two ways: as the normal CMake target mutap_fingerprint (a ctest
 // test on every target), and standalone as the parity job compiles it (g++
-// on this file plus DspTap's Ooura .c files — see the branchless-parity job
-// in .github/workflows/ci.yml).
+// on this file alone, header-only since DspTap Stage 2c — see the
+// branchless-parity job in .github/workflows/ci.yml).
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -96,7 +100,7 @@ namespace {
 #elif defined(TAP_DSP_FFT_ACCELERATE)
     constexpr const char* k_backend = "vdsp";
 #else
-    constexpr const char* k_backend = "ooura";
+    constexpr const char* k_backend = "split_radix";
 #endif
 
     /// xorshift32 -> uniform in [-1, 1), exactly representable in float:
@@ -328,12 +332,13 @@ namespace {
 
 int main() {
     // Informational header (not part of the diffed lines): the geometry, the
-    // float32 FFT backend and the suppressor form this binary compiled, so a
-    // log is self-describing and the M55 legs can assert their backend.
-    std::printf("# mutap_fingerprint block=%u partitions=%u rate=%u blocks=%u backend=%s branchless=%d\n",
+    // float32 FFT backend, the ABI tag and the suppressor form this binary
+    // compiled, so a log is self-describing and the emulated legs can assert
+    // their backend.
+    std::printf("# mutap_fingerprint block=%u partitions=%u rate=%u blocks=%u backend=%s abi=%s branchless=%d\n",
                 static_cast<unsigned>(k_block), static_cast<unsigned>(k_partitions),
                 static_cast<unsigned>(k_sample_rate), static_cast<unsigned>(k_blocks), k_backend,
-                MUTAP_SUPPRESSOR_BRANCHLESS);
+                tap::dsp::k_real_fft_abi_tag, MUTAP_SUPPRESSOR_BRANCHLESS);
     run_profile<float>();
     run_profile<double>();
     // CTest's pass criterion on bare metal, where semihosting does not

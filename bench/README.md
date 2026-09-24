@@ -41,7 +41,7 @@ rescue trigger or guard ever fires inside the timed loop. Items
 processed are samples: Google Benchmark's `items_per_second / fs` is
 the x-realtime figure.
 
-## Scalar baselines (reference container, 2.8 GHz x86, GCC -O2, medians of 5, idle machine)
+## Scalar baselines (reference container, 2.8 GHz x86, GCC Release: -O3 -DNDEBUG, medians of 5, idle machine)
 
 | layer | 48 kHz f64 | 48 kHz f32 | 16 kHz f64 | 16 kHz f32 |
 |---|---|---|---|---|
@@ -233,12 +233,54 @@ job red on #54 and forced this record; the DspTap FFT plan had predicted
 0 % for this bump (same instruction stream as the C), and this table is the
 measured correction to that prediction.
 
+**2026-09-23 — DspTap 0db95b6 (Stage 6 + Stage 4 + D6, tap/DspTap#34 / #35 / #36), tap/MuTap#58: no re-record.**
+Stage 4 made the engine a template parameter and added the ABI tag; neither
+changes an instruction of any transform, and MuTap's size gate adds one
+predicate per constructor; D6 changed only comments under DspTap's
+`include/`. Measured against the committed baselines on the PR's
+`pull_request` run
+[35918701246](https://github.com/tap/MuTap/actions/runs/35918701246)
+(head `82ebabc`, pin `6f6f77f`; m33 and m55 reproduced locally on the same
+toolchain/QEMU pair count for count, and re-measured locally at `0db95b6`:
+identical count for count), in instructions:
+
+| key | chain 16k / 48k | fdkf 16k / 48k | nn_suppressor 16k / 48k | shadow 16k / 48k | suppressor 16k / 48k |
+|---|---:|---:|---:|---:|---:|
+| m55 | −42 / −38 | −12 / −8 | −1,029 / −4,824 | −14 / −14 | −16 / −16 |
+| m33 | +25,423 / +33,871 | +20 / +20 | −16 / −3,182 | +20 / +20 | +3,237 / +3,237 |
+| hexagon | +189 / +189 | +214 / +214 | +2 / +2 | +214 / +214 | +8 / +8 |
+
+Every cell is within ±0.005 %, so nothing is re-recorded. One lesson for
+reading deltas of this size, measured on the way: the first form of the size
+gate built its exception message with `std::string` / `std::to_string`, and
+that alone moved m33 `fdkf` and `shadow` by +0.37 % (`shadow_16k`
++406,589, ~3 instructions per sample over 528 blocks) with `run()` and every
+MuTap loop disassembling identically. The extra library code in the
+translation unit made GCC 13.2 re-decide its inlining inside the
+split-radix engine (`split_radix_rdft<float>::cftleaf`, 2,060 → 1,465
+disassembly lines). The review of #58 measured the mechanism: recompiling
+that `shadow_16k` object with only `--param large-unit-insns=1000000`
+restores `cftleaf` (2,723 lines) and takes the count from 111,427,739 back to
+111,309,467, while `-fno-inline-functions` changes nothing. Each workload is
+one TU of roughly GCC's `large-unit-insns` budget (default 10,000); once a
+change grows the TU past it, GCC rations inlining inside DspTap's engine.
+The pin bump alone, before any MuTap change, read m33 `suppressor` +0.06 %
+for the same reason. **So the m33 key has a TU-composition noise floor of
+about 0.4 %**: a move of that size with no loop change is that budget until
+shown otherwise. It is not the DspTap #35 class (register allocation in the
+harness's `main`, fixed by a non-inlined factory); nothing on the harness
+side reaches inlining inside the engine, and pinning the `--param` in
+`bench/icount/CMakeLists.txt` would move the gate away from what a Release
+build emits, so it is recorded here instead. (The size gate's message is a
+literal because that is MuTap's config-error form; `include/mutap/fft.h`.)
+The workloads compile at CMake's Release flags, `-O3 -DNDEBUG`.
+
 ## FFT backend (Arm Helium)
 
 The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on
 the bare-metal M55 profile (`docs/optimization.md`) — ~42% fewer instructions
 on every layer than the previous Ooura numbers. The ratchet therefore gates the
-deployed backend. The Ooura float32 path is still available on the M55 with
+deployed backend. The split-radix float32 path is still available on the M55 with
 `-DTAP_DSP_FFT_CMSIS=OFF` (kept alive by a dedicated CI leg, not by this ratchet).
 The **hexagon** baselines are unaffected by that swap — Hexagon stays on the
 scalar split-radix engine (the vendored Ooura C until DspTap `b08f6c6`, its

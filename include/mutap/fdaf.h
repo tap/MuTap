@@ -33,6 +33,14 @@ namespace tap::mu {
         }
     } // namespace detail
 
+} // namespace tap::mu
+
+// The ABI tag (mutap/fft.h): partitioned_fdaf holds a basic_real_fft<Sample>
+// by value, so its layout follows the build's float FFT engine, and it is
+// defined inside DspTap's inline namespace for that engine (fft_split_radix /
+// fft_cmsis / fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
+
     /// Partitioned-block frequency-domain adaptive filter (a.k.a. multidelay
     /// block frequency-domain filter, MDF): overlap-save with FFT size N = 2B,
     /// the length-P*B filter split into P partitions of B taps, adapted by a
@@ -45,8 +53,12 @@ namespace tap::mu {
     /// directly it is a plain acoustic echo canceller.
     ///
     /// Real-time contract: the constructor allocates and may throw
-    /// (std::invalid_argument on a bad config); process_block() and every
-    /// other post-construction entry point are noexcept and allocation-free.
+    /// (std::invalid_argument on a bad config, including a block size whose
+    /// FFT size 2 * block_size the build's FFT engine does not support —
+    /// under CMSIS-DSP on the Cortex-M55 block_size 16 ... 2048; see
+    /// fft_detail::checked_fft_size in mutap/fft.h); process_block() and
+    /// every other post-construction entry point are noexcept and
+    /// allocation-free.
     ///
     /// Per-bin NLMS normalization: the update divides by the regressor power
     /// in that bin summed over all partitions (optionally smoothed across
@@ -101,7 +113,8 @@ namespace tap::mu {
 
         explicit partitioned_fdaf(const config& cfg)
             : m_cfg(validated(cfg))
-            , m_n(2 * cfg.block_size)
+            , m_n(fft_detail::checked_fft_size<Sample>(2 * cfg.block_size,
+                                                       "partitioned_fdaf: 2 * block_size" MUTAP_FFT_SIZE_RANGES))
             , m_fft(m_n)
             , m_input(m_n)
             , m_u(cfg.partitions * m_n)
@@ -448,4 +461,4 @@ namespace tap::mu {
         Sample                 m_ee_weight = Sample(0); ///< 1 - a^n debiasing weight for m_s_ee
     };
 
-} // namespace tap::mu
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI

@@ -32,7 +32,7 @@ namespace tap::mu {
     /// definitions; the two must change together.
     struct nn_geometry {
         double sample_rate = 16000.0;
-        size_t hop         = 64; ///< canceller block size the model was trained at
+        size_t hop         = 64; ///< canceller block size the model was trained at (FFT size 2 * hop)
         size_t bands       = 22; ///< ERB-spaced triangular bands
         size_t dense       = 64; ///< input projection width
         size_t gru         = 96; ///< recurrent state width
@@ -70,6 +70,14 @@ namespace tap::mu {
         inline constexpr double k_shift     = 5.0; ///< feature = (log10(E)+shift)/scale
         inline constexpr double k_scale     = 5.0;
     } // namespace nn_detail
+
+} // namespace tap::mu
+
+// The ABI tag (mutap/fft.h): nn_suppressor holds a basic_real_fft<Sample> by
+// value, so its layout follows the build's float FFT engine, and it is defined
+// inside DspTap's inline namespace for that engine (fft_split_radix /
+// fft_cmsis / fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
     /// Learned post-filter with the classical suppressor's contract:
     /// config-only construction (the weights ride in the config, so
@@ -130,7 +138,8 @@ namespace tap::mu {
         explicit nn_suppressor(config cfg)
             : m_cfg(validated(std::move(cfg)))
             , m_g(m_cfg.weights.geometry)
-            , m_fft(m_g.frame())
+            , m_fft(fft_detail::checked_fft_size<Sample>(m_g.frame(),
+                                                         "nn_suppressor: 2 * the weights' hop" MUTAP_FFT_SIZE_RANGES))
             , m_dense_in(std::move(m_cfg.weights.dense_in_w), std::move(m_cfg.weights.dense_in_b), m_g.dense,
                          m_g.features(), tap::dsp::nn::activation::tanh)
             , m_gru(std::move(m_cfg.weights.gru_w_ih), std::move(m_cfg.weights.gru_w_hh),
@@ -449,6 +458,10 @@ namespace tap::mu {
         Sample                            m_sdd       = Sample(0);
         std::uint32_t                     m_rng       = 0x2545F491U;
     };
+
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI
+
+namespace tap::mu {
 
     /// Parse weights from an in-memory MUNN image (the format
     /// tools/ml/export_weights.py writes). MUNN0002 carries the geometry

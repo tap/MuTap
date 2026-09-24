@@ -35,14 +35,17 @@ Milestones M0–M4 of [HANDOFF.md](HANDOFF.md) (the full technical plan,
 milestone sequence and paper list) are done — the canceller core is
 algorithmically complete. What exists today:
 
-- `mutap::basic_real_fft<Sample>` — Ooura split-radix real FFT wrapped for
-  float and double (`mutap::real_fft`, `mutap::real_fft32`), with the packed
-  spectrum layout and sign convention documented in
-  [`include/mutap/fft.h`](include/mutap/fft.h) and locked down by tests. The
-  float32 transform defaults to a faster per-platform backend where one exists —
-  a vendored CMSIS-DSP Helium FFT on the bare-metal Cortex-M55 (~42% fewer chain
-  instructions), Apple's vDSP on macOS (~3x faster per transform) — while double
-  stays Ooura, the golden model; see [`docs/optimization.md`](docs/optimization.md).
+- `mutap::basic_real_fft<Sample>` — DspTap's real FFT (`tap::dsp`, re-exported
+  by [`include/mutap/fft.h`](include/mutap/fft.h)) for float and double
+  (`mutap::real_fft`, `mutap::real_fft32`): Ooura's packed spectrum layout and
+  sign convention, run by the split-radix engine (DspTap's C++20 port of
+  Ooura's `rdft`, bit-identical to the C) and locked down by DspTap's tests.
+  On the bare-metal Cortex-M55 the float32 transform runs a vendored CMSIS-DSP
+  Helium FFT instead (~42% fewer chain instructions; FFT sizes 32 … 4096, which
+  every MuTap constructor checks); Apple's vDSP is available on macOS but off
+  in MuTap by default (root `CMakeLists.txt`); double always stays on the
+  split-radix engine, the golden model. See
+  [`docs/optimization.md`](docs/optimization.md).
 - `mutap::partitioned_fdaf<Sample>` — partitioned-block frequency-domain
   adaptive filter (overlap-save, per-bin NLMS update, optional gradient
   constraint): the identification core that PEM prewhitening will wrap.
@@ -124,7 +127,7 @@ algorithmically complete. What exists today:
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
   SampleRateTap ([`platform/`](platform/),
   [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
-  58 tests run on-target: the float32 typed suites (the embedded profile),
+  59 tests run on-target: the float32 typed suites (the embedded profile),
   the LP conditioning suite, the float closed-loop scenarios including the
   PEM tonal headline and burst gating, and the float-tracks-double oracle
   check — with double as soft-float (the M55 FPU is single-precision only).
@@ -135,7 +138,7 @@ algorithmically complete. What exists today:
   ([`cmake/hexagon-linux-musl.cmake`](cmake/hexagon-linux-musl.cmake)).
   A hosted Linux target needs no platform rig — stock gtest, ctest and
   exit codes work unchanged. Per-push CI runs the same emulation-sized
-  selection as the M55 leg (58 tests, ~8 min of TCG); the full 74-test
+  selection as the M55 leg (59 tests, ~8 min of TCG); the full 74-test
   suite, double-typed adaptive suites included, has also been validated
   once on the ISA (double is hardware on the Hexagon scalar core). What
   this leg deliberately does not cover: VTCM placement, L2 streaming

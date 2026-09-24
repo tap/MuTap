@@ -42,7 +42,9 @@ carries the measured numbers; this is the map:
 
 - `include/mutap/` — `fft.h` (re-export of DspTap's `tap::dsp::basic_real_fft`;
   since DspTap `bbfa48d`, Stage 2b of the FFT plan, that is the C++20
-  split-radix port of Ooura, bit-identical to the vendored C it replaced),
+  split-radix port of Ooura, bit-identical to the vendored C it replaced;
+  since the `0db95b6` pin, Stage 4 plus D6, it also carries MuTap's side of the
+  engine contract: the ABI tag and `fft_detail::checked_fft_size`),
   `fdaf.h` (partitioned-block NLMS core + the M4 control stack: IPC,
   IPC-scaled stepping, transient gate, variable regularization), `fd_kalman.h` (**the v2 Kalman core** —
   no step size, no IPC; per-bin state uncertainty + near-end PSD replace
@@ -117,6 +119,25 @@ carries the measured numbers; this is the map:
    pastes the `mutap_fingerprint` diff (before/after the pin; procedure
    at the top of `tests/fingerprint_harness.cpp`) into its PR and says
    which `FINGERPRINT` lines the stage expects to move.
+   Since the DspTap `0db95b6` pin (Stage 4, tap/DspTap#35) two rules hold.
+   (a) Any class whose object layout depends on the float FFT engine must
+   carry the ABI tag: define it inside `namespace tap::mu::inline
+   TAP_DSP_FFT_ABI`, or take the engine-dependent member as a template
+   argument (as `aec_chain` does), and never forward-declare it in plain
+   `tap::mu`. That is transitive: it covers the five classes that hold a
+   `basic_real_fft` by value (`partitioned_fdaf`, `partitioned_fdkf`,
+   `pem_afc`, `residual_suppressor`, `nn_suppressor`) and anything that
+   holds one of them at `<float>`, or an `aec_chain<float, …>`, by value —
+   directly or through `optional` / `array` / `variant` — without naming it
+   as a template argument. Double-only holders are exempt (the tag keys on
+   the float default; `double` always runs the split-radix engine, so the
+   layout never changes): the C ABI handles, the ITU dump, and MuTap-Max's
+   externals (`<double>` behind `unique_ptr`), so MuTap-Max has nothing to
+   tag on its bump. `tests/test_fft_engine_contract.cpp` pins the five; it
+   cannot see a wrapper added later — review has to. (b) Pass every FFT
+   size derived from configuration through `fft_detail::checked_fft_size`
+   — CMSIS-DSP on the M55 supports only 32 … 4096 and an unchecked size
+   there is a release-mode HardFault. `include/mutap/fft.h` says why.
 7. **min-api pin gotcha** (MuTap-Max): the pinned min-api has no scalar
    `send()` path on queue-backed outlets — send a pre-allocated `atoms`
    lvalue (see `m_ipc_atoms` in the external).

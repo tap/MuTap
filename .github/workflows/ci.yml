@@ -29,7 +29,8 @@ jobs:
             werror: ON
             capi: ON
           # macOS gates on the float32 backend MuTap actually uses, which is
-          # OOURA — the root CMakeLists turns DspTap's Apple vDSP default back
+          # the SPLIT-RADIX engine (DspTap's bit-identical C++20 port of Ooura's
+          # rdft) — the root CMakeLists turns DspTap's Apple vDSP default back
           # off, with the measurements behind that decision recorded there and
           # in docs/itu-compliance.md (tap/MuTap#31). No flag needed here: the
           # gate follows the product's default rather than overriding it, so
@@ -173,7 +174,7 @@ jobs:
       # The battery leaves the fingerprint harness out (-E): ctest hides a
       # passing test's output, so the harness runs once, verbosely, in the
       # next step instead, and the log carries the on-target FINGERPRINT
-      # lines for this backend, diffable against the Ooura leg below and
+      # lines for this backend, diffable against the split-radix leg below and
       # across pins. The harness prints the backend it was compiled with;
       # asserting it is the positive proof of which backend ran.
       - name: Test under emulation (CMSIS Helium FFT — default)
@@ -183,45 +184,46 @@ jobs:
         run: |
           set -eo pipefail
           ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-cmsis.log
-          grep -q 'backend=cmsis' /tmp/fp-cmsis.log
+          grep -q 'backend=cmsis abi=fft_cmsis' /tmp/fp-cmsis.log
 
-      # Second leg keeps the Ooura float32 fallback alive: same emulated battery
-      # with DspTap's backend option forced OFF. The option was renamed from
+      # Second leg keeps the split-radix float32 fallback alive (DspTap's C++20
+      # port of Ooura's rdft; the "Ooura" leg in logs up to DspTap 8350f13):
+      # same emulated battery with DspTap's backend option forced OFF. The option was renamed from
       # MUTAP_FFT_CMSIS to TAP_DSP_FFT_CMSIS when the FFT moved to DspTap
       # (14116f0); this leg kept the old name, which CMake ignored, so from that
-      # commit until #50 it rebuilt CMSIS and the Ooura-float32-on-M55 profile
+      # commit until #50 it rebuilt CMSIS and the scalar-float32-on-M55 profile
       # had no coverage. Guards: the configure log must not select CMSIS, the
       # cache entry must be the typed :BOOL=OFF (an unknown -D lands as
       # :UNINITIALIZED, so a future rename fails here instead of silently
       # rebuilding CMSIS), and the Fingerprints step below asserts the backend
       # the binary that ran was actually compiled with.
-      - name: Configure (Ooura FFT fallback)
+      - name: Configure (split-radix FFT fallback)
         run: |
           set -eo pipefail
-          cmake -B build-ooura \
+          cmake -B build-split-radix \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
-            -DTAP_DSP_FFT_CMSIS=OFF | tee /tmp/configure-ooura.log
-          if grep -q 'float32 FFT backend = CMSIS' /tmp/configure-ooura.log; then
-            echo "::error::the Ooura fallback leg configured the CMSIS backend"; exit 1
+            -DTAP_DSP_FFT_CMSIS=OFF | tee /tmp/configure-split-radix.log
+          if grep -q 'float32 FFT backend = CMSIS' /tmp/configure-split-radix.log; then
+            echo "::error::the split-radix fallback leg configured the CMSIS backend"; exit 1
           fi
-          grep '^TAP_DSP_FFT_CMSIS:BOOL=OFF' build-ooura/CMakeCache.txt
+          grep '^TAP_DSP_FFT_CMSIS:BOOL=OFF' build-split-radix/CMakeCache.txt
 
-      - name: Build (Ooura FFT fallback)
-        run: cmake --build build-ooura -j 4
+      - name: Build (split-radix FFT fallback)
+        run: cmake --build build-split-radix -j 4
 
-      - name: Test under emulation (Ooura FFT fallback)
-        run: ctest --test-dir build-ooura --output-on-failure -E '^mutap_fingerprint$'
+      - name: Test under emulation (split-radix FFT fallback)
+        run: ctest --test-dir build-split-radix --output-on-failure -E '^mutap_fingerprint$'
 
-      - name: Fingerprints (Ooura FFT fallback)
+      - name: Fingerprints (split-radix FFT fallback)
         run: |
           set -eo pipefail
-          ctest --test-dir build-ooura -R '^mutap_fingerprint$' -V | tee /tmp/fp-ooura.log
-          grep -q 'backend=ooura' /tmp/fp-ooura.log
+          ctest --test-dir build-split-radix -R '^mutap_fingerprint$' -V | tee /tmp/fp-split-radix.log
+          grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-split-radix.log
 
   # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
   # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
-  # embedded target. Same Armv8-M startup as the M55 leg, Ooura float32 FFT
+  # embedded target. Same Armv8-M startup as the M55 leg, split-radix float32 FFT
   # (no Helium here), the same float-profile selection as the M55 leg (about
   # 3 minutes of emulation once the speech predictor's pitch search stopped
   # accumulating in double — see tests/bare_metal_main.cpp). Ported from
@@ -257,7 +259,7 @@ jobs:
         run: |
           set -eo pipefail
           ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-m33.log
-          grep -q 'backend=ooura' /tmp/fp-m33.log
+          grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-m33.log
 
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
@@ -325,7 +327,7 @@ jobs:
         run: |
           set -eo pipefail
           ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-hexagon.log
-          grep -q 'backend=ooura' /tmp/fp-hexagon.log
+          grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-hexagon.log
 
   # Keeps the benchmarks compiling and runnable; never a performance gate
   # (shared runners are noise — see bench/README.md).
@@ -431,7 +433,7 @@ jobs:
           gcc -shared -fPIC $(pkg-config --cflags glib-2.0) -I/tmp \
             -o /tmp/libinsncount.so tools/qemu_insn_plugin/insn_count.c
 
-      # Release (-O2) M55 workloads, matching how baselines are recorded. No
+      # Release (-O3 -DNDEBUG, CMake's Release flags) M55 workloads, matching how baselines are recorded. No
       # -DTAP_DSP_FFT_CMSIS here: the M55 profile defaults it ON, so the ratchet
       # gates the deployed CMSIS-DSP Helium FFT (bench/baselines.json m55).
       - name: Build M55 workloads
@@ -453,8 +455,8 @@ jobs:
           python3 scripts/icount.py --target m55
           --build-dir build-m55 --plugin /tmp/libinsncount.so
 
-      # Release (-O2) M33 workloads on the MPS2+ AN505 model: the Pico 2 W
-      # class core, Ooura float32 FFT (the toolchain file pins CMSIS off —
+      # Release (-O3 -DNDEBUG) M33 workloads on the MPS2+ AN505 model: the Pico 2 W
+      # class core, split-radix float32 FFT (the toolchain file pins CMSIS off —
       # no Helium). bench/baselines.json m33 was seeded from this exact
       # toolchain/QEMU pair (gcc-arm-none-eabi 13.2.rel1, QEMU 8.2.2).
       - name: Build M33 workloads
@@ -661,3 +663,16 @@ jobs:
         run: |
           pipx install pre-commit
           pre-commit run --all-files --show-diff-on-failure
+
+      # The ABI-tag rule's one gap the compiler cannot see (include/mutap/fft.h,
+      # HANDOFF.md working note 6): a forward declaration of a tagged class in
+      # plain tap::mu declares a DIFFERENT class. A TU that also sees the
+      # definition fails to compile (clang: ambiguous; g++: a parse error), but a header that
+      # forward-declares and never includes the definition compiles and is an
+      # ODR hazard across images. Include the header instead.
+      - name: No forward declarations of the ABI-tagged classes
+        run: |
+          if git grep -nE '(^|[{;])\s*(template\s*<[^>]*>\s*)?(class|struct)\s+(partitioned_fdaf|partitioned_fdkf|pem_afc|residual_suppressor|nn_suppressor)\s*;' -- include tools tests bench; then
+            echo "::error::forward declaration of an ABI-tagged class (see include/mutap/fft.h); include its header instead"; exit 1
+          fi
+          echo "no forward declarations of the five tagged classes"

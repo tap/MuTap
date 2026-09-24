@@ -15,7 +15,11 @@
 #include "mutap/fft.h"
 #include "mutap/lpc.h"
 
-namespace tap::mu {
+// The ABI tag (mutap/fft.h): pem_afc holds a basic_real_fft<Sample> by value,
+// so its layout follows the build's float FFT engine, and it is defined inside
+// DspTap's inline namespace for that engine (fft_split_radix / fft_cmsis /
+// fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
     /// Acoustic feedback canceller with PEM decorrelation (the FDAF-PEM-AFROW
     /// structure; Gil-Cacho et al. 2014, Rombouts et al. 2007).
@@ -186,6 +190,12 @@ namespace tap::mu {
 
       private:
         static config validated(const config& cfg) {
+            // First, before the core is constructed: this class's own FFT
+            // runs at 2 * block_size (the core's fft_size() for both shipped
+            // cores), so the size gate is pem_afc's to state, whatever Core
+            // checks for itself.
+            fft_detail::checked_fft_size<Sample>(2 * cfg.fdaf.block_size,
+                                                 "pem_afc: 2 * fdaf.block_size" MUTAP_FFT_SIZE_RANGES);
             if (cfg.analysis_window < 2 * cfg.fdaf.block_size) {
                 throw std::invalid_argument("pem_afc: analysis_window must be >= 2 * block_size");
             }
@@ -213,4 +223,4 @@ namespace tap::mu {
         size_t                    m_head = 0;
     };
 
-} // namespace tap::mu
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI

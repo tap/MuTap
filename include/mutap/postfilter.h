@@ -41,7 +41,11 @@
 #endif
 #endif
 
-namespace tap::mu {
+// The ABI tag (mutap/fft.h): residual_suppressor holds a
+// basic_real_fft<Sample> by value, so its layout follows the build's float FFT
+// engine, and it is defined inside DspTap's inline namespace for that engine
+// (fft_split_radix / fft_cmsis / fft_vdsp).
+namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
     /// Residual-echo suppressor with matched comfort noise
     /// (docs/itu-compliance.md, Stage 2).
@@ -114,7 +118,10 @@ namespace tap::mu {
             /// from near-end structure — at block 256 / 48 kHz one block
             /// is 93.75 Hz per bin, too coarse for the AM-FM double-talk
             /// combs (~90-160 Hz interleave); 8 blocks (23.4 Hz bins,
-            /// Hann-windowed estimation) resolves them.
+            /// Hann-windowed estimation) resolves them. The FFT size is
+            /// analysis_blocks * block_size and must be one the build's
+            /// FFT engine supports (under CMSIS-DSP on the Cortex-M55,
+            /// 32 ... 4096; the constructor throws otherwise).
             size_t analysis_blocks    = 8;
             Sample max_suppression_db = 40;          ///< g_min = -this in dB (floor per bin)
             Sample over_subtraction   = Sample(1.2); ///< beta on the coherence (>= 1)
@@ -194,7 +201,9 @@ namespace tap::mu {
 
         explicit residual_suppressor(const config& cfg)
             : m_cfg(validated(cfg))
-            , m_n(cfg.analysis_blocks * cfg.block_size)
+            , m_n(fft_detail::checked_fft_size<Sample>(
+                  cfg.analysis_blocks * cfg.block_size,
+                  "residual_suppressor: analysis_blocks * block_size" MUTAP_FFT_SIZE_RANGES))
             , m_fft(m_n)
             , m_g_min(std::pow(Sample(10), -cfg.max_suppression_db / Sample(20)))
             , m_g_low(std::pow(Sample(10), -cfg.low_band_cap_db / Sample(20)))
@@ -750,6 +759,12 @@ namespace tap::mu {
         Sample                 m_echo_explained = Sample(0);
         std::uint32_t          m_rng            = 0x2545F491U;
     };
+
+} // namespace tap::mu::inline TAP_DSP_FFT_ABI
+
+// aec_chain is not tagged itself: it holds its Canceller and Post as template
+// arguments, which are in its mangled name and carry the tag.
+namespace tap::mu {
 
     /// The unit the compliance matrix measures: a linear canceller
     /// followed by the residual suppressor, sharing one block size.

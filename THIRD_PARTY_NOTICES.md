@@ -20,18 +20,23 @@ Ooura FFT, whose derived port compiles into every consumer via the header
 ### Ooura FFT — the C++20 port in `submodules/dsptap/include/tap/dsp/fft/split_radix.h`
 Takuya Ooura's General Purpose FFT Package (split-radix "Fast Version III").
 What MuTap ships is not the C: since DspTap Stage 2c (tap/DspTap#32, pin
-`8350f13`) the library is header-only and every floating-point transform MuTap
-runs is DspTap's C++20 port of `rdft`,
+`8350f13`) the library is header-only, and every floating-point transform MuTap
+runs on its default engine is DspTap's C++20 port of `rdft`,
 `submodules/dsptap/include/tap/dsp/fft/split_radix.h` — a statement-for-statement
 transliteration that landed beside the vendored C at Stage 2a (tap/DspTap#28),
-bit-identical to it in both precisions under DspTap's parity gate, and that
+bit-identical to it in both precisions (held by DspTap's parity gate against
+the C until Decision D6, and since then by the pinned fingerprints that gate
+measured, `submodules/dsptap/tests/test_fft_split_radix_fingerprint.cpp`), and that
 `basic_real_fft` has routed to since Stage 2b (tap/DspTap#31, `bbfa48d`; this
 repository's fingerprint harness held all 14 lines, float rows included,
-across both bumps). It is compiled into every consumer through the header
-`tap::dsp` provides; no `MuTap::fft` or `tap_dsp_fft` target exists in a MuTap
-build (the latter appears only under DspTap's opt-in `TAP_DSP_FFT_CMSIS`
-backend for the bare-metal Cortex-M55 and carries only Arm's Apache-2.0
-CMSIS-DSP objects).
+across every bump since). The double profile always runs the port; the float
+profile runs it everywhere except under DspTap's two opt-in accelerated
+engines (CMSIS-DSP on the bare-metal Cortex-M55, below; Apple vDSP, which
+MuTap's root `CMakeLists.txt` turns off by default). It is compiled into every
+consumer through the header `tap::dsp` provides; no `MuTap::fft` or
+`tap_dsp_fft` target exists in a MuTap build (the latter appears only under
+DspTap's `TAP_DSP_FFT_CMSIS` and carries only Arm's Apache-2.0 CMSIS-DSP
+objects).
 
 The port is a **derivative work, not the ORIGINAL package**. It carries
 `SPDX-License-Identifier: LicenseRef-Ooura AND MIT` — Ooura's notice verbatim
@@ -40,27 +45,31 @@ DspTap's additions — plus a line stating that it is a derivative work with the
 modification copyright. Its redistribution relies on the **modification grant**
 of the notice ("modify this code for any purpose"), since distribution of a
 modified derivative is not expressly granted; `submodules/dsptap/NOTICE.md` is
-the canonical statement of that position and of its reasoning. The notice, the
-only upstream license text, reads:
+the canonical statement of that position and of its reasoning.
 
-> Copyright(C) 1996-2001 Takuya OOURA
-> (email: ooura@mmm.t.u-tokyo.ac.jp,
-> download: http://momonga.t.u-tokyo.ac.jp/~ooura/fft.html)
-> You may use, copy, modify this code for any purpose and without fee.
-> You may distribute this ORIGINAL package.
+- **Notice**, verbatim from `submodules/dsptap/LICENSES/LicenseRef-Ooura.txt`
+  (the upstream package readme's copyright section; the readme itself is kept
+  permanently at `submodules/dsptap/third_party/ooura/readme.txt` as the
+  license record for the derived code):
 
-It lives in the upstream package readme, kept permanently at
-`submodules/dsptap/third_party/ooura/readme.txt` as the license record for the
-derived code (and reproduced as `submodules/dsptap/LICENSES/LicenseRef-Ooura.txt`
-so the SPDX reference resolves).
+```text
+Copyright:
+    Copyright(C) 1996-2001 Takuya OOURA
+    email: ooura@mmm.t.u-tokyo.ac.jp
+    download: http://momonga.t.u-tokyo.ac.jp/~ooura/fft.html
+    You may use, copy, modify this code for any purpose and
+    without fee. You may distribute this ORIGINAL package.
+```
 
-**Not shipped:** the reference copy of the C, `fftsg.c` and DspTap's 65-line
-single-precision wrapper `fftsg_float.c`, sits under
-`submodules/dsptap/tests/reference/ooura/` and is compiled only by DspTap's own
-parity test against the port. Nothing in a MuTap build compiles it — the CI
-job that once compiled it by path (`branchless-parity`) is header-only since
-this pin — and DspTap retires the reference copy once both MuTap and MuTap-Max
-pin a Stage 2c tree (DspTap Decision D6).
+**Not shipped, not present:** Ooura's C (`fftsg.c`, and DspTap's
+single-precision wrapper around it) is compiled into nothing a MuTap build
+produces, on any target, and has not been since the Stage 2c pin; since DspTap
+Decision D6 (tap/DspTap#36, `0db95b6`, the pin this repository records) it exists nowhere in the tree either — the
+reference copy DspTap kept under `tests/reference/ooura/` for its parity gate
+was deleted once MuTap and MuTap-Max both pinned a Stage 2c tree. What remains
+of the package is the derived port above, shipped under `LicenseRef-Ooura AND
+MIT`, and DspTap's license record for it: `third_party/ooura/readme.txt` and
+`LICENSES/LicenseRef-Ooura.txt`.
 
 ### Toy dataset fixture — `tools/ml/kws/fixtures/toy/`
 The wake-word dataset builder's bring-up corpus (wake-word plan §6 M4a): four

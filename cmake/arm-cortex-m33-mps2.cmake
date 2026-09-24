@@ -35,9 +35,9 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 # No Helium on the M33: DspTap defaults its CMSIS-DSP Helium FFT backend ON
-# for any bare-metal Arm profile, so pin the Ooura float32 path here
+# for any bare-metal Arm profile, so pin the split-radix float32 engine here
 # (a plain `set` of the cache entry, which DspTap's option() then respects).
-set(TAP_DSP_FFT_CMSIS OFF CACHE BOOL "No MVE on the Cortex-M33: Ooura float32 FFT")
+set(TAP_DSP_FFT_CMSIS OFF CACHE BOOL "No MVE on the Cortex-M33: split-radix float32 FFT")
 
 # One-shot CTest mode (no argv on bare metal; see tests/CMakeLists.txt).
 set(MUTAP_BARE_METAL ON)
