@@ -616,6 +616,34 @@ jobs:
       - name: Dataset builder tests
         run: python -m unittest discover -s tools/ml/kws -p 'test_*.py' -v
 
+  # The room-measurement tools (tools/fixtures). measure_rir.py (swept sine,
+  # deconvolution, round-trip latency, T20/T30) is checked against a synthetic
+  # loopback and synthetic rooms; howl_criterion.py (the offline howl
+  # criterion of the real-room protocol) against a simulated acoustic loop in
+  # nine rooms, dry and behind a canceller-like residual, with in-chain reverb.
+  # No audio device: sounddevice is imported only by the live subcommands. The
+  # shifter-in-the-loop oracle is ~10 min on 12 cores and runs locally only
+  # (HOWL_SLOW=1). numpy, scipy and matplotlib come pinned from
+  # tools/fixtures/requirements.txt, the versions the thresholds were measured with.
+  fixture-tools:
+    name: Room-measurement tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: tools/fixtures/requirements.txt
+
+      - name: Install the tools' pinned Python environment
+        run: python -m pip install -r tools/fixtures/requirements.txt
+
+      - name: Room-measurement tool tests
+        run: python -m unittest discover -s tools/fixtures -p 'test_*.py' -v
+
   clang-format:
     name: clang-format
     runs-on: ubuntu-latest
