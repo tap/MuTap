@@ -250,6 +250,45 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             }
         }
 
+        /// IDENTIFICATION PROGRESS: the summed state uncertainty relative
+        /// to its reset value, sum_{p,k} P_p(k) / sum_{p,k} P_p(k)|reset,
+        /// linear. The denominator includes the initial_uncertainty_decay
+        /// prior, so the ratio is exactly 1 after construction and after
+        /// reset(), whatever the prior. It is the filter's own account of
+        /// how much of the path it has identified, and it is a RAW
+        /// statistic: thresholds and their combination with other
+        /// statistics belong to the policy layer above the core, as
+        /// aec_chain owns the rescue policy (see reinflate_uncertainty).
+        ///
+        /// Computed on demand, O(partitions * (block_size + 1)): the core
+        /// already holds P, and process_block pays nothing for it.
+        ///
+        /// Measured (the convergence-indicator experiment: pem_afc on this
+        /// core in a closed loop at MSG - 6 dB, block 64 / 48 kHz, 1024 and
+        /// 2048 taps, double and float; statistic "A'" there):
+        ///   - it tracks the true stability margin best of eight candidate
+        ///     statistics on voiced near end plus a backing track: Spearman
+        ///     rho with -margin 0.75 / 0.77 / 0.75 / 0.78 (double 1024 /
+        ///     2048, float 1024 / 2048);
+        ///   - it refuses a held note: 0 of 72 held-note runs claimed
+        ///     "converged" at the calibrated level, and rightly so — the
+        ///     true margin never reached 6 dB in any of them (median
+        ///     minimum -10.48 dB, median maximum misalignment +18.11 dB);
+        ///   - it flags a louder-coupling change (F -> 2F) in 12 of 12 runs
+        ///     (13 of 14 at float / 2048 taps) and releases in only 0 to 1
+        ///     of them: the process noise is proportional to |W|^2, so the
+        ///     statistic scales with the path level and reads a louder,
+        ///     correctly re-tracked path as mismatch;
+        ///   - it misses walks to a different room: 3 to 5 detections among
+        ///     the 12 to 14 runs that were "ok" at the change, at a median
+        ///     0.91 to 1.82 s;
+        ///   - it regrows in digital silence (48 of 48 alarms): P ages
+        ///     toward |W|^2 with no information arriving to shrink it.
+        /// The experiment's calibrated level was -23.842 dB (IQR -24.474 to
+        /// -21.549 over 50 runs) — a calibration for that loop, not a
+        /// constant of the core.
+        Sample uncertainty_ratio() const noexcept { return uncertainty_sum() / m_p0_sum; }
+
         /// Zero the filter and histories, restore the initial uncertainty
         /// (shaped by initial_uncertainty_decay when configured).
         void reset() noexcept {
@@ -267,6 +306,9 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 }
                 p0 *= m_cfg.initial_uncertainty_decay;
             }
+            // The same summation uncertainty_ratio() runs, so the ratio at
+            // reset is x / x == 1 exactly.
+            m_p0_sum = uncertainty_sum();
             for (auto& x : m_nov) {
                 x = Sample(1);
             }
@@ -484,6 +526,14 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         }
 
       private:
+        Sample uncertainty_sum() const noexcept {
+            Sample s = Sample(0);
+            for (const Sample x : m_p) {
+                s += x;
+            }
+            return s;
+        }
+
         Sample inst_floor(Sample psi, Sample inst_e2) const noexcept {
             const Sample psi_eff =
                 (inst_e2 > m_cfg.transient_floor_ratio * psi && m_cfg.transient_floor_ratio > Sample(0)) ? inst_e2
@@ -556,6 +606,8 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         size_t                 m_head     = 0;
         size_t                 m_nb_count = 0;
         bool                   m_adapt    = true;
+        /// Sum of P at reset: uncertainty_ratio()'s denominator.
+        Sample m_p0_sum = Sample(1);
     };
 
 } // namespace tap::mu::inline TAP_DSP_FFT_ABI
