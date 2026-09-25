@@ -275,6 +275,13 @@ build emits, so it is recorded here instead. (The size gate's message is a
 literal because that is MuTap's config-error form; `include/mutap/fft.h`.)
 The workloads compile at CMake's Release flags, `-O3 -DNDEBUG`.
 
+**2026-09-25 — DspTap public `tap/dsp/math.h` (tap/DspTap#37), tap/MuTap#60: no re-record.**
+The pin adds a header and `nn_suppressor.h` builds its sqrt-Hann window
+through `tap::dsp::periodic_hann`, the identical expression (constructor
+code). Measured locally, main (`edf160e`, pin `0db95b6`) against the PR head
+on the committed toolchain/QEMU pair: every m55 and m33 row is identical
+count for count (0 instructions on all 20 rows), so nothing is re-recorded.
+
 ## FFT backend (Arm Helium)
 
 The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on

@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "mutap/fdaf.h"
+#include "tap/dsp/math.h"
 
 namespace mutap_test {
 
@@ -43,7 +44,7 @@ namespace mutap_test {
             num += (t - e) * (t - e);
             den += t * t;
         }
-        return 10.0 * std::log10(num / den);
+        return tap::dsp::power_db(num / den);
     }
 
     template <typename Sample>
@@ -193,8 +194,8 @@ namespace mutap_test {
 
         aec_run_result out;
         out.finite         = finite;
-        out.erle_db        = 10.0 * std::log10(mic / error);
-        out.suppression_db = 10.0 * std::log10(echo / residual);
+        out.erle_db        = tap::dsp::power_db(mic / error);
+        out.suppression_db = tap::dsp::power_db(echo / residual);
         return out;
     }
 

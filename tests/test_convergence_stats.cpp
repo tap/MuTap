@@ -65,6 +65,7 @@
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
 #include "support/loudspeaker_band.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -269,7 +270,7 @@ namespace {
     }
 
     double db10(double x) {
-        return 10.0 * std::log10(x);
+        return tap::dsp::power_db(x);
     }
 
     double median(std::vector<double> x) {

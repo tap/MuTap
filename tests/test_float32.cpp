@@ -51,6 +51,7 @@
 #include "support/itu_chain.h"
 #include "support/itu_levels.h"
 #include "support/itu_signals.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -319,8 +320,8 @@ namespace {
                 }
             }
         }
-        EXPECT_LT(10.0 * std::log10(out / mic), -20.0) << "the learned chain must still cancel";
-        const double rel_db = 10.0 * std::log10(err / ref);
+        EXPECT_LT(tap::dsp::power_db(out / mic), -20.0) << "the learned chain must still cancel";
+        const double rel_db = tap::dsp::power_db(err / ref);
         RecordProperty("float_vs_double_db", rel_db);
         EXPECT_LT(rel_db, -85.0) << "float chain drifts from the double golden model";
     }

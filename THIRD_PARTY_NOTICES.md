@@ -64,7 +64,7 @@ Copyright:
 **Not shipped, not present:** Ooura's C (`fftsg.c`, and DspTap's
 single-precision wrapper around it) is compiled into nothing a MuTap build
 produces, on any target, and has not been since the Stage 2c pin; since DspTap
-Decision D6 (tap/DspTap#36, `0db95b6`, the pin this repository records) it exists nowhere in the tree either — the
+Decision D6 (tap/DspTap#36, `0db95b6`) it exists nowhere in the tree either — the
 reference copy DspTap kept under `tests/reference/ooura/` for its parity gate
 was deleted once MuTap and MuTap-Max both pinned a Stage 2c tree. What remains
 of the package is the derived port above, shipped under `LicenseRef-Ooura AND

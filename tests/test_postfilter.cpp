@@ -62,6 +62,8 @@
 #include "support/itu_chain.h"
 #include "support/itu_levels.h"
 #include "support/itu_signals.h"
+#include "support/window.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -360,8 +362,7 @@ namespace {
             std::vector<double>             buf(n);
             std::vector<double>             win(n);
             for (size_t i = 0; i < n; ++i) {
-                win[i] =
-                    0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(n - 1));
+                win[i] = mutap_test::symmetric_hann(i, n);
             }
             size_t frames = 0;
             for (size_t off = 0; off + n <= s.size(); off += n / 2, ++frames) {
@@ -384,7 +385,7 @@ namespace {
                 for (size_t k = k0; k < k1; ++k) {
                     sum += psd[k];
                 }
-                bands.push_back(10.0 * std::log10(sum / static_cast<double>(frames) + 1e-30));
+                bands.push_back(tap::dsp::power_db(sum / static_cast<double>(frames) + 1e-30));
             }
             return bands;
         };

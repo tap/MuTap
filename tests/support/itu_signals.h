@@ -35,6 +35,8 @@
 #include <vector>
 
 #include "mutap/fft.h"
+#include "tap/dsp/math.h"
+#include "window.h"
 
 namespace mutap_test::itu {
 
@@ -145,9 +147,8 @@ namespace mutap_test::itu {
         const size_t        taps = fft_size / 2 + 1;
         std::vector<double> out(taps);
         for (size_t i = 0; i < taps; ++i) {
-            const double w =
-                0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(taps - 1));
-            out[i] = h[fft_size / 2 - taps / 2 + i] * w;
+            const double w = symmetric_hann(i, taps);
+            out[i]         = h[fft_size / 2 - taps / 2 + i] * w;
         }
         return out;
     }
@@ -463,10 +464,8 @@ namespace mutap_test::itu {
         // separation the double-talk analysis needs lives or dies on
         // spectral leakage.
         for (size_t i = 0; i < x.size(); ++i) {
-            const double w =
-                0.5
-                - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(x.size() - 1));
-            buf[i] = x[i] * w;
+            const double w = symmetric_hann(i, x.size());
+            buf[i]         = x[i] * w;
         }
         fft.forward_inplace(buf.data());
         const double df_bin = fs / static_cast<double>(n_fft);
@@ -478,7 +477,7 @@ namespace mutap_test::itu {
                 acc += buf[2 * k] * buf[2 * k] + buf[2 * k + 1] * buf[2 * k + 1];
             }
         }
-        return 10.0 * std::log10(std::max(acc, 1e-30));
+        return tap::dsp::power_db(std::max(acc, 1e-30));
     }
 
     // --------------------------------------------------- activation sequence

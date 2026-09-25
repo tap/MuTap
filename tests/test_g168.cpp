@@ -48,6 +48,7 @@
 #include <gtest/gtest.h>
 
 #include "support/itu_chain.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -451,7 +452,7 @@ namespace {
                     so += std::pow(10.0, tro[i] / 10.0);
                     sn += std::pow(10.0, trn[i] / 10.0);
                 }
-                return 10.0 * std::log10(so / sn);
+                return tap::dsp::power_db(so / sn);
             };
             measure<TypeParam>("ComfortTrack.step", rs, seg_delta(11.0, 14.0));
             measure<TypeParam>("ComfortTrack.ramp", rs, seg_delta(31.0, 34.0));

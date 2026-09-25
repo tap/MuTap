@@ -44,6 +44,7 @@
 #include <gtest/gtest.h>
 
 #include "faust_generated.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -96,10 +97,10 @@ namespace {
     }
 
     double db10(double x) {
-        return 10.0 * std::log10(x);
+        return tap::dsp::power_db(x);
     }
     double db20(double x) {
-        return 20.0 * std::log10(x);
+        return tap::dsp::amplitude_db(x);
     }
 
     double energy(const std::vector<double>& x) {
