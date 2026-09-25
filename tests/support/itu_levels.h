@@ -31,6 +31,8 @@
 #include <numbers>
 #include <vector>
 
+#include "tap/dsp/math.h"
+
 namespace mutap_test::itu {
 
     inline constexpr double k_dbov_per_dbm0 = -3.14; ///< L_dBov = L_dBm0 + this
@@ -45,7 +47,7 @@ namespace mutap_test::itu {
     }
 
     inline double level_dbov(const double* x, size_t n) {
-        return 20.0 * std::log10(rms_of(x, n));
+        return tap::dsp::amplitude_db(rms_of(x, n));
     }
 
     inline double dbm0_to_rms(double dbm0) {
@@ -75,7 +77,7 @@ namespace mutap_test::itu {
         for (size_t i = 0; i < n; ++i) {
             peak = std::max(peak, std::abs(x[i]));
         }
-        return 20.0 * std::log10(peak / rms_of(x, n));
+        return tap::dsp::amplitude_db(peak / rms_of(x, n));
     }
 
     // ------------------------------------------------------------- A-weighting
@@ -257,7 +259,8 @@ namespace mutap_test::itu {
 
         double best_level = rms_to_dbm0(std::sqrt(sq / static_cast<double>(x.size())));
         double best_act   = 1.0;
-        for (double thr_db = 20.0 * std::log10(env_peak); thr_db > 20.0 * std::log10(env_peak) - 60.0; thr_db -= 0.5) {
+        for (double thr_db = tap::dsp::amplitude_db(env_peak); thr_db > 20.0 * std::log10(env_peak) - 60.0;
+             thr_db -= 0.5) {
             const double thr    = std::pow(10.0, thr_db / 20.0);
             size_t       active = 0;
             size_t       hang   = 0;
@@ -273,7 +276,7 @@ namespace mutap_test::itu {
             if (active == 0) {
                 continue;
             }
-            const double level_db = 20.0 * std::log10(std::sqrt(sq / static_cast<double>(active)));
+            const double level_db = tap::dsp::amplitude_db(std::sqrt(sq / static_cast<double>(active)));
             // P.56: as the threshold drops the margin (active level minus
             // threshold) GROWS; the active level is read where the margin
             // first reaches 15.9 dB.

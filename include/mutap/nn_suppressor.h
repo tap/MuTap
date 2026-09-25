@@ -13,13 +13,13 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
-#include <numbers>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "mutap/fft.h"
+#include "tap/dsp/math.h"
 #include "tap/dsp/nn.h"
 
 namespace tap::mu {
@@ -150,9 +150,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t f = m_g.frame();
             m_window.resize(f);
             for (size_t i = 0; i < f; ++i) {
-                const double hann =
-                    0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(f));
-                m_window[i] = static_cast<Sample>(std::sqrt(hann));
+                m_window[i] = static_cast<Sample>(std::sqrt(tap::dsp::periodic_hann(i, f)));
             }
             m_prev_e.assign(m_g.hop, Sample(0));
             m_prev_yhat.assign(m_g.hop, Sample(0));

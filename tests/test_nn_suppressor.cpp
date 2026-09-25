@@ -34,6 +34,7 @@
 
 #include "mutap/nn_suppressor.h"
 #include "mutap/postfilter.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -120,7 +121,7 @@ namespace {
         // Reconstruction sits at the profile's own rounding floor: float64-deep
         // for double, a float32 epsilon walk (~-135 dB measured) for float.
         const double bound_db = std::is_same_v<TypeParam, double> ? -140.0 : -120.0;
-        EXPECT_LT(10.0 * std::log10(err / ref), bound_db) << "reconstruction should sit at the rounding floor";
+        EXPECT_LT(tap::dsp::power_db(err / ref), bound_db) << "reconstruction should sit at the rounding floor";
     }
 
     TYPED_TEST(nn_suppressor_test, ZeroGainsSilenceTheOutputWithoutComfortNoise) {
@@ -164,7 +165,7 @@ namespace {
             fill += static_cast<double>(out[i]) * static_cast<double>(out[i]);
             ref += static_cast<double>(e[i]) * static_cast<double>(e[i]);
         }
-        const double rel_db = 10.0 * std::log10(fill / ref);
+        const double rel_db = tap::dsp::power_db(fill / ref);
         EXPECT_GT(rel_db, -10.0) << "comfort fill should sit near the floor, not at silence";
         EXPECT_LT(rel_db, 6.0) << "and must not exceed the input level by more than the bias";
     }
@@ -229,7 +230,7 @@ namespace {
             ref += static_cast<double>(e[i - hop]) * static_cast<double>(e[i - hop]);
         }
         const double bound_db = std::is_same_v<TypeParam, double> ? -140.0 : -120.0;
-        EXPECT_LT(10.0 * std::log10(err / ref), bound_db);
+        EXPECT_LT(tap::dsp::power_db(err / ref), bound_db);
     }
 
     // The chain composes with the learned post engine: block sizes match up
@@ -300,7 +301,7 @@ namespace {
             gain_span = std::max(gain_span, std::abs(g - 0.5));
         }
         EXPECT_GT(gain_span, 0.05) << "the network must be live, not saturated, for this to mean anything";
-        const double rel_db = 10.0 * std::log10(err / ref);
+        const double rel_db = tap::dsp::power_db(err / ref);
         RecordProperty("float_vs_double_db", rel_db);
         EXPECT_LT(rel_db, -120.0) << "float profile drifts from the golden model";
     }

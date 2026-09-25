@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "mutap/fdaf.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -73,7 +74,7 @@ namespace {
             num += (t - e) * (t - e);
             den += t * t;
         }
-        return 10.0 * std::log10(num / den);
+        return tap::dsp::power_db(num / den);
     }
 
     struct id_result {
@@ -111,7 +112,7 @@ namespace {
         }
         fdaf.copy_impulse_response(ir.data());
         result.final_misalignment_db = misalignment_db(truth, ir);
-        result.erle_db               = 10.0 * std::log10(des_energy / err_energy);
+        result.erle_db               = tap::dsp::power_db(des_energy / err_energy);
         return result;
     }
 
@@ -178,7 +179,7 @@ namespace {
                 residual += static_cast<double>(ir[i]) * static_cast<double>(ir[i]);
             }
         }
-        EXPECT_LT(10.0 * std::log10(residual / (0.8 * 0.8)), -60.0);
+        EXPECT_LT(tap::dsp::power_db(residual / (0.8 * 0.8)), -60.0);
     }
 
     // The unconstrained variant trades the gradient constraint's two FFTs
@@ -291,7 +292,7 @@ namespace {
             err += d * d;
             ref += ir64[i] * ir64[i];
         }
-        EXPECT_LT(10.0 * std::log10(err / ref), -55.0);
+        EXPECT_LT(tap::dsp::power_db(err / ref), -55.0);
     }
 
     TEST(FdafConfigValidation, RejectsBadConfigs) {

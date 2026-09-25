@@ -31,6 +31,8 @@
 #include "itu_signals.h"
 #include "mutap/fd_kalman.h"
 #include "mutap/postfilter.h"
+#include "tap/dsp/math.h"
+#include "window.h"
 
 namespace mutap_test::itu {
 
@@ -330,7 +332,7 @@ namespace mutap_test::itu {
         std::vector<double>             buf(n);
         std::vector<double>             win(n);
         for (size_t i = 0; i < n; ++i) {
-            win[i] = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(i) / static_cast<double>(n - 1));
+            win[i] = symmetric_hann(i, n);
         }
         size_t frames = 0;
         for (size_t off = 0; off + n <= x.size(); off += n / 2, ++frames) {
@@ -345,7 +347,7 @@ namespace mutap_test::itu {
             }
         }
         for (auto& v : psd) {
-            v = 10.0 * std::log10(v / static_cast<double>(frames) + 1e-30);
+            v = tap::dsp::power_db(v / static_cast<double>(frames) + 1e-30);
         }
         return psd;
     }
@@ -398,7 +400,7 @@ namespace mutap_test::itu {
                 so += std::pow(10.0, po[k] / 10.0);
             }
             r.f_center.push_back(fc);
-            r.atten_db.push_back(10.0 * std::log10(sr / so));
+            r.atten_db.push_back(tap::dsp::power_db(sr / so));
         }
         return r;
     }

@@ -251,6 +251,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         Sample echo_explained() const noexcept { return m_echo_explained; }
 
         void reset() noexcept {
+            // Symmetric (m_n - 1) and in Sample precision: not tap::dsp::periodic_hann, which would move bits.
             for (size_t i = 0; i < m_n; ++i) { // Hann for the ESTIMATION ffts
                 m_window[i] = Sample(0.5)
                               - Sample(0.5)

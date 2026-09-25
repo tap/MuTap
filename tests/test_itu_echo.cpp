@@ -47,6 +47,7 @@
 #include <gtest/gtest.h>
 
 #include "support/itu_chain.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -98,7 +99,7 @@ namespace {
                 sr += std::pow(10.0, pin[k] / 10.0);
                 so += std::pow(10.0, pout[k] / 10.0);
             }
-            const double tcl = 10.0 * std::log10(sr / so);
+            const double tcl = tap::dsp::power_db(sr / so);
             measure<TypeParam>("Tcl", rs, tcl);
             // Requirement >= 46, target >= 52. float col = double col until
             // measured; float32 clears the same gate.

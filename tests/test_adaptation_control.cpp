@@ -29,6 +29,7 @@
 
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -61,7 +62,7 @@ namespace {
             num += (t - e) * (t - e);
             den += t * t;
         }
-        return 10.0 * std::log10(num / den);
+        return tap::dsp::power_db(num / den);
     }
 
     constexpr size_t k_block = 64;

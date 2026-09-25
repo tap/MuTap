@@ -32,6 +32,7 @@
 
 #include "support/closed_loop.h"
 #include "support/itu_chain.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -384,7 +385,7 @@ namespace {
                 sr += std::pow(10.0, pin[k] / 10.0);
                 so += std::pow(10.0, pout[k] / 10.0);
             }
-            o.add("tcl", 10.0 * std::log10(sr / so));
+            o.add("tcl", tap::dsp::power_db(sr / so));
         }
         for (room r : {room::cabin, room::studio}) { // EchoLevel
             compliance_chain c(chain_config(rs));
@@ -701,7 +702,7 @@ namespace {
                     sq += std::pow(10.0, bq[k] / 10.0);
                 }
                 be.push_back(edges[b]);
-                bd.push_back(10.0 * std::log10(st / sq));
+                bd.push_back(tap::dsp::power_db(st / sq));
             }
             jobj bands;
             bands.add("edges", jarr(be));
@@ -778,7 +779,7 @@ namespace {
                 for (size_t i = a; i < b; ++i) {
                     p += oa[i] * oa[i];
                 }
-                return 10.0 * std::log10(p / static_cast<double>(b - a));
+                return tap::dsp::power_db(p / static_cast<double>(b - a));
             };
             std::vector<double> seg_t;
             std::vector<double> seg_v;
@@ -832,7 +833,7 @@ namespace {
                     so += std::pow(10.0, tro[i] / 10.0);
                     sn += std::pow(10.0, trn[i] / 10.0);
                 }
-                return 10.0 * std::log10(so / sn);
+                return tap::dsp::power_db(so / sn);
             };
             jobj t;
             t.add("trace_out", jtrace(tro, rs.fs, 50.0));

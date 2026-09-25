@@ -18,6 +18,7 @@
 
 #include "mutap/lpc.h"
 #include "support/closed_loop.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -137,7 +138,7 @@ namespace {
                 }
                 res[i] = acc;
             }
-            const double gain_db = 10.0 * std::log10(energy(x, order) / energy(res, order));
+            const double gain_db = tap::dsp::power_db(energy(x, order) / energy(res, order));
             EXPECT_GT(gain_db, 25.0) << "order " << order << ": tone not whitened";
         }
     }
@@ -164,7 +165,7 @@ namespace {
                 }
                 res[i] = acc;
             }
-            return 10.0 * std::log10(energy(x, 8) / energy(res, 8));
+            return tap::dsp::power_db(energy(x, 8) / energy(res, 8));
         };
         EXPECT_GT(whitening_gain(1e-6), whitening_gain(1e-2) + 10.0);
     }
@@ -255,8 +256,8 @@ namespace {
         lp.apply(lp_state, &v[3072], short_term.data(), 1024);
 
         std::vector<double> in(v.begin() + 3072, v.begin() + 4096);
-        const double        cascade_gain_db = 10.0 * std::log10(energy(in, 512) / energy(cascade, 512));
-        const double        short_gain_db   = 10.0 * std::log10(energy(in, 512) / energy(short_term, 512));
+        const double        cascade_gain_db = tap::dsp::power_db(energy(in, 512) / energy(cascade, 512));
+        const double        short_gain_db   = tap::dsp::power_db(energy(in, 512) / energy(short_term, 512));
         EXPECT_GT(cascade_gain_db, 40.0);
         EXPECT_GT(cascade_gain_db, short_gain_db + 10.0);
     }

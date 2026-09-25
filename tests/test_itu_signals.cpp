@@ -35,6 +35,7 @@
 #include "fixtures/rir_cabin.h"
 #include "support/itu_levels.h"
 #include "support/itu_signals.h"
+#include "tap/dsp/math.h"
 
 namespace {
 
@@ -50,7 +51,7 @@ namespace {
         // equal levels), pause silent.
         const double vr = itu::rms_of(css.data(), 2144);
         const double pr = itu::rms_of(css.data() + 2144, 8820);
-        EXPECT_NEAR(20.0 * std::log10(vr / pr), 0.0, 0.05) << "measured 0.003 dB";
+        EXPECT_NEAR(tap::dsp::amplitude_db(vr / pr), 0.0, 0.05) << "measured 0.003 dB";
         EXPECT_EQ(itu::rms_of(css.data() + 10964, 4471), 0.0);
 
         // Polarity inversion between periods (offset-free long sequence).
@@ -73,7 +74,7 @@ namespace {
         double sum2 = 0.0;
         int    n    = 0;
         for (size_t k = 16; k < 3700; ++k) {
-            const double d = 10.0 * std::log10(b[2 * k] * b[2 * k] + b[2 * k + 1] * b[2 * k + 1]);
+            const double d = tap::dsp::power_db(b[2 * k] * b[2 * k] + b[2 * k + 1] * b[2 * k + 1]);
             sum += d;
             sum2 += d * d;
             ++n;
@@ -104,7 +105,7 @@ namespace {
 
     TEST(ItuLevels, AWeightingSpotGains) {
         const itu::a_weighting aw(itu::k_fs);
-        const auto             db = [&](double f) { return 20.0 * std::log10(aw.magnitude_at(f, itu::k_fs)); };
+        const auto             db = [&](double f) { return tap::dsp::amplitude_db(aw.magnitude_at(f, itu::k_fs)); };
         EXPECT_NEAR(db(100.0), -19.1, 0.5) << "measured -19.18";
         EXPECT_NEAR(db(1000.0), 0.0, 0.05);
         // Prewarped-bilinear residual at 10 kHz: measured -1.76 vs the
@@ -119,9 +120,8 @@ namespace {
                 s[i] = std::sin(2.0 * std::numbers::pi * f * static_cast<double>(i) / itu::k_fs);
             }
             const auto y = itu::band_limit(s, itu::bandwidth::narrowband);
-            return 20.0
-                   * std::log10(itu::rms_of(y.data() + 8000, y.size() - 16000)
-                                / itu::rms_of(s.data() + 8000, s.size() - 16000));
+            return tap::dsp::amplitude_db(itu::rms_of(y.data() + 8000, y.size() - 16000)
+                                          / itu::rms_of(s.data() + 8000, s.size() - 16000));
         };
         EXPECT_GT(probe(3400.0), -1.0) << "passband (measured 0.0 dB)";
         EXPECT_LT(probe(4000.0), -70.0) << "P.501 Table 7-7 cutoff (measured -85.2 dB)";
@@ -154,7 +154,7 @@ namespace {
                  k < static_cast<size_t>(f1 * n_fft / itu::k_fs); ++k) {
                 acc += b[2 * k] * b[2 * k] + b[2 * k + 1] * b[2 * k + 1];
             }
-            return 10.0 * std::log10(acc);
+            return tap::dsp::power_db(acc);
         };
         const auto   hoth  = itu::make_hoth_noise(static_cast<size_t>(4 * itu::k_fs), 7);
         const double h_lo  = octave_db(hoth, 100.0, 200.0);
@@ -183,7 +183,7 @@ namespace {
         double t5  = 0.0;
         double t35 = 0.0;
         for (size_t i = 0; i < n; ++i) {
-            const double d = 10.0 * std::log10(edc[i] / edc[0]);
+            const double d = tap::dsp::power_db(edc[i] / edc[0]);
             if (t5 == 0.0 && d <= -5.0) {
                 t5 = static_cast<double>(i) / 48000.0;
             }
@@ -212,7 +212,7 @@ namespace {
         const double asl = itu::active_speech_level_dbm0(x, itu::k_fs, &act);
         const double tot = itu::rms_to_dbm0(itu::rms_of(x.data(), x.size()));
         EXPECT_NEAR(act, 0.312, 0.05);
-        EXPECT_NEAR(asl - tot, 10.0 * std::log10(1.0 / act), 0.1) << "definitionally consistent";
+        EXPECT_NEAR(asl - tot, tap::dsp::power_db(1.0 / act), 0.1) << "definitionally consistent";
 
         // On CSS the 101 ms pause sits inside the 200 ms hangover, so
         // activity is ~1 and ASL ~ total level (measured -15.93 at -16).
@@ -231,8 +231,8 @@ namespace {
         EXPECT_EQ(starts[1] - starts[0], static_cast<size_t>(itu::k_fs)) << "500 ms token + 500 ms pause";
         // +1 dB per step.
         const size_t tn = static_cast<size_t>(0.5 * itu::k_fs);
-        const double l0 = 20.0 * std::log10(itu::rms_of(seq.data() + starts[0], tn));
-        const double l4 = 20.0 * std::log10(itu::rms_of(seq.data() + starts[4], tn));
+        const double l0 = tap::dsp::amplitude_db(itu::rms_of(seq.data() + starts[0], tn));
+        const double l4 = tap::dsp::amplitude_db(itu::rms_of(seq.data() + starts[4], tn));
         EXPECT_NEAR(l4 - l0, 4.0, 0.01);
     }
 
@@ -259,7 +259,7 @@ namespace {
             const auto   y   = itu::resample(x, 44100.0, fs_out);
             const double in  = itu::rms_of(x.data() + 4000, x.size() - 8000);
             const double out = itu::rms_of(y.data() + 2000, y.size() - 4000);
-            return 20.0 * std::log10(out / in);
+            return tap::dsp::amplitude_db(out / in);
         };
         // Passband ripple < 0.2 dB (measured <= 0.014 dB).
         for (const double f : {100.0, 1000.0, 6800.0, 19000.0}) {
