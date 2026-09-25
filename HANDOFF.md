@@ -88,7 +88,13 @@ carries the measured numbers; this is the map:
    measured 18k on Linux and 34k on macOS (assert survival/recovery and
    floored containment, never the chaotic peak); single-seed ASG numbers
    move by dB between platforms (assert medians across seeds, bisected
-   stability directions, floors with several dB of margin).
+   stability directions, floors with several dB of margin). Since the
+   band-limited harness (`tests/support/rooms.h`): host suites carry the
+   acoustic claims — feedback paths through the loudspeaker band, medians
+   over five seed sets (`*_host_test` and the double-only tests) — and the
+   emulated selections are platform canaries, one seed, checking that
+   target arithmetic tracks the host; a canary whose band-limited float
+   margin was under ~4 dB stays on the raw path.
 3. **One room is not an evaluation.** The warped predictor's first cut
    was validated on one simulated room and shipped claims that a
    five-room sweep demolished (one room in five DESTABILIZED at the old
@@ -102,7 +108,7 @@ carries the measured numbers; this is the map:
    `TEST_FILTER` in `tests/CMakeLists.txt` (Hexagon and any future hosted
    cross target). Both mirror the same policy: float typed suites,
    LP/conditioning, validation/contract tests, float closed-loop
-   scenarios; the double-typed adaptive suites stay host-only (the full
+   canaries; the double-typed adaptive suites stay host-only (the full
    suite ran once on the Hexagon ISA — 44 min of TCG — and passed; the
    per-push selection takes ~8).
 5. **Hexagon CI quirks**: the toolchain downloads from Codelinaro's
@@ -172,6 +178,30 @@ carries the measured numbers; this is the map:
    make_rir_fixtures.py`, `tests/fixtures/rir_*.h`, `test_rir_fixtures.cpp`):
    three physically-modeled image-source rooms are committed baselines.
    Still open (below): adding measured rooms — one command per WAV.
+8. **Open issues from the band-limited harness (2026-09-25).** Recorded,
+   not asserted; each is a single-seed reading from the scratch sweep
+   that set the band-limited thresholds (rooms mt5–mt9 from the tests'
+   `std::mt19937` generator, np5–np10 from the notebook's numpy one; 256
+   taps, d = 128, double, seed set 0):
+   - **Kalman-PEM on tonal material, band-limited room 6: ASG −1.25 dB**,
+     against NLMS-PEM's +5.92 on the same room and material (raw room 6:
+     Kalman +4.38). Every other swept room reads ≥ +6.25 band-limited, and
+     the test room's median is +8.44, so the suite does not see it. A
+     Kalman-core loss on a tonal room is new; it needs seed sets and a
+     look at the per-bin state before it is called a defect or noise.
+   - **Gated-NLMS burst containment is not universal.** Gated worst block
+     RMS over 1000 on raw rooms mt9 (6426), np6 (6363) and np7 (8402), and
+     on band-limited np6 (3324); on the test room itself, float,
+     band-limited, 2 of 5 seed sets (5993, 5476). The claim is now a
+     median with the containment rate recorded (`burst_host_test`).
+   - **`test_itu_dynamics` ClosedLoopStabilitySweep stays on the raw
+     compliance path**: the loudspeaker model's 16 kHz lowpass sits at
+     Nyquist at the 16 kHz required rate (no 16 kHz variant yet).
+   - **The demo notebook's prose quotes the pre-band-limit suite numbers**
+     (warped +13.8 on speech-envelope, Kalman music +8.4…+13.1 and
+     +11.6…+13.4, "the room where its NLMS incarnation destabilizes").
+     Updating `tools/notebook/build_afc_demo.py` means re-executing the
+     notebook, so it is left for that pass.
 
 ## The next effort (Rev 4): AEC objects + echo chapter
 

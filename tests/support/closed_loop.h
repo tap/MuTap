@@ -12,9 +12,11 @@
 // runs at sample resolution. Runs are exactly reproducible.
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <random>
@@ -313,6 +315,66 @@ namespace mutap_test {
             }
         }
         return -20.0 * std::log10(peak);
+    }
+
+    /// The phase-exact open-loop MSG (Nyquist): the loop L(w) = e^{-jwd} F(w)
+    /// goes unstable at the broadband gain K where K L(w) first reaches +1,
+    /// so MSG = -20 log10 of the largest positive real value L takes where
+    /// its phase crosses 0 mod 2 pi (DC and Nyquist included when positive).
+    /// theoretical_msg_db's max|F| ignores the phase condition and sits
+    /// below this by 0.01-1.65 dB on the band-limited 256-tap rooms at d = 128
+    /// (2.63 dB on the band-limited 1024-tap rehearsal fixture). Crossings
+    /// are found on a 2^20-point FFT grid (fft_size) with linear interpolation
+    /// between bins, the method of the anti-howl PoC's phase 0 (its numpy
+    /// nyq_f on a 2^22 grid), which reproduced faust-icc's measured +3.6 dB as
+    /// +3.53. This implementation agrees with that numpy code to 4 decimals at
+    /// 2^22 and within 0.0003 dB at 2^20 on the phase 0 room paths.
+    /// Host-side analysis only: it allocates and runs a 2^20 double FFT.
+    template <typename Sample>
+    double exact_msg_db(const std::vector<Sample>& feedback_path, size_t forward_delay,
+                        size_t fft_size = size_t{1} << 20) {
+        tap::mu::real_fft   fft(fft_size);
+        std::vector<double> buf(fft_size, 0.0);
+        for (size_t i = 0; i < feedback_path.size() && i < fft_size; ++i) {
+            buf[i] = static_cast<double>(feedback_path[i]);
+        }
+        fft.forward_inplace(buf.data());
+        const size_t half = fft_size / 2;
+        // Ooura packing with the exp(+i) sign: F(w_k) = buf[2k] - j buf[2k+1];
+        // DC and Nyquist are real, in buf[0] and buf[1].
+        auto loop_at = [&](size_t k, double& re, double& im) {
+            double fr = buf[0];
+            double fi = 0.0;
+            if (k == half) {
+                fr = buf[1];
+            }
+            else if (k > 0) {
+                fr = buf[2 * k];
+                fi = -buf[2 * k + 1];
+            }
+            // Phase of e^{-jwd} reduced exactly: (k d) mod N in integers.
+            const auto   m  = static_cast<size_t>((static_cast<std::uint64_t>(k) * forward_delay) % fft_size);
+            const double ph = -2.0 * std::numbers::pi * static_cast<double>(m) / static_cast<double>(fft_size);
+            re              = fr * std::cos(ph) - fi * std::sin(ph);
+            im              = fr * std::sin(ph) + fi * std::cos(ph);
+        };
+        double re0 = 0.0;
+        double im0 = 0.0;
+        loop_at(0, re0, im0);
+        double best = std::max(re0, 0.0);
+        for (size_t k = 0; k < half; ++k) {
+            double re1 = 0.0;
+            double im1 = 0.0;
+            loop_at(k + 1, re1, im1);
+            if (std::signbit(im0) != std::signbit(im1)) {
+                const double t = im0 / (im0 - im1);
+                best           = std::max(best, re0 + t * (re1 - re0));
+            }
+            re0 = re1;
+            im0 = im1;
+        }
+        best = std::max(best, re0); // Nyquist
+        return -20.0 * std::log10(best);
     }
 
     /// Measure the loop's maximum stable gain by bisecting the forward gain:

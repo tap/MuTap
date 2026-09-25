@@ -9,23 +9,28 @@
 //   - the mu tradeoff dissolves: at 0 dB SNR the Kalman reaches -15.7 dB
 //     misalignment by block 300 where NLMS mu=0.5 sits at -5.9 (fast but
 //     shallow) and mu=0.1 at -13.7 (deep but slow to start)
-//   - closed loop, NO gating and NO IPC anywhere: tonal ASG +4.7/+7.8
-//     (double/float; NLMS-PEM +4.5..+6.8), speech-envelope and white
-//     near-end saturate the +25 dB probe ceiling (NLMS-PEM +3..+12.6),
-//     voiced +7.5 (NLMS-PEM +2.7..+4.5)
+//   - closed loop, NO gating and NO IPC anywhere (band-limited rooms,
+//     medians over five seed sets): tonal ASG +8.44/+6.88 (double/float;
+//     NLMS-PEM +7.08/+7.66), speech-envelope +24.69, at the +25 dB probe
+//     ceiling (NLMS-PEM +9.68)
 //   - the music rooms that forced the warped predictor's IPC pairing:
-//     warped+Kalman +8.4..+13.1 dB across rooms {5..9} and speech+Kalman
-//     +11.6..+13.4 — including room 9 where the NLMS speech cascade
-//     DESTABILIZES (-2.2 dB) — with zero adaptation-control config
+//     warped+Kalman per-room medians +11.25..+12.81 dB across rooms {5..9}
+//     and the speech cascade +12.50 on room 9 — with zero
+//     adaptation-control config
 //   - a +20 dB near-end burst against the ungated converged filter is
 //     SURVIVED — the ring-down completes and the loop is quiet again
 //     (ungated NLMS is wrecked by the same burst); the opt-in transient
-//     floor contains the hit to gated-NLMS quality (worst RMS ~24 vs ~25)
-//     at a measured ~2..6 dB tonal-ASG cost, which is why it defaults off
+//     floor contains the hit (median worst RMS 10.73) at a measured
+//     ~2..6 dB tonal-ASG cost, which is why it defaults off
+//
+// The open-loop identification tests use the raw synthetic room (an echo
+// path, not a loop); kalman_loop_test is the emulated selection's
+// platform canary; the other closed-loop tests carry the claims.
 
 #include <cmath>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -35,11 +40,17 @@
 #include "mutap/fdaf.h"
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
+#include "support/rooms.h"
 #include "tap/dsp/math.h"
 
 namespace {
 
+    using mutap_test::band_limited;
     using mutap_test::closed_loop_sim;
+    using mutap_test::k_claim_seed_sets;
+    using mutap_test::median;
+    using mutap_test::random_decaying_rir;
+    using mutap_test::seed_in_set;
 
     constexpr size_t k_block = 64;
     constexpr size_t k_taps  = 256;
@@ -53,23 +64,6 @@ namespace {
             v = static_cast<Sample>(dist(gen));
         }
         return x;
-    }
-
-    template <typename Sample>
-    std::vector<Sample> random_decaying_fir(size_t taps, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<Sample>              f(taps);
-        double                           energy = 0.0;
-        for (size_t i = 0; i < taps; ++i) {
-            const double v = dist(gen) * std::exp(-static_cast<double>(i) / (static_cast<double>(taps) / 4.0));
-            f[i]           = static_cast<Sample>(v);
-            energy += v * v;
-        }
-        for (auto& v : f) {
-            v = static_cast<Sample>(static_cast<double>(v) / std::sqrt(energy));
-        }
-        return f;
     }
 
     template <typename Sample>
@@ -143,7 +137,7 @@ namespace {
     // -126 dB (float) at block 600 — the process-noise floor, far beyond
     // any acoustic requirement.
     TYPED_TEST(fd_kalman_test, ConvergesOnWhiteNoiseIdentification) {
-        const auto   truth  = random_decaying_fir<TypeParam>(k_taps, 5);
+        const auto   truth  = random_decaying_rir<TypeParam>(k_taps, 5);
         const size_t blocks = 600;
         const auto   input  = white_noise<TypeParam>(blocks * k_block, 2);
         const auto   d      = convolve(input, truth);
@@ -169,7 +163,7 @@ namespace {
     // Kalman gets both without a knob. Measured at block 300, 0 dB SNR:
     // Kalman -15.7 dB vs NLMS mu=0.5 -5.9 dB.
     TEST(FdKalman, BeatsNlmsSpeedDepthTradeoffInNoise) {
-        const auto   truth  = random_decaying_fir<double>(k_taps, 5);
+        const auto   truth  = random_decaying_rir<double>(k_taps, 5);
         const size_t blocks = 300;
         const auto   input  = white_noise<double>(blocks * k_block, 2);
         const auto   noise  = white_noise<double>(blocks * k_block, 77);
@@ -207,8 +201,8 @@ namespace {
     // until the input-side term outgrows it; that caution is the same
     // property that makes the filter burst-proof.
     TEST(FdKalman, TracksAbruptPathChange) {
-        const auto          truth_a = random_decaying_fir<double>(k_taps, 5);
-        const auto          truth_b = random_decaying_fir<double>(k_taps, 9);
+        const auto          truth_a = random_decaying_rir<double>(k_taps, 5);
+        const auto          truth_b = random_decaying_rir<double>(k_taps, 9);
         const size_t        blocks  = 900;
         const size_t        swap    = 600;
         const auto          input   = white_noise<double>(blocks * k_block, 2);
@@ -230,112 +224,138 @@ namespace {
         EXPECT_LT(misalignment_db(truth_b, ir), -15.0) << "measured -25 dB, 300 blocks after the swap";
     }
 
+    /// Synthetic room `seed`, band-limited: the closed-loop feedback path.
+    template <typename Sample>
+    std::vector<Sample> loop_room(unsigned seed = 5) {
+        return band_limited(random_decaying_rir<Sample>(k_taps, seed));
+    }
+
+    /// Converge `afc` 1500 blocks at MSG-6 on v_converge, then bisect its
+    /// ASG over max|F| with v_probe.
+    template <typename Sample, typename Afc>
+    double converge_and_measure(Afc& afc, const std::vector<Sample>& path, const std::vector<Sample>& v_converge,
+                                const std::vector<Sample>& v_probe) {
+        const double            open_msg = mutap_test::theoretical_msg_db(path);
+        closed_loop_sim<Sample> sim(loop_config(path, open_msg - 6.0));
+        for (size_t blk = 0; blk < 1500; ++blk) {
+            sim.step(&v_converge[blk * k_block], &afc);
+        }
+        return mutap_test::measured_msg_db(loop_config(path), &afc, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
+               - open_msg;
+    }
+
+    /// Kalman-PEM tonal ASG for seed set `set` (converge seed 2, probe 12).
+    template <typename Sample>
+    double kalman_tonal_asg(const std::vector<Sample>& path, unsigned set) {
+        kalman_pem<Sample> pem(kalman_pem_config<Sample>());
+        return converge_and_measure(pem, path, mutap_test::tonal_near_end<Sample>(1500 * k_block, seed_in_set(2, set)),
+                                    mutap_test::tonal_near_end<Sample>(600 * k_block, seed_in_set(12, set)));
+    }
+
+    template <typename Sample>
+    class kalman_loop_host_test : public ::testing::Test {};
+    TYPED_TEST_SUITE(kalman_loop_host_test, sample_types);
+
+    // Closed loop, tonal near-end — the M3 headline scenario, now with the
+    // Kalman core and NOT ONE adaptation-control knob. Measured ASG median
+    // +8.44 (double, per set +6.56..+11.56) / +6.88 (float, +6.88..+10.62);
+    // the NLMS-PEM stack measures +7.08 / +7.66 (test_pem_afc.cpp).
+    TYPED_TEST(kalman_loop_host_test, PemAddsStableGainOnTonal) {
+        const auto          path = loop_room<TypeParam>();
+        std::vector<double> asg;
+        for (unsigned set = 0; set < k_claim_seed_sets; ++set) {
+            asg.push_back(kalman_tonal_asg(path, set));
+        }
+        this->RecordProperty("median_asg_db", median(asg));
+        EXPECT_GT(median(asg), 3.0) << "measured median +8.44 (double) / +6.88 (float)";
+    }
+
+    // CANARY (kalman_loop_test/0 runs in the emulated selection):
+    // band-limited room, one seed (set 0). Measured on host +10.62 (float) /
+    // +11.56 (double) against the threshold of 2, a margin wide enough for
+    // the band-limited path. The claim is kalman_loop_host_test above.
     template <typename Sample>
     class kalman_loop_test : public ::testing::Test {};
     TYPED_TEST_SUITE(kalman_loop_test, sample_types);
 
-    // Closed loop, tonal near-end — the M3 headline scenario, now with the
-    // Kalman core and NOT ONE adaptation-control knob. Measured ASG +4.7
-    // (double) / +7.8 (float); the NLMS-PEM stack measures +4.5..+6.8.
     TYPED_TEST(kalman_loop_test, PemAddsStableGainOnTonal) {
-        const auto   path     = random_decaying_fir<TypeParam>(k_taps, 5);
-        const double open_msg = mutap_test::theoretical_msg_db(path);
-
-        const auto v_converge = mutap_test::tonal_near_end<TypeParam>(1500 * k_block, 2);
-        const auto v_probe    = mutap_test::tonal_near_end<TypeParam>(600 * k_block, 12);
-
-        kalman_pem<TypeParam>      pem(kalman_pem_config<TypeParam>());
-        closed_loop_sim<TypeParam> sim(loop_config(path, open_msg - 6.0));
-        for (size_t blk = 0; blk < 1500; ++blk) {
-            sim.step(&v_converge[blk * k_block], &pem);
-        }
-        const double asg =
-            mutap_test::measured_msg_db(loop_config(path), &pem, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
-            - open_msg;
-        EXPECT_GT(asg, 2.0) << "measured +4.7 (double) / +7.8 (float)";
+        EXPECT_GT(kalman_tonal_asg(loop_room<TypeParam>(), 0), 2.0) << "measured +10.62 (float) / +11.56 (double)";
     }
 
-    // Broadband near-end: the Kalman-PEM saturates the +25 dB probe
-    // ceiling on speech-envelope material (the NLMS stack measured
-    // +3..+12.6). Asserted well below the ceiling so the claim is about
-    // the canceller, not the probe bound.
+    // Broadband near-end: the Kalman-PEM reaches the +25 dB probe ceiling
+    // on speech-envelope material (measured median +24.69, per set
+    // +23.44..+24.69; the NLMS stack +9.68). Asserted well below the
+    // ceiling so the claim is about the canceller, not the probe bound.
     TEST(KalmanPem, HugeGainOnBroadbandNearEnd) {
-        const auto   path     = random_decaying_fir<double>(k_taps, 5);
-        const double open_msg = mutap_test::theoretical_msg_db(path);
-
-        const auto v_converge = mutap_test::ar_near_end<double>(1500 * k_block, 2);
-        const auto v_probe    = mutap_test::ar_near_end<double>(600 * k_block, 12);
-
-        kalman_pem<double>      pem(kalman_pem_config<double>());
-        closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
-        for (size_t blk = 0; blk < 1500; ++blk) {
-            sim.step(&v_converge[blk * k_block], &pem);
+        const auto          path = loop_room<double>();
+        std::vector<double> asg;
+        for (unsigned set = 0; set < k_claim_seed_sets; ++set) {
+            kalman_pem<double> pem(kalman_pem_config<double>());
+            asg.push_back(converge_and_measure(pem, path,
+                                               mutap_test::ar_near_end<double>(1500 * k_block, seed_in_set(2, set)),
+                                               mutap_test::ar_near_end<double>(600 * k_block, seed_in_set(12, set))));
         }
-        const double asg =
-            mutap_test::measured_msg_db(loop_config(path), &pem, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
-            - open_msg;
-        EXPECT_GT(asg, 15.0) << "measured +24.7 dB (the probe search ceiling)";
+        RecordProperty("median_asg_db", median(asg));
+        EXPECT_GT(median(asg), 15.0) << "measured median +24.69 dB (the probe search ceiling)";
     }
 
     // The music rooms that exposed the warped predictor's runaway and
     // forced its IPC pairing (see test_pem_afc.cpp): with the Kalman core
-    // there is no IPC machinery at all, and nothing collapses — measured
-    // warped +8.4..+13.1 dB across rooms {5..9}, and the speech cascade
-    // +13.4 dB on room 9 where its NLMS incarnation destabilizes (-2.2).
+    // there is no IPC machinery at all, and nothing collapses — per-room
+    // medians over seed sets 0..4 on the band-limited rooms {5..9}: warped
+    // +12.19/+12.81/+12.19/+12.81/+11.25 dB (lowest single set +10.00), and
+    // the speech cascade +12.50 on room 9.
     TEST(KalmanPem, RobustOnMusicAcrossRooms) {
-        const auto v_converge = mutap_test::music_near_end<double>(1500 * k_block, 2);
-        const auto v_probe    = mutap_test::music_near_end<double>(600 * k_block, 12);
-
-        auto converge_and_measure = [&](auto& afc, const std::vector<double>& path, double open_msg) {
-            closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
-            for (size_t blk = 0; blk < 1500; ++blk) {
-                sim.step(&v_converge[blk * k_block], &afc);
+        auto music_asg = [](auto make, unsigned room) {
+            const auto          path = loop_room<double>(room);
+            std::vector<double> asg;
+            for (unsigned set = 0; set < k_claim_seed_sets; ++set) {
+                auto afc = make();
+                asg.push_back(converge_and_measure(
+                    afc, path, mutap_test::music_near_end<double>(1500 * k_block, seed_in_set(2, set)),
+                    mutap_test::music_near_end<double>(600 * k_block, seed_in_set(12, set))));
             }
-            return mutap_test::measured_msg_db(loop_config(path), &afc, v_probe, open_msg - 15.0, open_msg + 25.0, 0.5)
-                   - open_msg;
+            return median(asg);
         };
-
-        for (const unsigned room : {5U, 6U, 7U, 8U, 9U}) {
-            const auto   path     = random_decaying_fir<double>(k_taps, room);
-            const double open_msg = mutap_test::theoretical_msg_db(path);
-
+        auto make_warped = [] {
             typename kalman_pem_warped<double>::config wc;
             wc.fdaf.block_size = k_block;
             wc.fdaf.partitions = k_taps / k_block;
-            kalman_pem_warped<double> warped(wc);
-            EXPECT_GT(converge_and_measure(warped, path, open_msg), 4.0) << "room " << room << " (measured >= +8.4 dB)";
+            return kalman_pem_warped<double>(wc);
+        };
+        for (const unsigned room : {5U, 6U, 7U, 8U, 9U}) {
+            const double med = music_asg(make_warped, room);
+            RecordProperty("median_warped_asg_db_room_" + std::to_string(room), med);
+            EXPECT_GT(med, 6.0) << "room " << room << " (measured medians >= +11.25 dB)";
         }
-
-        const auto         path     = random_decaying_fir<double>(k_taps, 9);
-        const double       open_msg = mutap_test::theoretical_msg_db(path);
-        kalman_pem<double> speech(kalman_pem_config<double>());
-        EXPECT_GT(converge_and_measure(speech, path, open_msg), 5.0)
-            << "room 9, speech cascade (measured +13.4; its NLMS incarnation destabilizes at -2.2)";
+        const double speech = music_asg([] { return kalman_pem<double>(kalman_pem_config<double>()); }, 9U);
+        RecordProperty("median_speech_asg_db_room_9", speech);
+        EXPECT_GT(speech, 5.0) << "room 9, speech cascade (measured median +12.50)";
     }
 
     // A +20 dB near-end burst against the converged filter. The PEAK of the
-    // ungated hit is a chaotic-trajectory quantity (measured ~17600 on
-    // Linux, ~34000 on macOS — same shape, platform FP decides the exact
-    // ring-up), so this test asserts the platform-robust DIRECTIONS:
+    // ungated hit is a chaotic-trajectory quantity (measured 16,000..46,000
+    // across seed sets and precisions), so this test asserts the
+    // platform-robust DIRECTIONS, as medians over seed sets 0..4:
     //
     //  - ungated, the estimate SURVIVES: the ring-down completes and the
-    //    same loop is quiet again (measured: RMS < 1 from ~350 blocks after
-    //    the burst ends; asserted over blocks 450..550 after, < 100; the
+    //    same loop is quiet again (worst RMS over blocks 450..550 after
+    //    the burst: median 0.35; one set in five, 264, still ringing); the
     //    ungated NLMS filter is wrecked by the same burst — the M4 test
-    //    documents that).
-    //  - the opt-in transient floor CONTAINS the hit outright (measured
-    //    worst RMS ~24, on par with the M4 gate's ~25) — at the tonal-ASG
-    //    cost documented in fd_kalman.h, which is why it is opt-in.
+    //    documents that.
+    //  - the opt-in transient floor CONTAINS the hit outright (median worst
+    //    RMS 10.73, per set 9.85..23.11) — at the tonal-ASG cost documented
+    //    in fd_kalman.h, which is why it is opt-in.
     TEST(KalmanPem, BurstSurvivedUngatedContainedWithFloor) {
-        const auto   path     = random_decaying_fir<double>(k_taps, 5);
+        const auto   path     = loop_room<double>();
         const double open_msg = mutap_test::theoretical_msg_db(path);
 
-        auto run = [&](double floor_ratio) {
+        auto run = [&](double floor_ratio, unsigned set) {
             auto pc                       = kalman_pem_config<double>();
             pc.fdaf.transient_floor_ratio = floor_ratio;
             kalman_pem<double>      pem(pc);
             closed_loop_sim<double> sim(loop_config(path, open_msg - 6.0));
-            const auto              v = mutap_test::tonal_near_end<double>(2100 * k_block, 2);
+            const auto              v = mutap_test::tonal_near_end<double>(2100 * k_block, seed_in_set(2, set));
 
             double              worst = 0.0;
             double              tail  = 0.0;
@@ -356,13 +376,21 @@ namespace {
             return std::pair<double, double>{worst, tail};
         };
 
-        const auto [ungated_worst, ungated_tail] = run(0.0);
-        EXPECT_LT(ungated_tail, 100.0) << "the loop should be quiet again after the burst (measured < 1)";
-        (void)ungated_worst;
-
-        const auto [floored_worst, floored_tail] = run(8.0);
-        EXPECT_LT(floored_worst, 1000.0) << "measured ~24 (the M4 gate: ~25)";
-        EXPECT_LT(floored_tail, 100.0);
+        std::vector<double> ungated_tail;
+        std::vector<double> floored_worst;
+        std::vector<double> floored_tail;
+        for (unsigned set = 0; set < k_claim_seed_sets; ++set) {
+            ungated_tail.push_back(run(0.0, set).second);
+            const auto [worst, tail] = run(8.0, set);
+            floored_worst.push_back(worst);
+            floored_tail.push_back(tail);
+        }
+        RecordProperty("median_ungated_tail_rms", median(ungated_tail));
+        RecordProperty("median_floored_worst_rms", median(floored_worst));
+        RecordProperty("median_floored_tail_rms", median(floored_tail));
+        EXPECT_LT(median(ungated_tail), 100.0) << "the loop should be quiet again after the burst (measured 0.35)";
+        EXPECT_LT(median(floored_worst), 1000.0) << "measured median 10.73";
+        EXPECT_LT(median(floored_tail), 100.0) << "measured median 0.43";
     }
 
     TEST(FdKalmanConfigValidation, RejectsBadConfigs) {

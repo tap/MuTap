@@ -4,15 +4,19 @@
 // the float32 typed suites (the embedded profile this target exists for),
 // the double Kalman core (exercises the soft-float path; the FFT suites
 // moved to DspTap with the FFT and run in its own CI), the LP /
-// conditioning suite, the float closed-loop scenarios including the PEM
-// canceller's tonal headline, the float-tracks-double oracle check, and
-// the learned suppressor's float profile with its own oracle check (the
-// wake-word plan's M2: the learned path had never run on target before).
+// conditioning suite, the float closed-loop canaries (one seed each,
+// checking that target arithmetic tracks the host: closed_loop_test,
+// pem_afc_test, kalman_loop_test, burst_test; the acoustic claims are
+// their host-only *_host_test / double counterparts, band-limited medians
+// over five seed sets; see tests/support/rooms.h), the float-tracks-double
+// oracle check, and the learned suppressor's float profile with its own
+// oracle check (the wake-word plan's M2: the learned path had never run on
+// target before).
 //
 // Excluded: the double-typed adaptive suites and the double closed-loop
 // scenarios — minutes-to-hours of soft-float virtual audio validating
 // target-independent math already covered on every host platform — and the
-// bisection-heavy ASG measurements beyond the float ones kept.
+// bisection-heavy multi-seed claims (the *_host_test suites).
 //
 // The same selection runs on the Cortex-M33 leg (single-precision FPU, no
 // FP64). It once could not: the speech predictor's pitch search accumulated
