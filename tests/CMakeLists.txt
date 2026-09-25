@@ -31,6 +31,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(mutap_tests
     test_fdaf.cpp
     test_fd_kalman.cpp
+    test_convergence_stats.cpp
     test_lpc.cpp
     test_pem_afc.cpp
     test_adaptation_control.cpp
