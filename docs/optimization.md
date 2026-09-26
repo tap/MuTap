@@ -164,7 +164,8 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
   leg, including both M55 legs, and compares the 14 lines with that leg's
   committed expectation (`tests/fingerprints/<leg>.txt`, selected by
   `MUTAP_FINGERPRINT_LEG`): any output sample that moves by one ULP fails the
-  leg with a diff. It is the bit-identity gate every DspTap pin bump runs
+  leg with a per-row diff, and the failing job uploads the leg's replacement
+  file as an artifact. It is the bit-identity gate every DspTap pin bump runs
   (re-recording procedure at the top of the file). Between the two M55 legs
   the committed lines show what the contract predicts — the seven `double`
   lines identical, the seven `float` lines all different — which documents

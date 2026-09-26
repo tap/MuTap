@@ -125,9 +125,10 @@ carries the measured numbers; this is the map:
    runs the `mutap_fingerprint` gate: each CI leg compares its 14 lines
    with `tests/fingerprints/<leg>.txt` and fails on any difference. The
    PR says which `FINGERPRINT` lines the stage expects to move; a leg that
-   moved as predicted is re-recorded from the PR's own run ("Re-recording"
-   at the top of `tests/fingerprint_harness.cpp`) and the moved lines are
-   listed per leg. (Until tap/MuTap#64 the lines were only printed and each
+   moved as predicted is re-recorded from the PR's own run (one run yields
+   every leg: each failing leg uploads its replacement file as the artifact
+   `fingerprints-<leg>`; "Re-recording" at the top of
+   `tests/fingerprint_harness.cpp`) and the moved lines are listed per leg. (Until tap/MuTap#64 the lines were only printed and each
    bump was diffed by hand.)
    Since the DspTap `0db95b6` pin (Stage 4, tap/DspTap#35) two rules hold.
    (a) Any class whose object layout depends on the float FFT engine must

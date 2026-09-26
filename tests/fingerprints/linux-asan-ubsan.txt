@@ -1,13 +1,13 @@
 # mutap_fingerprint expectation for CI leg "linux-asan-ubsan" (MUTAP_FINGERPRINT_LEG=linux-asan-ubsan):
 #   job "ASan + UBSan" (sanitizers), ubuntu-24.04 image, x86-64, Clang 18.1.3,
 #   RelWithDebInfo with -fsanitize=address,undefined, step "Test".
-# Recorded at DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
-# That job never printed its lines before this gate; these are the linux-gcc/linux-clang
-# lines, which a GCC 13.3.0 RelWithDebInfo ASan+UBSan build reproduced locally byte for
-# byte (the runner image has no clang sanitizer runtime to check locally), and which the
-# first gated run of this job confirmed.
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+# Recorded: DspTap 0c5bf59, NOT from a run of this job: it printed no lines before
+# the gate (main run 36250656223 included). These are the linux-gcc/linux-clang
+# lines, which a GCC 13.3.0 RelWithDebInfo ASan+UBSan build reproduced locally byte
+# for byte (the runner image has no clang sanitizer runtime to check locally), and
+# which the first gated run of this job, PR #64 run 36257961713, confirmed.
 FINGERPRINT fdaf float b05f67a7426ed1f7
 FINGERPRINT fd_kalman float d0dfe8c5f184d382
 FINGERPRINT pem_afc float 5183c6aacd998a43

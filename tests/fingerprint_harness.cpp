@@ -46,35 +46,42 @@
 //
 // THE GATE. The build names its CI leg with -DMUTAP_FINGERPRINT_LEG=<leg>;
 // tests/CMakeLists.txt compiles that leg's committed lines into this binary,
-// and after printing its own lines the harness compares them, prints any
-// difference as a unified diff (expected file first) and a FINGERPRINT_FAIL
-// line, and fails the ctest test (exit code 1, and the FAIL/PASS regular
-// expressions, which is what bare metal honours). A pass prints
-// "FINGERPRINT_PASS leg=<leg> ...", and every CI leg greps for its own leg
-// id there, so a leg whose id is not wired fails instead of passing
-// unchecked. With no leg configured (a developer build on an arbitrary host)
-// the lines are printed and nothing is compared.
+// and after printing its own lines the harness compares them row by row
+// ((component, profile) must be unique on both sides). Every difference
+// prints one "FINGERPRINT_DIFF <component> <profile>: expected <hex>, actual
+// <hex>" line, then a FINGERPRINT_FAIL verdict, then the run's lines once
+// more as a paste-ready block ("FINGERPRINT_NEW leg=<leg> FINGERPRINT ..."),
+// and the binary exits 1. On hosted legs ctest judges the exit code (and the
+// FINGERPRINT_FAIL line); on bare metal, where semihosting does not reliably
+// carry the exit code, it requires "FINGERPRINT_PASS leg=<leg> ". In CI every
+// leg runs scripts/fingerprints.sh check, which also requires that PASS line,
+// so a leg whose id is not wired fails instead of passing unchecked. With no
+// leg configured (a developer build on an arbitrary host) the lines are
+// printed and nothing is compared.
 //
 // Re-recording (a change that is MEANT to move output bits: a DspTap pin
 // bump whose stage moves lines, or a MuTap change to a component's
 // arithmetic):
 //
-//   1. Push the change. Every leg whose lines moved fails, and its log
-//      carries the diff and the full set of 14 new lines: the "Test" step's
-//      ctest --output-on-failure on the hosted legs (Linux, macOS, Windows,
-//      ASan + UBSan), the "Fingerprints" step on the emulated ones (M55
-//      CMSIS, M55 split-radix, M33, Hexagon). Legs that did not fail did not
-//      move.
-//   2. For each failing leg, replace the 14 FINGERPRINT lines of
-//      tests/fingerprints/<leg>.txt with the lines that run printed (after
-//      the '#' header that names the leg; strip the CI timestamp and
-//      ctest's "<n>: " prefix, e.g.
-//      grep -o 'FINGERPRINT [a-z_]* [a-z]* [0-9a-f]*' job-log.txt), and
-//      update the file's "Recorded at" comment (DspTap pin, run id). The
-//      Linux and QEMU legs also reproduce locally with the CI toolchain:
+//   1. Push the change. Every leg whose lines moved fails, and every leg runs
+//      its Fingerprints step even when an earlier step of its job failed
+//      (the M55 job's split-radix leg too), so ONE run yields every leg. A
+//      failing leg's job uploads the artifact "fingerprints-<leg>": its
+//      complete, commit-ready tests/fingerprints/<leg>.txt, with this file's
+//      description kept and a "# Recorded:" line naming the DspTap pin, the
+//      run, the job and the runner image. Legs that did not fail did not move.
+//   2. Download the artifacts of that run (the run page's Artifacts list, or
+//      gh run download <run-id> -p 'fingerprints-*' -D /tmp/fp) and copy them
+//      in (cp /tmp/fp/fingerprints-*/*.txt tests/fingerprints/). This is the
+//      only route for the legs with no local rig (macOS, Windows, Hexagon,
+//      the clang ASan build), and it works for all nine at once. From a
+//      saved log instead: scripts/fingerprints.sh record <leg> <job-log.txt>
+//      reads only that leg's FINGERPRINT_NEW block (never the diff lines, and
+//      never another leg's block in the same log). The Linux and QEMU legs
+//      also reproduce locally with the CI toolchain, e.g.
 //          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMUTAP_FINGERPRINT_LEG=linux-gcc
 //          cmake --build build --target mutap_fingerprint
-//          ctest --test-dir build -R '^mutap_fingerprint$' -V
+//          scripts/fingerprints.sh check linux-gcc --test-dir build
 //      (the M33/M55 legs: the toolchain file, MinSizeRel and the leg id, as
 //      in .github/workflows/ci.yml).
 //   3. In the PR, list which lines moved on which legs and why (the diff of
@@ -82,8 +89,9 @@
 //      every stage of the FFT plan (DspTap docs/audit-fft-and-code-smells.md)
 //      states which lines must hold and which may move (the float profile
 //      through an FFT port; never the double golden model unless the plan
-//      says so). A line that moved and was not predicted is the regression
-//      the gate exists to catch, not a line to re-record.
+//      says so, so a moved double row needs its plan citation). A line that
+//      moved and was not predicted is the regression the gate exists to
+//      catch, not a line to re-record.
 //
 // CI also runs this binary, compiled twice, as the suppressor's
 // branch-free/branchy parity check (MUTAP_SUPPRESSOR_BRANCHLESS, see
@@ -382,46 +390,79 @@ namespace {
         return line.substr(0, line.rfind(' '));
     }
 
-    /// Prints `text` as a diff line with the given marker, opening the diff
-    /// (its two file headers) on the first call.
-    void print_diff_line(bool& opened, char marker, std::string_view text) {
-        if (!opened) {
-            std::printf("--- %.*s (expected)\n+++ this run\n",
-                        static_cast<int>(mutap_fingerprint_expected::k_source.size()),
-                        mutap_fingerprint_expected::k_source.data());
-            opened = true;
-        }
-        std::printf("%c%.*s\n", marker, static_cast<int>(text.size()), text.data());
+    /// "<component> <profile>", for messages.
+    std::string_view name_of(std::string_view line) noexcept {
+        const std::string_view key = key_of(line);
+        return key.substr(key.find(' ') + 1);
+    }
+
+    /// The 16 hex digits.
+    std::string_view hash_of(std::string_view line) noexcept {
+        return line.substr(line.rfind(' ') + 1);
+    }
+
+    /// printf's precision argument for a string_view.
+    int len(std::string_view s) noexcept {
+        return static_cast<int>(s.size());
     }
 
     /// Compares the printed lines with the configured leg's committed
     /// expectation, prints the verdict and returns whether it passed (always
-    /// true when no leg is configured: nothing to compare against). Lines are
-    /// matched by (component, profile), so a changed hash, a line missing from
-    /// the run and a line the expectation does not have all count as a
-    /// difference.
+    /// true when no leg is configured: nothing to compare against).
+    ///
+    /// Rows are matched by (component, profile), so the key must be unique on
+    /// both sides: configure rejects a file that repeats one, and a harness
+    /// that prints one twice fails here (otherwise one of the two would be
+    /// compared against nothing). A changed hash, a row the run did not print
+    /// and a row the file does not have each fail the leg with one
+    /// FINGERPRINT_DIFF line. On a failure the harness then prints its lines
+    /// again as a FINGERPRINT_NEW block tagged with the leg, the only lines
+    /// scripts/fingerprints.sh record reads: the paste-ready replacement.
+    /// The diff and verdict lines never contain "FINGERPRINT <component>",
+    /// so they cannot be mistaken for printed lines; the NEW block repeats
+    /// the printed lines verbatim behind its prefix.
     bool check(const std::vector<fingerprint_line>& printed) {
         namespace expected = mutap_fingerprint_expected;
         if (expected::k_leg.empty()) {
             std::printf("FINGERPRINT_UNCHECKED no MUTAP_FINGERPRINT_LEG configured: lines printed, not compared\n");
             return true;
         }
-        bool        opened    = false;
-        std::size_t differing = 0;
+        const int leg    = len(expected::k_leg);
+        const int source = len(expected::k_source);
+
+        std::size_t duplicates = 0;
+        for (std::size_t i = 0; i < printed.size(); ++i) {
+            for (std::size_t j = i + 1; j < printed.size(); ++j) {
+                if (key_of(printed[i].data()) == key_of(printed[j].data())) {
+                    const std::string_view name = name_of(printed[i].data());
+                    std::printf("FINGERPRINT_DUPLICATE %.*s is printed twice (lines %u and %u): each (component, "
+                                "profile) must be printed once, or one of them is compared against nothing\n",
+                                len(name), name.data(), static_cast<unsigned>(i + 1), static_cast<unsigned>(j + 1));
+                    ++duplicates;
+                }
+            }
+        }
+
+        std::size_t differing  = 0;
+        std::size_t unexpected = 0;
         for (const std::string_view want : expected::k_lines) {
             const fingerprint_line* got = nullptr;
             for (const fingerprint_line& p : printed) {
-                if (key_of(p.data()) == key_of(want)) {
+                if (got == nullptr && key_of(p.data()) == key_of(want)) {
                     got = &p;
                 }
             }
+            const std::string_view name = name_of(want);
+            const std::string_view old  = hash_of(want);
             if (got == nullptr) {
-                print_diff_line(opened, '-', want);
+                std::printf("FINGERPRINT_DIFF %.*s: expected %.*s, actual (not printed)\n", len(name), name.data(),
+                            len(old), old.data());
                 ++differing;
             }
             else if (std::string_view(got->data()) != want) {
-                print_diff_line(opened, '-', want);
-                print_diff_line(opened, '+', got->data());
+                const std::string_view now = hash_of(got->data());
+                std::printf("FINGERPRINT_DIFF %.*s: expected %.*s, actual %.*s\n", len(name), name.data(), len(old),
+                            old.data(), len(now), now.data());
                 ++differing;
             }
         }
@@ -431,24 +472,42 @@ namespace {
                 known = known || key_of(want) == key_of(p.data());
             }
             if (!known) {
-                print_diff_line(opened, '+', p.data());
+                const std::string_view name = name_of(p.data());
+                const std::string_view now  = hash_of(p.data());
+                std::printf("FINGERPRINT_DIFF %.*s: expected (not in the file), actual %.*s\n", len(name), name.data(),
+                            len(now), now.data());
                 ++differing;
+                ++unexpected;
             }
         }
-        const auto leg    = static_cast<int>(expected::k_leg.size());
-        const auto source = static_cast<int>(expected::k_source.size());
-        if (differing == 0) {
-            std::printf("FINGERPRINT_PASS leg=%.*s lines=%u match %.*s\n", leg, expected::k_leg.data(),
-                        static_cast<unsigned>(printed.size()), source, expected::k_source.data());
+
+        const auto n_printed  = static_cast<unsigned>(printed.size());
+        const auto n_expected = static_cast<unsigned>(expected::k_lines.size());
+        if (duplicates == 0 && differing == 0 && n_printed == n_expected) {
+            std::printf("FINGERPRINT_PASS leg=%.*s lines=%u: all %u printed lines equal the %u lines of %.*s\n", leg,
+                        expected::k_leg.data(), n_printed, n_printed, n_expected, source, expected::k_source.data());
             return true;
         }
-        std::printf("FINGERPRINT_FAIL leg=%.*s: %u of %u lines differ from %.*s (diff above).\n"
-                    "FINGERPRINT_FAIL If an output bit was meant to move (a DspTap pin bump whose stage moves it, "
-                    "or a change to a component's arithmetic), re-record this leg from the lines above: "
-                    "see \"Re-recording\" at the top of tests/fingerprint_harness.cpp. "
-                    "If it was not meant to move, this is the regression.\n",
-                    leg, expected::k_leg.data(), static_cast<unsigned>(differing),
-                    static_cast<unsigned>(expected::k_lines.size()), source, expected::k_source.data());
+        // Rows = the union of the file's keys and the printed keys.
+        const auto rows = static_cast<unsigned>(expected::k_lines.size() + unexpected);
+        std::printf("FINGERPRINT_FAIL leg=%.*s: %u of %u rows differ, %u printed key(s) repeated; printed %u lines, "
+                    "%.*s has %u\n",
+                    leg, expected::k_leg.data(), static_cast<unsigned>(differing), rows,
+                    static_cast<unsigned>(duplicates), n_printed, source, expected::k_source.data(), n_expected);
+        if (duplicates != 0) {
+            std::printf("FINGERPRINT_FAIL The harness itself prints a (component, profile) twice; fix its labels "
+                        "before recording anything.\n");
+            return false;
+        }
+        for (const fingerprint_line& p : printed) {
+            std::printf("FINGERPRINT_NEW leg=%.*s %s\n", leg, expected::k_leg.data(), p.data());
+        }
+        std::printf("FINGERPRINT_FAIL If an output bit was meant to move (a DspTap pin bump whose stage moves it, or "
+                    "a change to a component's arithmetic), the FINGERPRINT_NEW block above is this leg's new "
+                    "expectation: scripts/fingerprints.sh record %.*s <this log> writes it to %.*s (in CI, the "
+                    "artifact fingerprints-%.*s of this run is that file). See \"Re-recording\" at the top of "
+                    "tests/fingerprint_harness.cpp. If it was not meant to move, this is the regression.\n",
+                    leg, expected::k_leg.data(), source, expected::k_source.data(), leg, expected::k_leg.data());
         return false;
     }
 

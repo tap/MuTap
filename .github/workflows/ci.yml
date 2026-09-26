@@ -96,15 +96,23 @@ jobs:
       # test above against this leg's committed lines
       # (tests/fingerprints/<fingerprint_leg>.txt); a difference failed the
       # Test step with the diff and the re-recording pointer in its output.
-      # Run it once more verbosely so a green log carries the lines too, and
-      # assert the verdict names this leg: a leg whose id is not wired would
-      # otherwise compare nothing and pass.
+      # Run it once more verbosely (even when the Test step failed, so one run
+      # re-records every leg) so the log carries the lines, and require the
+      # verdict to name this leg: a leg whose id is not wired would otherwise
+      # compare nothing and pass. On a difference the script writes the
+      # commit-ready replacement file, uploaded below as an artifact.
       - name: Fingerprints
+        if: ${{ !cancelled() }}
         shell: bash
-        run: |
-          set -eo pipefail
-          ctest --test-dir build -C Release -R '^mutap_fingerprint$' -V | tee fingerprints.log
-          grep -q 'FINGERPRINT_PASS leg=${{ matrix.fingerprint_leg }} ' fingerprints.log
+        run: scripts/fingerprints.sh check ${{ matrix.fingerprint_leg }} --test-dir build -C Release
+
+      - name: Upload the re-recorded fingerprints (${{ matrix.fingerprint_leg }})
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fingerprints-${{ matrix.fingerprint_leg }}
+          path: fingerprints-out/${{ matrix.fingerprint_leg }}.txt
+          if-no-files-found: ignore
 
       # These three rows were the per-process bifurcation in #31. Now that the
       # alignment fix has removed the draw, repeating them says something
@@ -150,12 +158,19 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       # The Test step above ran the fingerprint gate against
-      # tests/fingerprints/linux-asan-ubsan.txt; assert it ran for this leg.
+      # tests/fingerprints/linux-asan-ubsan.txt; run it again verbosely (even
+      # when the Test step failed) and require the verdict to name this leg.
       - name: Fingerprints
-        run: |
-          set -eo pipefail
-          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-asan.log
-          grep -q 'FINGERPRINT_PASS leg=linux-asan-ubsan ' /tmp/fp-asan.log
+        if: ${{ !cancelled() }}
+        run: scripts/fingerprints.sh check linux-asan-ubsan --test-dir build
+
+      - name: Upload the re-recorded fingerprints (linux-asan-ubsan)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fingerprints-linux-asan-ubsan
+          path: fingerprints-out/linux-asan-ubsan.txt
+          if-no-files-found: ignore
 
   # Cross-compile for Arm Cortex-M55 (bare metal, newlib + semihosting) and
   # run the emulation-sized test subset on QEMU's MPS3 AN547 board model:
@@ -200,17 +215,26 @@ jobs:
       # (a difference fails the step with the diff), and the log carries the
       # on-target FINGERPRINT lines for this backend. The harness prints the
       # backend it was compiled with; asserting it is the positive proof of
-      # which backend ran, and asserting the verdict names this leg proves the
-      # comparison ran.
+      # which backend ran, and requiring the verdict to name this leg proves
+      # the comparison ran. Every Fingerprints step, and the whole split-radix
+      # leg below, runs even after an earlier step failed (!cancelled()), so
+      # a change that moves both legs' lines re-records both from one run.
       - name: Test under emulation (CMSIS Helium FFT — default)
         run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
 
       - name: Fingerprints (CMSIS Helium FFT)
+        if: ${{ !cancelled() }}
         run: |
-          set -eo pipefail
-          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-cmsis.log
-          grep -q 'backend=cmsis abi=fft_cmsis' /tmp/fp-cmsis.log
-          grep -q 'FINGERPRINT_PASS leg=m55-cmsis ' /tmp/fp-cmsis.log
+          scripts/fingerprints.sh check m55-cmsis --test-dir build
+          grep -q 'backend=cmsis abi=fft_cmsis' fingerprints-out/m55-cmsis.log
+
+      - name: Upload the re-recorded fingerprints (m55-cmsis)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fingerprints-m55-cmsis
+          path: fingerprints-out/m55-cmsis.txt
+          if-no-files-found: ignore
 
       # Second leg keeps the split-radix float32 fallback alive (DspTap's C++20
       # port of Ooura's rdft; the "Ooura" leg in logs up to DspTap 8350f13):
@@ -224,6 +248,7 @@ jobs:
       # rebuilding CMSIS), and the Fingerprints step below asserts the backend
       # the binary that ran was actually compiled with.
       - name: Configure (split-radix FFT fallback)
+        if: ${{ !cancelled() }}
         run: |
           set -eo pipefail
           cmake -B build-split-radix \
@@ -237,17 +262,26 @@ jobs:
           grep '^TAP_DSP_FFT_CMSIS:BOOL=OFF' build-split-radix/CMakeCache.txt
 
       - name: Build (split-radix FFT fallback)
+        if: ${{ !cancelled() }}
         run: cmake --build build-split-radix -j 4
 
       - name: Test under emulation (split-radix FFT fallback)
+        if: ${{ !cancelled() }}
         run: ctest --test-dir build-split-radix --output-on-failure -E '^mutap_fingerprint$'
 
       - name: Fingerprints (split-radix FFT fallback)
+        if: ${{ !cancelled() }}
         run: |
-          set -eo pipefail
-          ctest --test-dir build-split-radix -R '^mutap_fingerprint$' -V | tee /tmp/fp-split-radix.log
-          grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-split-radix.log
-          grep -q 'FINGERPRINT_PASS leg=m55-split-radix ' /tmp/fp-split-radix.log
+          scripts/fingerprints.sh check m55-split-radix --test-dir build-split-radix
+          grep -q 'backend=split_radix abi=fft_split_radix' fingerprints-out/m55-split-radix.log
+
+      - name: Upload the re-recorded fingerprints (m55-split-radix)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fingerprints-m55-split-radix
+          path: fingerprints-out/m55-split-radix.txt
+          if-no-files-found: ignore
 
   # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
   # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
@@ -284,13 +318,21 @@ jobs:
         run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
 
       # The toolchain file pins CMSIS off (no MVE); the harness must say so.
-      # The gate compares against tests/fingerprints/m33.txt.
+      # The gate compares against tests/fingerprints/m33.txt, and runs even
+      # when the emulated battery failed.
       - name: Fingerprints
+        if: ${{ !cancelled() }}
         run: |
-          set -eo pipefail
-          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-m33.log
-          grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-m33.log
-          grep -q 'FINGERPRINT_PASS leg=m33 ' /tmp/fp-m33.log
+          scripts/fingerprints.sh check m33 --test-dir build
+          grep -q 'backend=split_radix abi=fft_split_radix' fingerprints-out/m33.log
+
+      - name: Upload the re-recorded fingerprints (m33)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fingerprints-m33
+          path: fingerprints-out/m33.txt
+          if-no-files-found: ignore
 
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
@@ -355,13 +397,21 @@ jobs:
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
 
-      # The gate compares against tests/fingerprints/hexagon.txt.
+      # The gate compares against tests/fingerprints/hexagon.txt, and runs
+      # even when the emulated battery failed.
       - name: Fingerprints
+        if: ${{ !cancelled() }}
         run: |
-          set -eo pipefail
-          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-hexagon.log
-          grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-hexagon.log
-          grep -q 'FINGERPRINT_PASS leg=hexagon ' /tmp/fp-hexagon.log
+          scripts/fingerprints.sh check hexagon --test-dir build
+          grep -q 'backend=split_radix abi=fft_split_radix' fingerprints-out/hexagon.log
+
+      - name: Upload the re-recorded fingerprints (hexagon)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: fingerprints-hexagon
+          path: fingerprints-out/hexagon.txt
+          if-no-files-found: ignore
 
   # Keeps the benchmarks compiling and runnable; never a performance gate
   # (shared runners are noise — see bench/README.md).
@@ -425,6 +475,18 @@ jobs:
             echo "::error::branchy and branch-free suppressor forms diverged (see diff above)"; exit 1
           fi
           echo "all $(wc -l < /tmp/fp_0) fingerprints identical across the two forms — bit-identical"
+
+      # The branch-free form (the one the M55 ships) against committed lines
+      # as well. This standalone g++ -O2 build prints the Linux GCC leg's
+      # lines (equal on every run since the gate landed), so it is compared
+      # with tests/fingerprints/linux-gcc.txt: a change that moves them is
+      # re-recorded there (from the Linux GCC job's artifact), not here.
+      - name: Branch-free form against tests/fingerprints/linux-gcc.txt
+        run: |
+          if ! diff <(grep '^FINGERPRINT ' tests/fingerprints/linux-gcc.txt) /tmp/fp_1; then
+            echo "::error::the standalone branch-free build differs from tests/fingerprints/linux-gcc.txt (diff above: < file, > this build); if the Linux GCC leg moved too, re-record that file from its artifact"; exit 1
+          fi
+          echo "branch-free form equals tests/fingerprints/linux-gcc.txt"
 
   # Deterministic instruction-count ratchet (bench/README.md). Unlike the
   # wall-clock bench these counts are noise-free under QEMU's TCG plugin, so

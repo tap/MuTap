@@ -16,3 +16,6 @@ tests/data/itu/
 
 # local Python environment for tools/ml/kws (uv venv --python 3.12 .venv)
 .venv/
+
+# scripts/fingerprints.sh check: the harness log and any re-recorded <leg>.txt
+fingerprints-out/

@@ -1,12 +1,12 @@
 # mutap_fingerprint expectation for CI leg "windows-msvc" (MUTAP_FINGERPRINT_LEG=windows-msvc):
 #   job "Windows MSVC" (build-and-test), windows-2025-vs2026 image, x86-64,
 #   MSVC 19.51.36257.0, Release, step "Test".
-# Recorded at DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9);
+# The harness fails this leg on any difference. To change these lines on purpose,
+# follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9);
 # the same 14 lines on main runs 36207009410 (197423f) and 36159717174 (edf160e, DspTap
 # 0db95b6), on different runners of the same image.
 # No local rig: CI is the only place these lines can be produced.
-# The harness fails this leg on any difference. To change these lines on purpose,
-# follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
 FINGERPRINT fdaf float b05f67a7426ed1f7
 FINGERPRINT fd_kalman float d0dfe8c5f184d382
 FINGERPRINT pem_afc float 5183c6aacd998a43

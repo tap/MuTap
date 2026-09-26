@@ -2,10 +2,10 @@
 #   job "Cortex-M55 cross (QEMU)", step "Fingerprints (CMSIS Helium FFT)": MPS3 AN547,
 #   arm-none-eabi-gcc 13.2.1 (15:13.2.rel1-2), MinSizeRel, qemu-system-arm 8.2.2
 #   (1:8.2.2+ds-0ubuntu1.18), CMSIS-DSP Helium float32 FFT, branch-free suppressor.
-# Recorded at DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
-# Reproduced locally on the same toolchain/QEMU pair at 0c5bf59, byte for byte.
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
+# Reproduced locally on the same toolchain/QEMU pair at 0c5bf59, byte for byte.
 FINGERPRINT fdaf float f67cc8223c6d2d71
 FINGERPRINT fd_kalman float f5e8a56a44838725
 FINGERPRINT pem_afc float 26b86c01733205c8

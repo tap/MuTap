@@ -2,10 +2,10 @@
 #   job "Hexagon cross (QEMU)", step "Fingerprints": clang+llvm-19.1.5-cross-hexagon-
 #   unknown-linux-musl (Clang 19.1.5), Release, qemu-hexagon from qemu-user-static
 #   1:8.2.2+ds-0ubuntu1.18, split-radix float32 FFT.
-# Recorded at DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
-# No local rig: CI is the only place these lines can be produced.
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
+# No local rig: CI is the only place these lines can be produced.
 FINGERPRINT fdaf float ee72bb70d63bde0c
 FINGERPRINT fd_kalman float a1bd1f147dce7f5c
 FINGERPRINT pem_afc float 75e691813d151139

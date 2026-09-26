@@ -28,8 +28,11 @@
     `submodules/dsptap` bump, the `mutap_fingerprint` gate compares every CI
     leg against its committed lines (`tests/fingerprints/<leg>.txt`): say
     which `FINGERPRINT` lines the stage expects to move, and if any moved,
-    re-record the legs that failed from this PR's run ("Re-recording" at the
-    top of `tests/fingerprint_harness.cpp`) and list the moved lines per leg.
+    re-record the legs that failed from this PR's run (its
+    `fingerprints-<leg>` artifacts; "Re-recording" at the top of
+    `tests/fingerprint_harness.cpp`) and list the moved lines per leg.
+    **Double rows moved:** none, or the list with the plan item that allows
+    it (the double profile is the golden model).
   - **Notebooks re-executed**, because behavior changed. They are committed
     executed.
   - **Style configs** came from a `taphouse` sync, not a hand-edit. A

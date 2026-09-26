@@ -102,9 +102,9 @@ endif()
 # (tests/fingerprints/<leg>.txt, chosen by MUTAP_FINGERPRINT_LEG). A plain
 # executable with its own main — no gtest — so the branchless-parity CI job can
 # also compile the same file standalone. Registered as a test on every target;
-# on bare metal the pass criterion is a printed line, as for
-# mutap_tests_emulated, because semihosting does not reliably carry the exit
-# code.
+# hosted legs judge it by its exit code, bare metal by a printed line (as for
+# mutap_tests_emulated), because semihosting does not reliably carry the exit
+# code. CI runs it through scripts/fingerprints.sh check.
 #
 # Determinism holds per (host, compiler, flags, C library), so there is no
 # expectation for an arbitrary developer machine: with MUTAP_FINGERPRINT_LEG
@@ -115,6 +115,7 @@ set(MUTAP_FINGERPRINT_LEG "" CACHE STRING
     "CI leg whose committed fingerprints (tests/fingerprints/<leg>.txt) mutap_fingerprint must reproduce; empty = print only")
 set(_fp_generated "${CMAKE_CURRENT_BINARY_DIR}/fingerprint_generated")
 set(_fp_lines "")
+set(_fp_keys "")
 set(_fp_count 0)
 set(_fp_source "")
 if(MUTAP_FINGERPRINT_LEG)
@@ -142,6 +143,14 @@ if(MUTAP_FINGERPRINT_LEG)
             message(FATAL_ERROR "tests/fingerprints/${MUTAP_FINGERPRINT_LEG}.txt: not a fingerprint line "
                                 "('FINGERPRINT <component> <float|double> <16 hex digits>'): '${_fp_line}'")
         endif()
+        # One line per (component, profile): the harness matches rows by
+        # that key, so a repeated key would leave a row compared against
+        # nothing.
+        string(REGEX REPLACE " [0-9a-f]+$" "" _fp_key "${_fp_line}")
+        if(_fp_key IN_LIST _fp_keys)
+            message(FATAL_ERROR "tests/fingerprints/${MUTAP_FINGERPRINT_LEG}.txt: '${_fp_key}' appears twice")
+        endif()
+        list(APPEND _fp_keys "${_fp_key}")
         string(APPEND _fp_lines "        \"${_fp_line}\",\n")
         math(EXPR _fp_count "${_fp_count} + 1")
     endforeach()
@@ -168,12 +177,20 @@ target_link_libraries(mutap_fingerprint PRIVATE
     mutap_warnings)
 add_test(NAME mutap_fingerprint COMMAND mutap_fingerprint)
 set_tests_properties(mutap_fingerprint PROPERTIES TIMEOUT 900)
-if(MUTAP_FINGERPRINT_LEG)
-    # Pass only on the verdict line naming this leg, and fail on the failure
-    # line, on every target (the exit code is 1 on a mismatch too, but a
-    # PASS_REGULAR_EXPRESSION is the one criterion bare metal honours).
+if(MUTAP_FINGERPRINT_LEG AND MUTAP_BARE_METAL)
+    # Bare metal: semihosting does not reliably carry the exit code, so the
+    # verdict line is the criterion. (A PASS_REGULAR_EXPRESSION makes ctest
+    # ignore the exit code, which is why the hosted legs below do not set
+    # one: there a failure after the verdict — a sanitizer's leak report, a
+    # nonzero return — must still fail the test.)
     set_tests_properties(mutap_fingerprint PROPERTIES
         PASS_REGULAR_EXPRESSION "FINGERPRINT_PASS leg=${MUTAP_FINGERPRINT_LEG} "
+        FAIL_REGULAR_EXPRESSION "FINGERPRINT_FAIL")
+elseif(MUTAP_FINGERPRINT_LEG)
+    # Hosted (Hexagon included: qemu-user passes the exit code through): the
+    # exit code, plus the failure line. scripts/fingerprints.sh check, which
+    # every CI leg runs, also requires the PASS line naming the leg.
+    set_tests_properties(mutap_fingerprint PROPERTIES
         FAIL_REGULAR_EXPRESSION "FINGERPRINT_FAIL")
 elseif(MUTAP_BARE_METAL)
     set_tests_properties(mutap_fingerprint PROPERTIES
