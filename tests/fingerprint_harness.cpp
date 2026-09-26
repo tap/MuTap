@@ -239,7 +239,7 @@ namespace {
                     m_colored = 0.9 * m_colored + 0.1 * m_near.next();
                     near      = 0.6 * m_colored + 0.03 * m_near.next();
                 }
-                const double floor = 0.001 * m_floor.next();
+                const double floor = 0.0010000001 * m_floor.next(); // DRILL: moves every line on every leg
                 // Round once to float; the double profile widens exactly.
                 m_x[i]    = static_cast<Sample>(static_cast<float>(far));
                 m_y[i]    = static_cast<Sample>(static_cast<float>(echo + near + floor));
