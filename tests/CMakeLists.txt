@@ -28,6 +28,15 @@ set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+# SLOW TESTS (the C++ convention, mirroring tools/fixtures' HOWL_SLOW=1): a
+# measurement sweep too long for every ctest run - hours, not minutes - is a
+# gtest case that calls GTEST_SKIP() unless the environment has MUTAP_SLOW=1.
+# It is discovered and listed like any test and reports "Skipped" by default;
+# run it with, e.g.,
+#   MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='AfcDecorrelationSweep.*'
+# A slow test may use threads (host-only files only) and prints the tables it
+# measures; the gated claims it backs quote them. First user:
+# test_afc_decorrelation_sweep.cpp.
 add_executable(mutap_tests
     test_fdaf.cpp
     test_fd_kalman.cpp
@@ -37,7 +46,6 @@ add_executable(mutap_tests
     test_adaptation_control.cpp
     test_closed_loop.cpp
     test_rir_fixtures.cpp
-    test_afc_decorrelation.cpp
     test_aec.cpp
     test_itu_signals.cpp
     test_postfilter.cpp
@@ -60,6 +68,10 @@ target_link_libraries(mutap_tests PRIVATE
 # names its FaustVendored suite.
 if(NOT MUTAP_BARE_METAL AND NOT CMAKE_CROSSCOMPILING)
     target_sources(mutap_tests PRIVATE test_faust_vendored.cpp)
+    # The karaoke suites (docs/karaoke-afc.md) are host-only as well: double
+    # precision acoustic claims whose every row is a gain bisection, and the
+    # sweep runs its jobs on std::thread, which the bare-metal targets lack.
+    target_sources(mutap_tests PRIVATE test_afc_decorrelation.cpp test_afc_decorrelation_sweep.cpp)
     target_include_directories(mutap_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party/faust)
 endif()
 
