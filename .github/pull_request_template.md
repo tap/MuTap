@@ -25,9 +25,11 @@
   - **Submodule pin moved.** Which pin, and why. After this merges by
     rebase/squash, repoint any open consumer pins at the identical tree on
     `main` so they stay reachable once the branch is deleted. For a
-    `submodules/dsptap` bump, paste the `mutap_fingerprint` diff (before/after
-    the pin; procedure at the top of `tests/fingerprint_harness.cpp`) and say
-    which `FINGERPRINT` lines the stage expects to move.
+    `submodules/dsptap` bump, the `mutap_fingerprint` gate compares every CI
+    leg against its committed lines (`tests/fingerprints/<leg>.txt`): say
+    which `FINGERPRINT` lines the stage expects to move, and if any moved,
+    re-record the legs that failed from this PR's run ("Re-recording" at the
+    top of `tests/fingerprint_harness.cpp`) and list the moved lines per leg.
   - **Notebooks re-executed**, because behavior changed. They are committed
     executed.
   - **Style configs** came from a `taphouse` sync, not a hand-edit. A

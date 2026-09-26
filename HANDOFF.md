@@ -122,9 +122,13 @@ carries the measured numbers; this is the map:
    `MuTap-Max/submodules/MuTap` to the new main tip before (or as part
    of) the next MuTap-Max merge — a dangling gitlink breaks recursive
    clones once branches are cleaned up. Every `submodules/dsptap` bump
-   pastes the `mutap_fingerprint` diff (before/after the pin; procedure
-   at the top of `tests/fingerprint_harness.cpp`) into its PR and says
-   which `FINGERPRINT` lines the stage expects to move.
+   runs the `mutap_fingerprint` gate: each CI leg compares its 14 lines
+   with `tests/fingerprints/<leg>.txt` and fails on any difference. The
+   PR says which `FINGERPRINT` lines the stage expects to move; a leg that
+   moved as predicted is re-recorded from the PR's own run ("Re-recording"
+   at the top of `tests/fingerprint_harness.cpp`) and the moved lines are
+   listed per leg. (Until tap/MuTap#64 the lines were only printed and each
+   bump was diffed by hand.)
    Since the DspTap `0db95b6` pin (Stage 4, tap/DspTap#35) two rules hold.
    (a) Any class whose object layout depends on the float FFT engine must
    carry the ABI tag: define it inside `namespace tap::mu::inline

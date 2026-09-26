@@ -22,12 +22,14 @@ jobs:
             cxx: g++
             werror: ON
             capi: ON
+            fingerprint_leg: linux-gcc
           - name: Linux Clang
             os: ubuntu-latest
             cc: clang
             cxx: clang++
             werror: ON
             capi: ON
+            fingerprint_leg: linux-clang
           # macOS gates on the float32 backend MuTap actually uses, which is
           # the SPLIT-RADIX engine (DspTap's bit-identical C++20 port of Ooura's
           # rdft) — the root CMakeLists turns DspTap's Apple vDSP default back
@@ -39,6 +41,7 @@ jobs:
             os: macos-latest
             werror: ON
             capi: ON
+            fingerprint_leg: macos-appleclang
           # Warnings stay non-fatal on MSVC until /W4 output has been triaged
           # on a Windows runner (same policy as the sibling *Tap repos).
           # capi stays OFF on Windows: tools/capi carries no __declspec(dllexport)
@@ -49,6 +52,7 @@ jobs:
             os: windows-latest
             werror: OFF
             capi: OFF
+            fingerprint_leg: windows-msvc
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
@@ -74,6 +78,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DMUTAP_WERROR=${{ matrix.werror }}
           -DMUTAP_BUILD_CAPI=${{ matrix.capi }}
+          -DMUTAP_FINGERPRINT_LEG=${{ matrix.fingerprint_leg }}
 
       # Record the backend actually built, so a log can never be misread about
       # which float32 configuration produced its numbers.
@@ -87,11 +92,19 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      # The bit-identity gate for DspTap pin bumps (tests/fingerprint_harness.cpp)
-      # already ran as a test above; run it once more verbosely so the log
-      # carries the FINGERPRINT lines and two CI logs can be diffed.
+      # The bit-identity gate (tests/fingerprint_harness.cpp) already ran as a
+      # test above against this leg's committed lines
+      # (tests/fingerprints/<fingerprint_leg>.txt); a difference failed the
+      # Test step with the diff and the re-recording pointer in its output.
+      # Run it once more verbosely so a green log carries the lines too, and
+      # assert the verdict names this leg: a leg whose id is not wired would
+      # otherwise compare nothing and pass.
       - name: Fingerprints
-        run: ctest --test-dir build -C Release -R '^mutap_fingerprint$' -V
+        shell: bash
+        run: |
+          set -eo pipefail
+          ctest --test-dir build -C Release -R '^mutap_fingerprint$' -V | tee fingerprints.log
+          grep -q 'FINGERPRINT_PASS leg=${{ matrix.fingerprint_leg }} ' fingerprints.log
 
       # These three rows were the per-process bifurcation in #31. Now that the
       # alignment fix has removed the draw, repeating them says something
@@ -126,6 +139,7 @@ jobs:
           cmake -B build
           -DCMAKE_BUILD_TYPE=RelWithDebInfo
           -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=all"
+          -DMUTAP_FINGERPRINT_LEG=linux-asan-ubsan
 
       - name: Build
         run: cmake --build build -j 4
@@ -134,6 +148,14 @@ jobs:
         env:
           UBSAN_OPTIONS: print_stacktrace=1
         run: ctest --test-dir build --output-on-failure
+
+      # The Test step above ran the fingerprint gate against
+      # tests/fingerprints/linux-asan-ubsan.txt; assert it ran for this leg.
+      - name: Fingerprints
+        run: |
+          set -eo pipefail
+          ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-asan.log
+          grep -q 'FINGERPRINT_PASS leg=linux-asan-ubsan ' /tmp/fp-asan.log
 
   # Cross-compile for Arm Cortex-M55 (bare metal, newlib + semihosting) and
   # run the emulation-sized test subset on QEMU's MPS3 AN547 board model:
@@ -162,6 +184,7 @@ jobs:
           cmake -B build
           -DCMAKE_BUILD_TYPE=MinSizeRel
           -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake
+          -DMUTAP_FINGERPRINT_LEG=m55-cmsis
 
       - name: Build
         run: cmake --build build -j 4
@@ -173,10 +196,12 @@ jobs:
       # reconciliation on the full emulated battery.
       # The battery leaves the fingerprint harness out (-E): ctest hides a
       # passing test's output, so the harness runs once, verbosely, in the
-      # next step instead, and the log carries the on-target FINGERPRINT
-      # lines for this backend, diffable against the split-radix leg below and
-      # across pins. The harness prints the backend it was compiled with;
-      # asserting it is the positive proof of which backend ran.
+      # next step instead: the gate against tests/fingerprints/m55-cmsis.txt
+      # (a difference fails the step with the diff), and the log carries the
+      # on-target FINGERPRINT lines for this backend. The harness prints the
+      # backend it was compiled with; asserting it is the positive proof of
+      # which backend ran, and asserting the verdict names this leg proves the
+      # comparison ran.
       - name: Test under emulation (CMSIS Helium FFT — default)
         run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
 
@@ -185,6 +210,7 @@ jobs:
           set -eo pipefail
           ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-cmsis.log
           grep -q 'backend=cmsis abi=fft_cmsis' /tmp/fp-cmsis.log
+          grep -q 'FINGERPRINT_PASS leg=m55-cmsis ' /tmp/fp-cmsis.log
 
       # Second leg keeps the split-radix float32 fallback alive (DspTap's C++20
       # port of Ooura's rdft; the "Ooura" leg in logs up to DspTap 8350f13):
@@ -203,7 +229,8 @@ jobs:
           cmake -B build-split-radix \
             -DCMAKE_BUILD_TYPE=MinSizeRel \
             -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m55-mps3.cmake \
-            -DTAP_DSP_FFT_CMSIS=OFF | tee /tmp/configure-split-radix.log
+            -DTAP_DSP_FFT_CMSIS=OFF \
+            -DMUTAP_FINGERPRINT_LEG=m55-split-radix | tee /tmp/configure-split-radix.log
           if grep -q 'float32 FFT backend = CMSIS' /tmp/configure-split-radix.log; then
             echo "::error::the split-radix fallback leg configured the CMSIS backend"; exit 1
           fi
@@ -220,6 +247,7 @@ jobs:
           set -eo pipefail
           ctest --test-dir build-split-radix -R '^mutap_fingerprint$' -V | tee /tmp/fp-split-radix.log
           grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-split-radix.log
+          grep -q 'FINGERPRINT_PASS leg=m55-split-radix ' /tmp/fp-split-radix.log
 
   # Cortex-M33 (Raspberry Pi Pico 2 W / RP2350 class: single-precision FPU,
   # no FP64, no MVE) on QEMU's MPS2+ AN505 model — the wake-word plan's named
@@ -247,6 +275,7 @@ jobs:
           cmake -B build
           -DCMAKE_BUILD_TYPE=MinSizeRel
           -DCMAKE_TOOLCHAIN_FILE=cmake/arm-cortex-m33-mps2.cmake
+          -DMUTAP_FINGERPRINT_LEG=m33
 
       - name: Build
         run: cmake --build build -j 4
@@ -255,11 +284,13 @@ jobs:
         run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
 
       # The toolchain file pins CMSIS off (no MVE); the harness must say so.
+      # The gate compares against tests/fingerprints/m33.txt.
       - name: Fingerprints
         run: |
           set -eo pipefail
           ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-m33.log
           grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-m33.log
+          grep -q 'FINGERPRINT_PASS leg=m33 ' /tmp/fp-m33.log
 
   # Cross-compile for Qualcomm Hexagon (hexagon-unknown-linux-musl, HVX
   # auto-vectorization on) and run the FULL test suite under qemu-hexagon
@@ -316,6 +347,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE=cmake/hexagon-linux-musl.cmake
           -DHEXAGON_TOOLCHAIN_ROOT="$HEXAGON_TOOLCHAIN_ROOT"
+          -DMUTAP_FINGERPRINT_LEG=hexagon
 
       - name: Build
         run: cmake --build build -j 4
@@ -323,11 +355,13 @@ jobs:
       - name: Test under emulation
         run: ctest --test-dir build --output-on-failure -E '^mutap_fingerprint$'
 
+      # The gate compares against tests/fingerprints/hexagon.txt.
       - name: Fingerprints
         run: |
           set -eo pipefail
           ctest --test-dir build -R '^mutap_fingerprint$' -V | tee /tmp/fp-hexagon.log
           grep -q 'backend=split_radix abi=fft_split_radix' /tmp/fp-hexagon.log
+          grep -q 'FINGERPRINT_PASS leg=hexagon ' /tmp/fp-hexagon.log
 
   # Keeps the benchmarks compiling and runnable; never a performance gate
   # (shared runners are noise — see bench/README.md).
@@ -358,7 +392,9 @@ jobs:
   # see include/mutap/postfilter.h). No single build compiles both, so this job
   # compiles the fingerprint harness (tests/fingerprint_harness.cpp — the same
   # binary that gates DspTap pin bumps) once per macro value and diffs every
-  # FINGERPRINT line — the guard that the two forms cannot drift apart.
+  # FINGERPRINT line — the guard that the two forms cannot drift apart. The
+  # standalone compile has no leg, so the harness compares nothing here; the
+  # committed-lines gate runs on every other leg that runs the harness.
   branchless-parity:
     name: Suppressor branch-free/branchy parity
     runs-on: ubuntu-latest

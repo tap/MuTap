@@ -1,0 +1,22 @@
+# mutap_fingerprint expectation for CI leg "hexagon" (MUTAP_FINGERPRINT_LEG=hexagon):
+#   job "Hexagon cross (QEMU)", step "Fingerprints": clang+llvm-19.1.5-cross-hexagon-
+#   unknown-linux-musl (Clang 19.1.5), Release, qemu-hexagon from qemu-user-static
+#   1:8.2.2+ds-0ubuntu1.18, split-radix float32 FFT.
+# Recorded at DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
+# No local rig: CI is the only place these lines can be produced.
+# The harness fails this leg on any difference. To change these lines on purpose,
+# follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+FINGERPRINT fdaf float ee72bb70d63bde0c
+FINGERPRINT fd_kalman float a1bd1f147dce7f5c
+FINGERPRINT pem_afc float 75e691813d151139
+FINGERPRINT postfilter float 3367354236554abc
+FINGERPRINT nn_suppressor float 3be0b5116b9d05be
+FINGERPRINT aec_chain float a3c848107f40176d
+FINGERPRINT aec_chain_nn float e94007cc5ec25f42
+FINGERPRINT fdaf double c7dce2fa5d971026
+FINGERPRINT fd_kalman double 16a1667bd5103356
+FINGERPRINT pem_afc double 375006be8fe42f7f
+FINGERPRINT postfilter double d7bc2daa1d05c41f
+FINGERPRINT nn_suppressor double f1031aa7bb5af5a9
+FINGERPRINT aec_chain double a167e536eb942d36
+FINGERPRINT aec_chain_nn double 1ca98055cd37e407

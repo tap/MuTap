@@ -30,49 +30,90 @@
 // arithmetic only (no libm, no <random>, no wall clock, no filesystem) and
 // rounded once to float, so both profiles consume identical sample values
 // and the harness runs unchanged on bare metal. Determinism holds per
-// (host, compiler, flags): libm and fp-contraction differ across hosts, so
-// two fingerprints are comparable only when both runs were produced by the
-// same build configuration on the same machine — which is exactly the pin-
-// bump workflow below. The '#' header names the float32 FFT backend the
-// binary was compiled with (backend=cmsis|vdsp|split_radix; "ooura" in logs
-// from pins up to DspTap 8350f13, when the default engine was Ooura's C or
-// its bit-identical port) and the ABI tag DspTap's fft.h compiled under
+// (host, compiler, flags, C library): libm, fp-contraction and the float FFT
+// backend differ across targets, so every CI leg has its own expected lines,
+// committed in tests/fingerprints/<leg>.txt. Measured at DspTap 0c5bf59: no
+// line is the same on all nine legs; the two Linux compilers (and the
+// sanitizer build) agree on all 14, and the two M55 legs on the seven double
+// rows only (the float rows go through different FFT engines). The '#'
+// header names the float32 FFT backend the binary was compiled with
+// (backend=cmsis|vdsp|split_radix; "ooura" in logs from pins up to DspTap
+// 8350f13, when the default engine was Ooura's C or its bit-identical port)
+// and the ABI tag DspTap's fft.h compiled under
 // (abi=fft_cmsis|fft_vdsp|fft_split_radix, tap::dsp::k_real_fft_abi_tag), so
 // a log is self-describing and each emulated leg asserts which engine it
-// ran. Neither is part of the diffed FINGERPRINT lines.
+// ran. Neither is part of the compared FINGERPRINT lines.
 //
-// How to diff two DspTap pins (the check every submodule bump runs):
+// THE GATE. The build names its CI leg with -DMUTAP_FINGERPRINT_LEG=<leg>;
+// tests/CMakeLists.txt compiles that leg's committed lines into this binary,
+// and after printing its own lines the harness compares them, prints any
+// difference as a unified diff (expected file first) and a FINGERPRINT_FAIL
+// line, and fails the ctest test (exit code 1, and the FAIL/PASS regular
+// expressions, which is what bare metal honours). A pass prints
+// "FINGERPRINT_PASS leg=<leg> ...", and every CI leg greps for its own leg
+// id there, so a leg whose id is not wired fails instead of passing
+// unchecked. With no leg configured (a developer build on an arbitrary host)
+// the lines are printed and nothing is compared.
 //
-//     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-//     cmake --build build --target mutap_fingerprint
-//     ./build/tests/mutap_fingerprint > /tmp/before.txt
-//     git -C submodules/dsptap checkout <new pin>
-//     cmake --build build --target mutap_fingerprint
-//     ./build/tests/mutap_fingerprint > /tmp/after.txt
-//     diff /tmp/before.txt /tmp/after.txt
+// Re-recording (a change that is MEANT to move output bits: a DspTap pin
+// bump whose stage moves lines, or a MuTap change to a component's
+// arithmetic):
 //
-// An empty diff is the proof that the bump changed no output sample; every
-// stage of the FFT plan (DspTap docs/audit-fft-and-code-smells.md) states
-// which lines here must be unchanged and which are expected to move (the
-// float profile through an FFT port; never the double golden model unless
-// the plan says so). CI runs this binary on every leg, hosted and emulated
-// (a "Fingerprints" step records the lines in each log, so two CI logs can
-// be diffed the same way, and the M55's CMSIS and split-radix legs against
-// each other) and once more, compiled twice, as the suppressor's
+//   1. Push the change. Every leg whose lines moved fails, and its log
+//      carries the diff and the full set of 14 new lines: the "Test" step's
+//      ctest --output-on-failure on the hosted legs (Linux, macOS, Windows,
+//      ASan + UBSan), the "Fingerprints" step on the emulated ones (M55
+//      CMSIS, M55 split-radix, M33, Hexagon). Legs that did not fail did not
+//      move.
+//   2. For each failing leg, replace the 14 FINGERPRINT lines of
+//      tests/fingerprints/<leg>.txt with the lines that run printed (after
+//      the '#' header that names the leg; strip the CI timestamp and
+//      ctest's "<n>: " prefix, e.g.
+//      grep -o 'FINGERPRINT [a-z_]* [a-z]* [0-9a-f]*' job-log.txt), and
+//      update the file's "Recorded at" comment (DspTap pin, run id). The
+//      Linux and QEMU legs also reproduce locally with the CI toolchain:
+//          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMUTAP_FINGERPRINT_LEG=linux-gcc
+//          cmake --build build --target mutap_fingerprint
+//          ctest --test-dir build -R '^mutap_fingerprint$' -V
+//      (the M33/M55 legs: the toolchain file, MinSizeRel and the leg id, as
+//      in .github/workflows/ci.yml).
+//   3. In the PR, list which lines moved on which legs and why (the diff of
+//      tests/fingerprints/ is the record), against what the stage predicted:
+//      every stage of the FFT plan (DspTap docs/audit-fft-and-code-smells.md)
+//      states which lines must hold and which may move (the float profile
+//      through an FFT port; never the double golden model unless the plan
+//      says so). A line that moved and was not predicted is the regression
+//      the gate exists to catch, not a line to re-record.
+//
+// CI also runs this binary, compiled twice, as the suppressor's
 // branch-free/branchy parity check (MUTAP_SUPPRESSOR_BRANCHLESS, see
 // include/mutap/postfilter.h): the two builds must print identical lines.
 //
 // Builds two ways: as the normal CMake target mutap_fingerprint (a ctest
 // test on every target), and standalone as the parity job compiles it (g++
 // on this file alone, header-only since DspTap Stage 2c — see the
-// branchless-parity job in .github/workflows/ci.yml).
+// branchless-parity job in .github/workflows/ci.yml); standalone there is
+// no generated expectation header, so nothing is compared.
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
+
+#if __has_include("mutap_fingerprint_expected.h")
+#include "mutap_fingerprint_expected.h"
+#else
+namespace mutap_fingerprint_expected {
+    // Standalone compile (the branchless-parity job): no leg, no lines.
+    inline constexpr std::string_view                k_leg;
+    inline constexpr std::string_view                k_source;
+    inline constexpr std::array<std::string_view, 0> k_lines{};
+} // namespace mutap_fingerprint_expected
+#endif
 
 #include "mutap/fd_kalman.h"
 #include "mutap/fdaf.h"
@@ -253,11 +294,16 @@ namespace {
         }
     }
 
-    /// Runs `step(source, out, estimate)` once per block and prints the
-    /// component's line. `out` is always hashed; `estimate` is hashed too
-    /// when the step writes it (the two cancellers' second output channel).
+    /// One printed FINGERPRINT line ("FINGERPRINT <component> <profile>
+    /// <16 hex digits>", no newline), kept for the comparison.
+    using fingerprint_line = std::array<char, 96>;
+
+    /// Runs `step(source, out, estimate)` once per block, prints the
+    /// component's line and appends it to `lines`. `out` is always hashed;
+    /// `estimate` is hashed too when the step writes it (the two cancellers'
+    /// second output channel).
     template <typename Sample, typename Step>
-    void run(const char* component, bool hashes_estimate, Step&& step) {
+    void run(std::vector<fingerprint_line>& lines, const char* component, bool hashes_estimate, Step&& step) {
         corpus_source<Sample> src;
         std::vector<Sample>   out(k_block);
         std::vector<Sample>   estimate(k_block);
@@ -270,12 +316,15 @@ namespace {
                 fp.mix(estimate.data(), k_block);
             }
         }
-        std::printf("FINGERPRINT %s %s %016llx\n", component, profile_name<Sample>(),
-                    static_cast<unsigned long long>(fp.value()));
+        fingerprint_line line{};
+        std::snprintf(line.data(), line.size(), "FINGERPRINT %s %s %016llx", component, profile_name<Sample>(),
+                      static_cast<unsigned long long>(fp.value()));
+        std::printf("%s\n", line.data());
+        lines.push_back(line);
     }
 
     template <typename Sample>
-    void run_profile() {
+    void run_profile(std::vector<fingerprint_line>& lines) {
         using namespace tap::mu;
         using src_t = corpus_source<Sample>;
 
@@ -287,12 +336,12 @@ namespace {
             cfg.ipc_freeze_threshold   = Sample(0.1);
             cfg.transient_freeze_ratio = Sample(8);
             partitioned_fdaf<Sample> f(cfg);
-            run<Sample>("fdaf", true,
+            run<Sample>(lines, "fdaf", true,
                         [&f](const src_t& s, Sample* out, Sample* est) { f.process_block(s.x(), s.y(), out, est); });
         }
         {
             partitioned_fdkf<Sample> f(aec_chain_preset<Sample>(k_block, k_partitions, k_sample_rate).canceller);
-            run<Sample>("fd_kalman", true,
+            run<Sample>(lines, "fd_kalman", true,
                         [&f](const src_t& s, Sample* out, Sample* est) { f.process_block(s.x(), s.y(), out, est); });
         }
         {
@@ -300,32 +349,107 @@ namespace {
             cfg.fdaf.block_size = k_block;
             cfg.fdaf.partitions = k_partitions;
             pem_afc<Sample> f(cfg);
-            run<Sample>("pem_afc", false,
+            run<Sample>(lines, "pem_afc", false,
                         [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.x(), s.y(), out); });
         }
         {
             auto cfg       = aec_chain_preset<Sample>(k_block, k_partitions, k_sample_rate).postfilter;
             cfg.block_size = k_block;
             residual_suppressor<Sample> f(cfg);
-            run<Sample>("postfilter", false,
+            run<Sample>(lines, "postfilter", false,
                         [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.e(), s.yhat(), out); });
         }
         {
             auto cfg = aec_chain_nn_preset<Sample>(k_block, k_partitions, k_sample_rate, nn_weights()).postfilter;
             nn_suppressor<Sample> f(std::move(cfg));
-            run<Sample>("nn_suppressor", false,
+            run<Sample>(lines, "nn_suppressor", false,
                         [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.e(), s.yhat(), out); });
         }
         {
             aec_chain<Sample> f(aec_chain_preset<Sample>(k_block, k_partitions, k_sample_rate));
-            run<Sample>("aec_chain", false,
+            run<Sample>(lines, "aec_chain", false,
                         [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.x(), s.y(), out); });
         }
         {
             aec_chain_nn<Sample> f(aec_chain_nn_preset<Sample>(k_block, k_partitions, k_sample_rate, nn_weights()));
-            run<Sample>("aec_chain_nn", false,
+            run<Sample>(lines, "aec_chain_nn", false,
                         [&f](const src_t& s, Sample* out, Sample*) { f.process_block(s.x(), s.y(), out); });
         }
+    }
+
+    /// "FINGERPRINT <component> <profile>": the line without its hash.
+    std::string_view key_of(std::string_view line) noexcept {
+        return line.substr(0, line.rfind(' '));
+    }
+
+    /// Prints `text` as a diff line with the given marker, opening the diff
+    /// (its two file headers) on the first call.
+    void print_diff_line(bool& opened, char marker, std::string_view text) {
+        if (!opened) {
+            std::printf("--- %.*s (expected)\n+++ this run\n",
+                        static_cast<int>(mutap_fingerprint_expected::k_source.size()),
+                        mutap_fingerprint_expected::k_source.data());
+            opened = true;
+        }
+        std::printf("%c%.*s\n", marker, static_cast<int>(text.size()), text.data());
+    }
+
+    /// Compares the printed lines with the configured leg's committed
+    /// expectation, prints the verdict and returns whether it passed (always
+    /// true when no leg is configured: nothing to compare against). Lines are
+    /// matched by (component, profile), so a changed hash, a line missing from
+    /// the run and a line the expectation does not have all count as a
+    /// difference.
+    bool check(const std::vector<fingerprint_line>& printed) {
+        namespace expected = mutap_fingerprint_expected;
+        if (expected::k_leg.empty()) {
+            std::printf("FINGERPRINT_UNCHECKED no MUTAP_FINGERPRINT_LEG configured: lines printed, not compared\n");
+            return true;
+        }
+        bool        opened    = false;
+        std::size_t differing = 0;
+        for (const std::string_view want : expected::k_lines) {
+            const fingerprint_line* got = nullptr;
+            for (const fingerprint_line& p : printed) {
+                if (key_of(p.data()) == key_of(want)) {
+                    got = &p;
+                }
+            }
+            if (got == nullptr) {
+                print_diff_line(opened, '-', want);
+                ++differing;
+            }
+            else if (std::string_view(got->data()) != want) {
+                print_diff_line(opened, '-', want);
+                print_diff_line(opened, '+', got->data());
+                ++differing;
+            }
+        }
+        for (const fingerprint_line& p : printed) {
+            bool known = false;
+            for (const std::string_view want : expected::k_lines) {
+                known = known || key_of(want) == key_of(p.data());
+            }
+            if (!known) {
+                print_diff_line(opened, '+', p.data());
+                ++differing;
+            }
+        }
+        const auto leg    = static_cast<int>(expected::k_leg.size());
+        const auto source = static_cast<int>(expected::k_source.size());
+        if (differing == 0) {
+            std::printf("FINGERPRINT_PASS leg=%.*s lines=%u match %.*s\n", leg, expected::k_leg.data(),
+                        static_cast<unsigned>(printed.size()), source, expected::k_source.data());
+            return true;
+        }
+        std::printf("FINGERPRINT_FAIL leg=%.*s: %u of %u lines differ from %.*s (diff above).\n"
+                    "FINGERPRINT_FAIL If an output bit was meant to move (a DspTap pin bump whose stage moves it, "
+                    "or a change to a component's arithmetic), re-record this leg from the lines above: "
+                    "see \"Re-recording\" at the top of tests/fingerprint_harness.cpp. "
+                    "If it was not meant to move, this is the regression.\n",
+                    leg, expected::k_leg.data(), static_cast<unsigned>(differing),
+                    static_cast<unsigned>(expected::k_lines.size()), source, expected::k_source.data());
+        return false;
     }
 
 } // namespace
@@ -339,10 +463,12 @@ int main() {
                 static_cast<unsigned>(k_block), static_cast<unsigned>(k_partitions),
                 static_cast<unsigned>(k_sample_rate), static_cast<unsigned>(k_blocks), k_backend,
                 tap::dsp::k_real_fft_abi_tag, MUTAP_SUPPRESSOR_BRANCHLESS);
-    run_profile<float>();
-    run_profile<double>();
-    // CTest's pass criterion on bare metal, where semihosting does not
-    // reliably propagate the exit code: printed only after every line.
+    std::vector<fingerprint_line> lines;
+    run_profile<float>(lines);
+    run_profile<double>(lines);
+    // Printed only after every line: CTest's pass criterion on bare metal
+    // when no leg is configured (semihosting does not reliably propagate the
+    // exit code). With a leg, the verdict below is the criterion.
     std::printf("FINGERPRINT_COMPLETE\n");
-    return 0;
+    return check(lines) ? 0 : 1;
 }
