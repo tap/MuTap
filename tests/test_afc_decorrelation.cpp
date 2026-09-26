@@ -38,7 +38,7 @@
 // the table; bisection there at 0.1 dB):
 //
 //   cabin, band-limited, medians     0.8 s    5 s    10 s    20 s    40 s   gated with
-//   held, canceller, 2.7 ms          -0.25  +0.22  +0.29  +0.29  +0.29     5 s
+//   held, canceller, 2.7 ms          -0.25  +0.21  +0.29  +0.29  +0.29     5 s
 //   held, + 5 Hz shift, 2.7 ms      +12.67 +13.13 +13.21 +13.21 +13.21     5 s
 //   held, naive + 5 Hz, 2.7 ms       -1.75 -13.06 -15.00 -15.00 -15.00    10 s (floor)
 //   held, canceller, S1             +10.38 +11.47 +11.55 +11.63 +11.63     5 s
@@ -48,8 +48,11 @@
 //   held, + 5 Hz shift, S3          +15.02 +17.05 +16.93 +17.00 +16.90    sweep only (5 s)
 //   held, naive + 5 Hz, S3           +5.53  +7.56  +7.79  +7.95  +8.03    sweep only (10 s)
 //
-// The branch's original 0.8 s probe over-reads: the dry open loop by 0.55 /
-// 1.25 / 2.50 dB at 2.7 ms / S1 / S3, and the chains by up to ~2 dB.
+// The branch's original 0.8 s probe over-reads the dry open loop by 0.55 /
+// 1.25 / 2.50 dB at 2.7 ms / S1 / S3; like for like, the canceller rows'
+// 0.8 s medians sit -2.50 to +2.88 dB from their 40 s values (the held note
+// reads low, the speech-envelope material high), the naive core's up to
+// +13.25.
 //
 // RUNAWAY, NOT AUDIBLE. These are runaway limits. The ear objects earlier,
 // and with the shifter much earlier: tools/notebook/karaoke_audible.py
@@ -62,9 +65,9 @@
 //
 // NOT GATED, recorded (the sweep has them): the shift's direction at S3 is
 // room-dependent - in the cabin it COSTS runaway gain (median per-seed
-// shift - plain -1.41 dB at 40 s), in studio / rehearsal / mt5 / mt9 it
-// gains - and the naive core behind the shift at S1 never settles with probe
-// length.
+// shift - plain -1.41 dB at 40 s, -1.14 at 20 s), while at 20 s studio gains
+// +1.85, rehearsal +0.09, mt5 +1.85, mt9 +6.24 - and the naive core behind
+// the shift at S1 never settles with probe length.
 //
 // Host-only by design: tests/CMakeLists.txt builds this file only for the
 // host (like the FAUST suite), and the emulated selections do not name it.

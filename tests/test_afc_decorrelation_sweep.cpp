@@ -27,7 +27,8 @@
 //                     canceller and + 5 Hz, 20 s probes: what the branch's
 //                     unbanded numbers turn into.
 //
-// Wall time on the 12-thread Intel Mac this was written on: see HANDOFF.md.
+// Wall time: 1:16:10 on the 12-thread Intel Mac it was written on (11
+// worker threads; HANDOFF.md, working note 9).
 
 #include <algorithm>
 #include <atomic>
@@ -346,7 +347,8 @@ TEST(AfcDecorrelationSweep, Rooms) {
             std::printf("%-9s d=%-4zu  5 Hz - canceller %s   2 Hz - canceller %s   PEM - naive (5 Hz) %s\n", r.c_str(),
                         d, fmt(median(d5)).c_str(), fmt(median(d2)).c_str(), fmt(median(dn)).c_str());
             // The one cross-room claim the sweep asserts: behind the shift,
-            // PEM beats the naive core everywhere (measured >= +8.9 dB).
+            // PEM beats the naive core everywhere (measured >= +9.05 dB, the cabin
+            // at S3).
             EXPECT_GT(median(dn), 5.0) << r << " d=" << d;
         }
     }
