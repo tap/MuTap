@@ -57,13 +57,18 @@ algorithmically complete. What exists today:
   ([`tests/support/closed_loop.h`](tests/support/closed_loop.h)): mic =
   near-end + true path × speaker, canceller subtraction, forward path with
   gain, delay and a speaker limit; howling detection and bisected
-  maximum-stable-gain (MSG) measurement. Measured MSG agrees with the
-  −20·log₁₀ max|F(ω)| bound within 0.35 dB. And the **M2 regression
+  maximum-stable-gain (MSG) measurement, plus the phase-exact (Nyquist)
+  open-loop MSG. Every closed-loop claim below runs its feedback paths
+  through a loudspeaker band (80 Hz highpass, 16 kHz lowpass;
+  [`tests/support/rooms.h`](tests/support/rooms.h)) and is a median over
+  five seed sets; the emulated targets run single-seed canaries.
+  Measured MSG sits a median +1.91 dB above the −20·log₁₀ max|F(ω)| bound
+  and +0.27 dB above the phase-exact limit. And the **M2 regression
   baseline** ([`tests/test_closed_loop.cpp`](tests/test_closed_loop.cpp)):
-  the naive (un-prewhitened) FDAF adds +6…+10 dB stable gain on white
-  near-end but its bias on tonal program material is *destabilizing*
-  (ASG ≤ −12 dB — it howls at gains the open loop handles). Removing that
-  failure is PEM prewhitening's job.
+  the naive (un-prewhitened) FDAF adds a median +8.23 dB stable gain on
+  white near-end, but its bias on tonal program material is
+  *destabilizing* (median ASG −15 dB, the probe's floor — it howls at gains
+  the open loop handles). Removing that failure is PEM prewhitening's job.
 
 - **PEM prewhitening** — the actual feedback canceller.
   [`include/mutap/lpc.h`](include/mutap/lpc.h): autocorrelation and
@@ -73,11 +78,12 @@ algorithmically complete. What exists today:
   long-term pitch tap). [`include/mutap/pem_afc.h`](include/mutap/pem_afc.h):
   `mutap::pem_afc<Sample, Predictor>`, the FDAF-PEM-AFROW structure —
   cancellation runs on the raw signals, adaptation on the prewhitened pair.
-  Measured in the M2 loop (converged at MSG−6 dB, across seeds and both
-  precisions): on the tonal material where the naive canceller howls ≥12 dB
-  *below* the open-loop MSG, PEM is stable above it with **ASG +4.5…+6.8 dB**;
-  speech-envelope material **+3…+12.6 dB**; voiced (pitch-periodic) material
-  **+2.7…+4.5 dB** where naive howls; white unchanged (~+7.4 dB)
+  Measured in the M2 loop (converged at MSG−6 dB, medians over five seed
+  sets): on the tonal material where the naive canceller howls at the
+  probe's −15 dB floor *below* the open-loop MSG, PEM is stable above it
+  with **ASG +7.08 dB (double) / +7.66 dB (float)**; speech-envelope
+  material **+9.68 dB**; voiced (pitch-periodic) material **+3.61 dB**
+  where naive howls; white +9.68 dB (naive: +8.23)
   ([`tests/test_pem_afc.cpp`](tests/test_pem_afc.cpp),
   [`tests/test_lpc.cpp`](tests/test_lpc.cpp)).
 
@@ -86,14 +92,16 @@ algorithmically complete. What exists today:
   a chance-corrected per-partition coherence — the estimated fraction of
   error power coherent with the input: measured ~0.7 while unconverged, 0.00
   converged, 0.02 under double-talk; and the paper's headline reproduces:
-  raw-pair IPC 0.73 in the tonal closed loop vs 0.05 prewhitened),
+  raw-pair IPC 0.87 in the tonal closed loop vs 0.06 prewhitened, medians),
   **IPC-scaled stepping** (μ·IPC², a Wiener-flavored variable step) plus an
   **instantaneous transient gate**, which together contain a +20 dB near-end
-  burst that blows up the ungated loop (worst block RMS ~25 vs ~56000 —
-  each layer alone is insufficient), and **variable regularization**
-  (per-bin normalizer floored at a fraction of the mean bin power), making
-  identification scale-invariant from 10⁻⁵× to 10³× input scale where a
-  fixed epsilon degrades by ~150 dB
+  burst that blows up the ungated loop (median worst block RMS 88.9 vs
+  54,894 in double, 134.4 vs 77,743 in float; the gated loop stays under
+  1000 in 5 of 5 seed sets in double and 3 of 5 in float — containment is
+  likely, not guaranteed; each layer alone is insufficient), and
+  **variable regularization** (per-bin normalizer floored at a fraction of
+  the mean bin power), making identification scale-invariant from 10⁻⁵× to
+  10³× input scale where a fixed epsilon degrades by ~150 dB
   ([`tests/test_adaptation_control.cpp`](tests/test_adaptation_control.cpp)).
   A side-effect worth knowing: variable regularization alone softens the
   naive canceller's tonal bias (ASG −12 → −3.5 dB) — mitigation, not the
@@ -114,12 +122,16 @@ algorithmically complete. What exists today:
   partials so hard that without the IPC scale the converged closed-loop
   update runs away on some rooms (howls 15 dB *below* the open-loop MSG,
   ~1 room in 5 — found by evaluating across rooms after a single-room
-  first cut overfit). With it, measured ASG on the chord across **eleven
-  random rooms from two generator families: +7.2…+11.3 dB, no collapse
-  anywhere** — including the room where the speech cascade at its own
-  defaults destabilizes (−2.2 dB) — and speech-envelope material improves
-  to +13.8 dB. Defaults (λ = 0.5, order 16) are the sweep's best
-  worst-case; Bark-scale λ = 0.766/order 24 trades a slightly better mean
+  first cut overfit). With it, the test suite's five rooms measure
+  **+6.88…+9.38 dB** on the chord (per-room medians over five seed sets,
+  band-limited paths), with no collapse: on room 9, over ten seed sets,
+  warped+IPC never reached the −15 dB probe floor (a collapse, as counted
+  here), where the speech cascade at its own defaults did in 1 of 10 (a
+  one-off ten-set sweep, 2026-09-25; the gated test checks the five-set
+  medians). The
+  demo notebook repeats the sweep on rooms from its own (numpy) generator
+  family. Speech-envelope material improves to +19.38 dB. Defaults
+  (λ = 0.5, order 16) are the sweep's best worst-case; Bark-scale λ = 0.766/order 24 trades a slightly better mean
   for a weaker floor at ~1.5× the cost. Select it with
   `mutap::pem_afc<Sample, mutap::warped_lpc_predictor<Sample>>`.
 - **The Cortex-M55 build** — the first embedded target: bare metal
@@ -128,9 +140,11 @@ algorithmically complete. What exists today:
   SampleRateTap ([`platform/`](platform/),
   [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
   59 tests run on-target: the float32 typed suites (the embedded profile),
-  the LP conditioning suite, the float closed-loop scenarios including the
-  PEM tonal headline and burst gating, and the float-tracks-double oracle
-  check — with double as soft-float (the M55 FPU is single-precision only).
+  the LP conditioning suite, the float closed-loop canaries (single-seed
+  checks that target arithmetic tracks the host, including the PEM tonal
+  and burst-gating scenarios; the acoustic claims are host-side), and the
+  float-tracks-double oracle check — with double as soft-float (the M55
+  FPU is single-precision only).
 - **The Hexagon build** — the third target: hexagon-unknown-linux-musl via
   the Codelinaro clang toolchain with **HVX auto-vectorization on**
   (128-byte vectors, 32 fp32 lanes), statically linked and run under
@@ -156,20 +170,21 @@ algorithmically complete. What exists today:
   is measured: at 0 dB SNR it beats both ends of the NLMS speed/depth
   tradeoff at once (−15.7 dB by block 300 vs μ=0.5's −5.9 and μ=0.1's
   slow start); in the closed loop with **zero knobs** it matches the tuned
-  stack on tonal ASG (+4.7/+7.8 dB), **saturates the +25 dB probe ceiling**
-  on speech-envelope and white near-end (NLMS stack: +3…+12.6), and holds
-  **+8.4…+13.4 dB across all the music rooms with no IPC pairing** —
-  including the room where the NLMS speech cascade destabilizes. A +20 dB
-  near-end burst is survived ungated (excursion ~2 dB; ungated NLMS is
-  wrecked); the opt-in transient floor contains it to gated-NLMS quality
+  stack on tonal ASG (+8.44/+6.88 dB double/float, medians; NLMS stack
+  +7.08/+7.66), **reaches the +25 dB probe ceiling** on speech-envelope
+  near-end (+24.69; NLMS stack +9.68), and holds **+11.25…+12.81 dB across
+  all the music rooms with no IPC pairing** (per-room medians; the speech
+  cascade +12.50 on room 9). A +20 dB near-end burst is survived ungated
+  (excursion ~2 dB; ungated NLMS is wrecked); the opt-in transient floor contains it to gated-NLMS quality
   at a measured ~2–6 dB tonal-ASG cost, which is why it defaults off
   ([`tests/test_fd_kalman.cpp`](tests/test_fd_kalman.cpp)).
 - **RIR fixtures** — three physically-modeled rooms (image-source method,
   documented geometry, deterministic; [`tools/fixtures/`](tools/fixtures/))
   committed as permanent closed-loop baselines with real early-reflection
   structure. Measured on them (block 64, 16 partitions, speech-envelope
-  material): **Kalman +17.8…+19.1 dB ASG vs the classic stack's
-  +9.4…+9.7** ([`tests/test_rir_fixtures.cpp`](tests/test_rir_fixtures.cpp)).
+  material, band-limited, medians over five seed sets): **Kalman
+  +18.44…+19.38 dB ASG vs the classic stack's +11.88** on the studio
+  ([`tests/test_rir_fixtures.cpp`](tests/test_rir_fixtures.cpp)).
   Measured rooms (academic datasets or your own sweeps) join with one
   command: `make_rir_fixtures.py --from-wav`.
 - **Open-loop echo cancellation (AEC)** — the same engines with the loop

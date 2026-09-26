@@ -83,8 +83,10 @@ else()
     # already covered on every host platform. Run the same emulation-sized
     # selection as the Cortex-M55 leg (tests/bare_metal_main.cpp): the
     # float32 typed suites, the double Kalman core, the LP/conditioning
-    # suites, the float closed-loop scenarios and the validation/contract
-    # tests. (The FFT suites left with the FFT: they run in DspTap's own CI.)
+    # suites, the float closed-loop canaries (one seed each; the claims are
+    # the host-only *_host_test suites, see tests/support/rooms.h) and the
+    # validation/contract tests. (The FFT suites left with the FFT: they run
+    # in DspTap's own CI.)
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER

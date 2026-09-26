@@ -108,8 +108,8 @@ explains the *music*, and subtracting that lie cancels program material
 — audibly, as a smeared, phasey version of whatever is sustained — while
 the actual feedback protection gets *worse*. In the library's test rig,
 the naive learner on sustained tonal material doesn't just fail to add
-gain; it **howls 12 dB below the room's own MSG**. Worse than no
-canceller at all.
+gain; it **howls 15 dB below the room's own MSG** (the rig's search
+floor, in the median of five trials). Worse than no canceller at all.
 
 MuTap's answer (the PEM in its algorithm's name, FDAF-PEM-AFROW) is:
 before each learning step, build a quick disposable model of what the
@@ -190,10 +190,12 @@ learning steps are scaled by how *informative* the current block looks
 bursts — a cough into the mic, a dropped drumstick — are skipped
 entirely, because one such block can wreck a converged filter. The
 measured difference is not subtle: in the burst test, the protected
-filter sails through a +20 dB burst (worst block RMS ≈ 25) where the
-unprotected one blows up four orders of magnitude louder. Leave it on
-for anything with a live microphone; turn it off only in controlled
-situations where you want the last dB of adaptation speed.
+filter sails through a +20 dB burst (median worst block RMS ≈ 90–130)
+where the unprotected one blows up nearly three orders of magnitude
+louder. It is protection, not a guarantee: in the float profile the burst
+still broke through in two of five trials. Leave it on for anything with
+a live microphone; turn it off only in controlled situations where you
+want the last dB of adaptation speed.
 
 **The IPC outlet** (rightmost) is the gate's sensor, and it is worth a
 meter in your patch: it estimates, from 0 to 1, *how much of the current
@@ -214,12 +216,12 @@ envelope — so some of the music leaks into the learning and costs gain.
 predictor that spends its resolution down low, where musical energy
 lives.
 
-Measured on a low chord across eleven simulated rooms: the warped model
-holds +7 to +11 dB ASG where the speech model manages between +5 and
-*destabilizing* (one room in the test set howls below its own MSG with
-the speech model on chord material). On speech it costs nothing. So:
-vocal PA, conference, lecture — leave it off; instruments, sustained
-pads, choir — turn it on. Changing it rebuilds the canceller. (With the
+Measured on a low chord across the test rig's five simulated rooms: the
+warped model holds +6.9 to +9.4 dB ASG (the median in each room), and in
+ten trials on the hardest room it never collapsed, where the speech model
+collapsed — howled below the room's own MSG — once. On speech it costs
+nothing. So: vocal PA, conference, lecture — leave it off; instruments,
+sustained pads, choir — turn it on. Changing it rebuilds the canceller. (With the
 classic engine, `@warp` quietly keeps part of the `@gate` machinery on
 even if you disabled it — the warped model needs that protection to stay
 room-robust, and the object refuses to hand you the unstable
@@ -251,12 +253,11 @@ What that buys, measured:
   converges as fast as the fast setting *and* as deep as the calm one —
   the library's identification test has it 10 dB ahead of the classic
   engine's default at equal time.
-- **More gain on broadband material.** On speech-envelope and noise-like
-  program the measured ASG doesn't just improve, it saturates the test
-  rig's +25 dB probe ceiling (classic stack: +3 to +12.6). On sustained
-  chords it holds +8 to +13 dB across every simulated room — with the
-  bias protections that the classic engine needs for that material
-  simply not needed.
+- **More gain on broadband material.** On speech-envelope program the
+  measured ASG doesn't just improve, it reaches the test rig's +25 dB
+  probe ceiling (classic stack: about +9.7). On sustained chords it holds
+  +11 to +13 dB across every simulated room — with the bias protections
+  that the classic engine needs for that material simply not needed.
 - **Bursts are survived, not suffered.** A +20 dB cough against the
   unprotected Kalman engine momentarily gets loud but the learned room
   *survives* (the classic engine's unprotected filter is destroyed).

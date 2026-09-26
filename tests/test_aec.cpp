@@ -49,7 +49,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -59,6 +58,7 @@
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
 #include "support/echo_scenario.h"
+#include "support/rooms.h"
 
 namespace {
 
@@ -69,23 +69,9 @@ namespace {
     constexpr size_t k_taps  = 1024; ///< first 21 ms of the room: a practical AEC length
     constexpr size_t k_parts = k_taps / k_block;
 
-    // Same synthetic-room generator family as the closed-loop tests.
-    template <typename Sample>
-    std::vector<Sample> random_decaying_rir(size_t taps, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<Sample>              f(taps);
-        double                           energy = 0.0;
-        for (size_t i = 0; i < taps; ++i) {
-            const double v = dist(gen) * std::exp(-static_cast<double>(i) / (static_cast<double>(taps) / 4.0));
-            f[i]           = static_cast<Sample>(v);
-            energy += v * v;
-        }
-        for (auto& v : f) {
-            v = static_cast<Sample>(static_cast<double>(v) / std::sqrt(energy));
-        }
-        return f;
-    }
+    // Same synthetic-room generator as the closed-loop tests (support/rooms.h),
+    // raw: here it is an echo path, not a loop.
+    using mutap_test::random_decaying_rir;
 
     // The physically-modeled family: first k_taps of a fixture room,
     // re-normalized to unit energy (same conditioning as test_rir_fixtures).
