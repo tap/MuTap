@@ -156,7 +156,11 @@ requires it.
 
 ### Recorded baselines and updates
 
-Every seeding or `--update` commit adds one row per (key, scenario) it
+A DspTap bump that moves output bits also moves the committed
+`mutap_fingerprint` lines of the legs it touches (`tests/fingerprints/`,
+re-recorded per "Re-recording" at the top of `tests/fingerprint_harness.cpp`);
+the diff of those files is that gate's record, as the rows below are this
+one's. Every seeding or `--update` commit adds one row per (key, scenario) it
 touched, with the run whose log the counts were taken from and the
 toolchain/QEMU pair, because the counts are only comparable within one such
 pair. `before` is the committed baseline the row replaced (`—` for a seed);

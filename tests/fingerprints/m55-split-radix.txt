@@ -1,0 +1,22 @@
+# mutap_fingerprint expectation for CI leg "m55-split-radix" (MUTAP_FINGERPRINT_LEG=m55-split-radix):
+#   job "Cortex-M55 cross (QEMU)", step "Fingerprints (split-radix FFT fallback)":
+#   MPS3 AN547, arm-none-eabi-gcc 13.2.1 (15:13.2.rel1-2), MinSizeRel, -DTAP_DSP_FFT_CMSIS=OFF,
+#   qemu-system-arm 8.2.2 (1:8.2.2+ds-0ubuntu1.18), branch-free suppressor.
+# The harness fails this leg on any difference. To change these lines on purpose,
+# follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
+# Reproduced locally on the same toolchain/QEMU pair at 0c5bf59, byte for byte.
+FINGERPRINT fdaf float 9ebea54ab33d0858
+FINGERPRINT fd_kalman float 466d9516d89bc6e3
+FINGERPRINT pem_afc float 1c04b56702b01a39
+FINGERPRINT postfilter float dd5e10c5fe0f04ce
+FINGERPRINT nn_suppressor float 2cf9c59318c0f049
+FINGERPRINT aec_chain float 8e987708f86fc622
+FINGERPRINT aec_chain_nn float 3858042382ad220a
+FINGERPRINT fdaf double 67dcf93e3831ae4f
+FINGERPRINT fd_kalman double 496c6ce816bab714
+FINGERPRINT pem_afc double 1384cc948a483a58
+FINGERPRINT postfilter double a8d95a03763ac61a
+FINGERPRINT nn_suppressor double 7779e803062b797b
+FINGERPRINT aec_chain double e157b5809c5ce0d3
+FINGERPRINT aec_chain_nn double 1f2231281157e7ee

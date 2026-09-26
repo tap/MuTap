@@ -1,0 +1,23 @@
+# mutap_fingerprint expectation for CI leg "linux-gcc" (MUTAP_FINGERPRINT_LEG=linux-gcc):
+#   job "Linux GCC" (build-and-test), ubuntu-24.04 image, x86-64, GCC 13.3.0, Release,
+#   step "Test" (ctest runs mutap_fingerprint; the "Fingerprints" step prints it again).
+# The harness fails this leg on any difference. To change these lines on purpose,
+# follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
+# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9);
+# the same 14 lines on main runs 36207009410 (197423f) and 36159717174 (edf160e, DspTap
+# 0db95b6), on different runners of the same image.
+# Reproduced locally on x86-64 with the same GCC 13.3.0 at 0c5bf59, byte for byte.
+FINGERPRINT fdaf float b05f67a7426ed1f7
+FINGERPRINT fd_kalman float d0dfe8c5f184d382
+FINGERPRINT pem_afc float 5183c6aacd998a43
+FINGERPRINT postfilter float 2e96c478d53c5eaa
+FINGERPRINT nn_suppressor float 60e3762dfcef9fe2
+FINGERPRINT aec_chain float 7982243bf2aab6f8
+FINGERPRINT aec_chain_nn float 9b0add89588061da
+FINGERPRINT fdaf double f9b5694359b78075
+FINGERPRINT fd_kalman double 95567d89cbd871c7
+FINGERPRINT pem_afc double 19423ce8e48b6b48
+FINGERPRINT postfilter double 7143cf725565d4ab
+FINGERPRINT nn_suppressor double 9b692f0e7ec4ae7c
+FINGERPRINT aec_chain double 8208d54a5b57198a
+FINGERPRINT aec_chain_nn double c9616eb564dfaed1

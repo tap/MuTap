@@ -159,14 +159,18 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
   backend (the default): 59/59 pass — the AEC still meets every asserted
   float32 gate on CMSIS FFTs. A dedicated CI leg re-runs the same battery with
   `-DTAP_DSP_FFT_CMSIS=OFF` to keep the split-radix fallback honest.
-- **`tests/fingerprint_harness.cpp`** (`mutap_fingerprint`) prints one FNV-1a
-  fingerprint per (component, profile) over a fixed corpus on every CI leg,
-  including both M55 legs, so a pin-to-pin difference in any output sample is
-  visible as a diff of two logs; it is the bit-identity gate every DspTap pin
-  bump runs (procedure at the top of the file). Between the two M55 legs it
-  shows what the contract predicts — the seven `double` lines identical, the
-  seven `float` lines all different — which documents the backends' difference
-  but asserts nothing about CMSIS accuracy; that is the parity gate's job.
+- **`tests/fingerprint_harness.cpp`** (`mutap_fingerprint`) computes one
+  FNV-1a fingerprint per (component, profile) over a fixed corpus on every CI
+  leg, including both M55 legs, and compares the 14 lines with that leg's
+  committed expectation (`tests/fingerprints/<leg>.txt`, selected by
+  `MUTAP_FINGERPRINT_LEG`): any output sample that moves by one ULP fails the
+  leg with a per-row diff, and the failing job uploads the leg's replacement
+  file as an artifact. It is the bit-identity gate every DspTap pin bump runs
+  (re-recording procedure at the top of the file). Between the two M55 legs
+  the committed lines show what the contract predicts — the seven `double`
+  lines identical, the seven `float` lines all different — which documents
+  the backends' difference but asserts nothing about CMSIS accuracy; that is
+  the parity gate's job.
 
 ### Hexagon: deferred
 
