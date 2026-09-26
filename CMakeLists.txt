@@ -100,7 +100,10 @@ endif()
 # Measurement dump for the ITU compliance proof notebook
 # (tools/notebook/build_itu_compliance.py -> notebooks/itu_compliance.ipynb).
 option(MUTAP_BUILD_ITU_DUMP "Build the ITU compliance measurement dump" OFF)
-if(MUTAP_BUILD_ITU_DUMP)
+# Gain-ramp dump for the karaoke audible-limit measurement
+# (tools/notebook/karaoke_audible.py; docs/karaoke-afc.md).
+option(MUTAP_BUILD_KARAOKE_DUMP "Build the karaoke gain-ramp dump" OFF)
+if(MUTAP_BUILD_ITU_DUMP OR MUTAP_BUILD_KARAOKE_DUMP)
     add_subdirectory(tools/notebook)
 endif()
 
