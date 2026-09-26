@@ -17,10 +17,10 @@ Two subcommands:
           --rt60 ROOM_report.json [--chain-rt60 S] [--dechirp]
           [--ramp START_DB,RATE_DB_PER_S,T0_S | --gain-log CSV]
           [--calibrate START,END] [--json OUT] [--plot PNG]
-                 Apply the criterion to one run. E.wav is the chain's
-                 output e before the bus gain - the speaker feed divided by
-                 G(t), tapped inside the chain (--channel picks it from a
-                 multichannel file). Each --program is a dry stem as it was
+                 Apply the criterion to one run. E.wav is the canceller's
+                 output c (with the canceller bypassed, the mic); see
+                 "What to record" for when the chain's later output works
+                 too (--channel picks it from a multichannel file). Each --program is a dry stem as it was
                  played (mono, or mixed to mono; resampled to the
                  recording's rate if needed). --rt60 is the room's decay and
                  --chain-rt60 the chain's own reverb (step 5); without
@@ -28,15 +28,32 @@ Two subcommands:
                  false-trigger in reverberant rooms.
 
 What to record. The loop the ramp is probing closes through whatever the
-chain leaves of the room path: with a canceller holding F_hat, the chain
-output is e = v / (1 - G (F - F_hat)), so the program's stems arrive at e
-at fixed levels while that residual loop is stable, and a howl shows up
-as its instability. With the chain bypassed, e is the mic. The MIC of a
-chain-on run is only a cross-check: it hears v (1 + G F ...), which grows
-with the gain long before anything is unstable, and a static calibration
-cannot explain that growth. On the simulated loop with an ideal canceller
-(no limit at all) the mic gave 13-34 false events per ramp, the first at
-+21.46 .. +25.68 dB over the room's MSG, while e gave none.
+chain leaves of the room path: with a canceller holding F_hat, its output
+is c = v / (1 - G (F - F_hat) H), H the rest of the chain, so the
+program's stems arrive at c at fixed levels while that residual loop is
+stable, and a howl shows up as its instability. With the canceller
+bypassed, c is the mic. Three signals, and when each works:
+  - c, the canceller-or-bypass output (the rig's channel 1): the
+    documented input. Aligned in every configuration tested.
+  - The chain's later output, before the gain (channel 9): fine while
+    the chain is time-invariant (validated with an in-chain reverb), NOT
+    after a frequency shifter - the recording then holds no coherent copy
+    of the unshifted stems, GCC-PHAT finds a confident false peak (at 2 Hz
+    in 16 of 18 configurations, at the -2 s window edge, limits ~19 dB
+    low) and the tool warns ("the edge of the window"). Even aligned by
+    hand it read one configuration 2.264 dB late where c read -1.203.
+  - The MIC of a chain-on run: a cross-check only. It hears v (1 + G F
+    ...), which grows with the gain long before anything is unstable,
+    and a static calibration cannot explain that growth. With an ideal
+    canceller (no limit at all) the mic gave 13-34 false events per ramp,
+    the first at +21.46 .. +25.68 dB over the room's MSG; c gave none.
+Flags per condition (all measured on the simulated loop):
+  - dry, or canceller only:            --rt60 ROOM
+  - reverb in the chain:               --rt60 ROOM --chain-rt60 T
+  - frequency shifter in the chain:    --rt60 ROOM --dechirp
+  - the product chain (canceller + shifter + reverb): analyse c with
+    --rt60 ROOM --chain-rt60 T --dechirp; cross-check on the chain's
+    output only where it reports no alignment warning.
 
   aggregate RUN1.json RUN2.json ...
                  Median and range of the runs' limits (the protocol's
@@ -235,6 +252,24 @@ the room's RT60; 10 s warm-up, then 1 dB / 2 s):
     criterion therefore understate the shifter's stable gain against a
     white-noise MSG by about that much; say which definition a number
     uses.
+  - The product chain (canceller residual R, 20 dB ASG + the IIR shifter
+    + an in-chain reverb RT60 1.5 s wet 0.3; 2 and 5 Hz, 10 and 20 ms,
+    nine rooms), against the bisected runaway limit of the same loop (80 s
+    probes; 40 -> 80 s moved it at most 0.117 dB). At c, with --rt60 and
+    --chain-rt60 1.5: without --dechirp -4.531 .. +2.275 dB (median
+    -2.056; studio at 2 Hz read +2.275 and +1.229 LATE), with --dechirp
+    -5.117 .. +0.248 (median -2.099; per condition 2 Hz 10 / 20 ms -0.915
+    / -2.088, 5 Hz -2.621 / -2.771). At the chain's output: 16 of 18 2 Hz
+    configurations misaligned (-18.845 .. -19.645 dB); at 5 Hz medians
+    -2.643 / -2.728 (10 / 20 ms); with c's lags forced, -4.531 .. +2.264
+    (median -1.661). At 6 dB below runaway: held notes 0 false events in
+    36 of 36 configurations at both points; program gaps 0 at 2 Hz, and
+    at 5 Hz 24 events in 6 of 18 configurations at c (39 in 7 with
+    --dechirp; 5 and 4 at the chain's output) - the shifter's
+    below-runaway recirculation again, stationary components repeating
+    with the phrase, not reverb (--rt60-scale 2 cut the worst run from 7
+    to 2). Without --chain-rt60 every configuration false-triggered
+    (21-65 events per run at c).
   - Alignment. GCC-PHAT weights every frequency bin equally, so any
     broadband copy of a stem in the recording (electrical crosstalk, a
     noise source replaying it) competes with the acoustic path however
@@ -865,6 +900,11 @@ def analyze(
             info["anchor"] = bool(p.joint_align and len(stems) > 1 and i == anchor)
             alignment.append(info)
             aligned.append(shift(s_, info["lag_samples"], len(rec)))
+            if abs(info["lag_samples"]) >= max_lag - int(round(ALIGN_RIVAL_S * fs)):
+                result["warnings"].append(
+                    f"alignment of {info['stem']} at lag {info['lag_samples']}, the edge of the +/-{p.max_lag_s:g} s "
+                    f"window: no peak inside it; the stem is probably not coherent with this recording (a frequency "
+                    f"shifter between them, say) - analyse the canceller output instead, or check the lag")
             if info["gcc_phat_peak_to_rival"] < ALIGN_MIN_RIVAL_RATIO:
                 where = f" within +/-{JOINT_WINDOW_S * 1000:.0f} ms of the anchor" if "independent_lag_samples" in info else ""
                 result["warnings"].append(
@@ -1215,8 +1255,8 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     an = sub.add_parser("analyze", help="apply the criterion to one mic recording")
-    an.add_argument("recording", help="the chain's output e before the bus gain (speaker feed / G(t)); "
-                    "with the chain bypassed, the mic. The mic of a chain-on run is a cross-check only")
+    an.add_argument("recording", help="the canceller's output c (bypassed: the mic). A chain output after a "
+                    "frequency shifter does not align; the mic of a chain-on run is a cross-check only")
     an.add_argument("--channel", type=int, default=None, help="mic channel of a multichannel recording")
     an.add_argument("--program", action="append", default=[], help="dry program stem (repeatable)")
     an.add_argument("--no-program", action="store_true",

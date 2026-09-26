@@ -42,7 +42,20 @@ Niemitalo 4+4 IIR allpass-pair Hilbert (coefficients in hilbert_coefficients) - 
 forward path. That loop is
 time-variant, so its reference limit is bisected (80 s unit-RMS white
 near-end, MuTap's rule: any 64-sample block RMS >= 100, speaker limited at
-1000). It takes ~10 min on 12 cores and runs only with HOWL_SLOW=1:
+1000). It takes ~10 min on 12 cores and runs only with HOWL_SLOW=1. The combined
+product chain (class CombinedChainSweep) adds the canceller residual and an
+in-chain reverb to the shifter - c -> shift -> reverb -> gain -> delay ->
++ track -> room - and compares the canceller output c (channel 1) with the
+chain's output (channel 9); class CombinedChain is its fast subset. Per
+condition, the analysis point and flags these measurements support:
+
+    dry / canceller only        c (the mic when bypassed), --rt60
+    reverb in the chain         the chain output (validated), --rt60 --chain-rt60
+    shifter in the chain        c, --rt60 --dechirp
+    canceller+shifter+reverb    c, --rt60 --chain-rt60 --dechirp; the chain
+                                output misaligns under a shift (16/18 at 2 Hz)
+
+Both slow classes run with:
 
     HOWL_SLOW=1 python3 -m unittest tools/fixtures/test_howl_criterion.py -v
 """
@@ -390,6 +403,148 @@ def _loop(open_mic, f, gain_db, D, clip, fwd=None, howl_rms=None):
                     return mic, fb, True
                 checked = upto
     return (mic, fb, False) if howl_rms is not None else (mic, fb)
+
+
+# --------------------------------------------------------------------------
+# The combined product chain: canceller residual + shifter + in-chain reverb
+#
+#   c     = mic - F_hat * u            (loop closes through R = F - F_hat)
+#   chain = reverb(shift(c))           (the rig's channel 9; c is channel 1)
+#   u     = clip tanh(G chain[n - D] / clip) + track,   mic = voice path + F * u + noise
+
+
+class StreamFIR:
+    """A long FIR applied block by block (uniformly partitioned overlap-save, block B), stateful."""
+
+    def __init__(self, h: np.ndarray, block: int):
+        self.b = block
+        parts = -(-len(h) // block)
+        hp = np.zeros(parts * block)
+        hp[: len(h)] = h
+        spec = np.fft.rfft(np.concatenate([hp.reshape(parts, block), np.zeros((parts, block))], axis=1), axis=1)
+        self.spec_rev = spec[::-1].copy()
+        self.parts = parts
+        self.fdl = np.zeros((2 * parts, block + 1), dtype=complex)
+        self.buf = np.zeros(2 * block)
+        self.i = 0
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        b = self.b
+        self.buf[:b] = self.buf[b:]
+        self.buf[b:] = x
+        k = self.i % self.parts
+        self.fdl[k] = self.fdl[k + self.parts] = np.fft.rfft(self.buf)
+        self.i += 1
+        acc = np.einsum("pk,pk->k", self.fdl[k + 1 : k + 1 + self.parts], self.spec_rev)
+        return np.fft.irfft(acc, 2 * b)[b:]
+
+
+class ProductChain:
+    """shift then in-chain reverb, per block; records its output (the chain signal) as it goes."""
+
+    def __init__(self, shift_hz: float, block: int, n: int):
+        self.shift = Shifter(shift_hz) if shift_hz else None
+        self.reverb = StreamFIR(chain_reverb(), block)
+        self.out = np.zeros(n)
+        self.pos = 0
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        y = self.reverb(self.shift(x) if self.shift is not None else x)
+        self.out[self.pos : self.pos + len(y)] = y
+        self.pos += len(y)
+        return y
+
+
+COMBINED_SHIFTS_HZ = (2.0, 5.0)
+COMBINED_DELAYS_MS = (10, 20)
+COMBINED_PROBE_S = 80.0
+
+
+def combined_howls(name: str, gain_db: float, delay_ms: int, shift_hz: float, probe_s: float, seed: int = 77) -> bool:
+    """One reference probe: unit-RMS white near-end at c, the loop through R and the product chain, speaker
+    limited at 1000; MuTap's howl rule on c (the canceller's output, as closed_loop_sim's e)."""
+    d = int(round(delay_ms * FS / 1000))
+    v = np.random.default_rng([seed, 3]).standard_normal(int(probe_s * FS))
+    return _loop(v, residual(name), gain_db, d, 1000.0, ProductChain(shift_hz, d, len(v)), HOWL_RMS)[2]
+
+
+@functools.lru_cache(maxsize=None)
+def combined_bisected(name: str, delay_ms: int, shift_hz: float, probe_s: float = COMBINED_PROBE_S,
+                      tol_db: float = 0.05) -> float:
+    lo, hi = msg_of(residual(name)) - 10.0, msg_of(residual(name)) + 20.0
+    assert not combined_howls(name, lo, delay_ms, shift_hz, probe_s)
+    assert combined_howls(name, hi, delay_ms, shift_hz, probe_s)
+    while hi - lo > tol_db:
+        mid = 0.5 * (lo + hi)
+        lo, hi = (lo, mid) if combined_howls(name, mid, delay_ms, shift_hz, probe_s) else (mid, hi)
+    return lo
+
+
+def combined_loop(voice, track, name: str, gain_db, delay_ms: int, shift_hz: float, seed: int,
+                  noise_rms: float = 1e-4) -> tuple[np.ndarray, np.ndarray]:
+    """(c, chain) of the product chain around R, with the program as near-end."""
+    rng = np.random.default_rng([seed, 1])
+    n = len(voice)
+    d = int(round(delay_ms * FS / 1000))
+    direct = scipy.signal.fftconvolve(voice, mouth_path(rng, room_rt60(name)))[:n]
+    direct += noise_rms * rng.standard_normal(n)
+    r = residual(name)
+    open_c = direct + scipy.signal.fftconvolve(track, r)[:n]
+    chain = ProductChain(shift_hz, d, n)
+    clip = 10 ** ((msg_of(r) - msg_db(name)) / 20)  # the dry loop's headroom, as in the residual ramps
+    c, _ = _loop(open_c, r, gain_db, d, clip, chain)
+    return c, chain.out
+
+
+@functools.lru_cache(maxsize=None)
+def combined_ramp(name: str, delay_ms: int, shift_hz: float, probe_s: float = COMBINED_PROBE_S,
+                  past_db: float | None = None):
+    """10 s at the bisected limit - 20 dB, then 1 dB / 2 s to it + past_db. (voice, track, c, chain, start, ref).
+    A shorter past_db only truncates the same recording."""
+    ref = combined_bisected(name, delay_ms, shift_hz, probe_s)
+    dur = RAMP_WARMUP + (RAMP_SPAN + (SHIFT_PAST if past_db is None else past_db)) / RAMP_RATE
+    voice, track = program(dur, 100)
+    t = np.arange(len(voice)) / FS
+    start = ref - RAMP_SPAN
+    c, chain = combined_loop(voice, track, name, start + RAMP_RATE * np.maximum(t - RAMP_WARMUP, 0.0),
+                             delay_ms, shift_hz, 100)
+    return voice, track, c, chain, start, ref
+
+
+@functools.lru_cache(maxsize=None)
+def combined_fixed(name: str, delay_ms: int, shift_hz: float, kind: str, probe_s: float = COMBINED_PROBE_S):
+    """10 s at the bisected limit - 20 dB, then 30 s at it - 6 dB; kind "held" (the plain program) or
+    "gaps" (four gaps in both stems, room noise on). (voice, track, c, chain)."""
+    ref = combined_bisected(name, delay_ms, shift_hz, probe_s)
+    voice, track = program(40.0, 200 if kind == "held" else 400)
+    if kind == "gaps":
+        gate = gaps_gate(40.0, GAPS)
+        voice, track = voice * gate, track * gate
+    t = np.arange(len(voice)) / FS
+    gain = np.where(t < 10.0, ref - 20, ref - 6)
+    c, chain = combined_loop(voice, track, name, gain, delay_ms, shift_hz, 200 if kind == "held" else 400,
+                             noise_rms=1e-4 if kind == "held" else 3e-4)
+    return voice, track, c, chain
+
+
+def combined_params(name: str, bank: bool, chain_rt60: float | None = 1.5) -> hc.Params:
+    p = params(name, chain_rt60=chain_rt60)
+    p.dechirp_rates = hc.DECHIRP_BANK if bank else ()
+    p.short_pass = None
+    return p
+
+
+@functools.lru_cache(maxsize=None)
+def combined_run(name: str, delay_ms: int, shift_hz: float, point: str, bank: bool, scenario: str = "ramp",
+                 chain_rt60: float | None = 1.5, probe_s: float = COMBINED_PROBE_S,
+                 past_db: float | None = None) -> dict:
+    """Analyse c or chain of one combined scenario ("ramp", "held", "gaps")."""
+    if scenario == "ramp":
+        voice, track, c, chain, start, _ = combined_ramp(name, delay_ms, shift_hz, probe_s, past_db)
+    else:
+        voice, track, c, chain = combined_fixed(name, delay_ms, shift_hz, scenario, probe_s)
+    res = hc.analyze(c if point == "c" else chain, FS, [voice, track], combined_params(name, bank, chain_rt60))
+    return hc.apply_gain_map(res, hc.ramp_map(start, RAMP_RATE, RAMP_WARMUP)) if scenario == "ramp" else res
 
 
 def tone(n: int, t0: float, dur: float, f0: float, rate: float, amp: float) -> np.ndarray:
@@ -1054,6 +1209,141 @@ def _shift_errors(cfg: tuple[str, int, float]) -> tuple[float, float, float]:
     name, d, sh = cfg
     ref = bisected_msg(name, d, sh, SHIFT_PROBE_S)
     return ref, shift_run(name, d, sh, False)["limit_db"] - ref, shift_run(name, d, sh, True)["limit_db"] - ref
+
+
+class CombinedChain(unittest.TestCase):
+    """The product chain (canceller residual + shifter + in-chain reverb): which recording to analyse.
+
+    One configuration (synth0, 10 ms, 2 Hz) with a 10 s-probe reference, which sat 0.205 dB above the
+    80 s one (+6.787 against +6.582 dB over R's textbook MSG), ramping to it + 2 dB. Flags as the protocol
+    uses them: --rt60 the room's, --chain-rt60 1.5. The full sweep is CombinedChainSweep (HOWL_SLOW).
+    """
+
+    CFG = ("synth0", 10, 2.0)
+    PROBE = 10.0
+    PAST = 2.0  # the fast ramp stops at the reference + 2 dB (the same recording, truncated)
+
+    def test_canceller_output_tracks_the_runaway_limit(self):
+        name, d, sh = self.CFG
+        ref = combined_bisected(name, d, sh, self.PROBE)
+        res = combined_run(name, d, sh, "c", False, "ramp", 1.5, self.PROBE, self.PAST)
+        err = res["limit_db"] - ref
+        report(f"{name} {d} ms {sh:g} Hz, c: lags {[a['lag_samples'] for a in res['alignment']]}, "
+               f"limit - bisected {err:+.3f} dB, warnings {len(res['warnings'])}")
+        # Measured: -2.120 dB (-2.035 with the 20 s and the 80 s references, whose
+        # ramps start 0.09-0.2 dB lower), lags [56, 80], no warnings. Sweep at c (36 configurations): -4.531 .. +2.275 without
+        # --dechirp, -5.117 .. +0.248 with it; the bound is the sweep's.
+        self.assertEqual(res["alignment"][0]["lag_samples"], 56)
+        self.assertEqual(res["warnings"], [])
+        self.assertGreater(err, -6.0)
+        self.assertLess(err, 3.0)
+
+    def test_chain_signal_misaligns_under_a_shift(self):
+        name, d, sh = self.CFG
+        ref = combined_bisected(name, d, sh, self.PROBE)
+        res = combined_run(name, d, sh, "chain", False, "ramp", 1.5, self.PROBE, self.PAST)
+        lags = [a["lag_samples"] for a in res["alignment"]]
+        edge = [w for w in res["warnings"] if "edge" in w]
+        report(f"{name} {d} ms {sh:g} Hz, chain: lags {lags} (ratios "
+               f"{[round(a['gcc_phat_peak_to_rival'], 2) for a in res['alignment']]}), limit - bisected "
+               f"{res['limit_db'] - ref:+.3f} dB, window-edge warnings {len(edge)}")
+        # Measured: lags [-95999, -96000] at ratios 17.40 / 14.98 - a confident
+        # peak at the -2 s window edge, since a shifted recording keeps no true
+        # coherent peak against the unshifted stems - and a limit 18.963 dB low.
+        # Sweep: the voice misaligned at chain in 16 of the 18 2 Hz configurations
+        # (limits -18.845 .. -19.645 dB), in none at 5 Hz. The edge warning is
+        # what flags it; the ambiguity ratio does not.
+        self.assertGreater(abs(lags[0] - 56), FS // 10)
+        self.assertEqual(len(edge), 2)
+        self.assertLess(res["limit_db"] - ref, -10.0)
+
+    def test_false_events_at_c(self):
+        name, d, sh = self.CFG
+        held = combined_run(name, d, sh, "c", False, "held", 1.5, self.PROBE)
+        gaps = combined_run(name, d, sh, "c", False, "gaps", 1.5, self.PROBE)
+        gaps_room_only = combined_run(name, d, sh, "c", False, "gaps", None, self.PROBE)
+        report(f"{name} {d} ms {sh:g} Hz at the bisected limit - 6 dB, c: held notes {len(held['events'])} events; "
+               f"gaps {len(gaps['events'])} with --chain-rt60 1.5, {len(gaps_room_only['events'])} without")
+        # Measured: 0; 0; 37. Sweep: held 0 events in 36/36 configurations at both
+        # points, with and without --dechirp; gaps with --chain-rt60 0 events at
+        # 2 Hz (18/18), 24 events in 6 of the 18 5 Hz configurations at c (39
+        # with --dechirp; at chain 5 and 4); gaps without it 21-65 events per run
+        # at c, in every configuration.
+        self.assertEqual(held["events"], [])
+        self.assertEqual(gaps["events"], [])
+        self.assertGreater(len(gaps_room_only["events"]), 10)  # measured 37 (sweep min 21)
+
+
+def _combined_sweep_row(cfg: tuple[str, int, float]) -> dict:
+    """Everything the combined sweep measures for one configuration (a fork-pool worker)."""
+    name, d, sh = cfg
+    ref = combined_bisected(name, d, sh)
+    row = {"cfg": cfg, "ramp": {}, "held": {}, "gaps": {}, "chain_voice_lag": None, "chain_edge_warning": None}
+    for point in ("c", "chain"):
+        for bank in (False, True):
+            k = f"{point}/{'bank' if bank else 'default'}"
+            r = combined_run(name, d, sh, point, bank)
+            row["ramp"][k] = r["limit_db"] - ref
+            if point == "chain" and not bank:
+                row["chain_voice_lag"] = r["alignment"][0]["lag_samples"]
+                row["chain_edge_warning"] = any("edge" in w for w in r["warnings"])
+            for sc in ("held", "gaps"):
+                row[sc][k] = len(combined_run(name, d, sh, point, bank, sc)["events"])
+        row["gaps"][f"{point}/no-chain-rt60"] = len(combined_run(name, d, sh, point, False, "gaps", None)["events"])
+    return row
+
+
+@unittest.skipUnless(os.environ.get("HOWL_SLOW"), "set HOWL_SLOW=1 for the combined-chain sweep (parallel; ~30 min on 12 cores)")
+class CombinedChainSweep(unittest.TestCase):
+    """Nine rooms x shift 2 / 5 Hz x delay 10 / 20 ms, both analysis points, with and without --dechirp."""
+
+    def test_probe_length_convergence(self):
+        for name in ("synth0", "hall"):
+            for d in COMBINED_DELAYS_MS:
+                for sh in COMBINED_SHIFTS_HZ:
+                    vals = [combined_bisected(name, d, sh, pr) - msg_of(residual(name)) for pr in (5.0, 10.0, 20.0, 40.0, 80.0)]
+                    report(f"{name} {d} ms {sh:g} Hz: bisected - MSG_R over 5/10/20/40/80 s probes: "
+                           + ", ".join(f"{v:+.3f}" for v in vals))
+                    # Measured: 40 -> 80 s moved at most 0.117 dB (synth0 20 ms 5 Hz
+                    # +8.633 -> +8.516); 5 s read up to 0.703 dB high.
+                    self.assertLess(abs(vals[-1] - vals[-2]), 0.2)
+
+    def test_sweep(self):
+        import multiprocessing
+
+        cfgs = [(n, d, sh) for n in ALL_ROOMS for d in COMBINED_DELAYS_MS for sh in COMBINED_SHIFTS_HZ]
+        with multiprocessing.get_context("fork").Pool(min(len(cfgs), os.cpu_count() or 1)) as pool:
+            rows = pool.map(_combined_sweep_row, cfgs)
+        for row in rows:
+            report(f"{row['cfg']}: limit - bisected " + ", ".join(f"{k} {v:+.3f}" for k, v in row["ramp"].items())
+                   + f"; held {row['held']}; gaps {row['gaps']}; chain voice lag {row['chain_voice_lag']}")
+        col = lambda k: [r["ramp"][k] for r in rows]
+        for k in ("c/default", "c/bank", "chain/default", "chain/bank"):
+            report(f"{k}: median {np.median(col(k)):+.3f}, range {min(col(k)):+.3f} .. {max(col(k)):+.3f} dB")
+        # Measured (36 configurations), limit - bisected runaway limit:
+        #   c/default     median -2.056, -4.531 .. +2.275 (studio 2 Hz: +2.275, +1.229)
+        #   c/bank        median -2.099, -5.117 .. +0.248
+        #   chain/default median -3.635, -18.963 .. -0.285 (16 misaligned: ~-19)
+        #   chain/bank    median -3.635, -19.645 .. -0.285
+        self.assertLess(abs(np.median(col("c/bank")) + 2.1), 1.0)  # measured -2.099
+        self.assertGreater(min(col("c/bank")), -6.0)  # measured -5.117
+        self.assertLess(max(col("c/bank")), 1.0)  # measured +0.248
+        self.assertLess(max(col("c/default")), 3.0)  # measured +2.275
+        # Held notes at the limit - 6 dB: 0 events everywhere (measured).
+        for r in rows:
+            self.assertEqual(sum(r["held"].values()), 0, r["cfg"])
+        # Gaps: without --chain-rt60 every configuration false-triggers (21-65 per
+        # run at c, 24-57 at chain); with it, only 5 Hz configurations do (c: 6/18
+        # configurations, 24 events; 7/18, 39 with --dechirp; chain 3/18).
+        for r in rows:
+            self.assertGreater(r["gaps"]["c/no-chain-rt60"], 10, r["cfg"])  # measured min 21
+            if r["cfg"][2] == 2.0:
+                self.assertEqual(r["gaps"]["c/default"] + r["gaps"]["c/bank"], 0, r["cfg"])
+        self.assertLessEqual(sum(r["gaps"]["c/bank"] > 0 for r in rows), 12)  # measured 7
+        # Every chain misalignment carries the window-edge warning.
+        for r in rows:
+            if abs(r["chain_voice_lag"] - 58) > FS // 10:
+                self.assertTrue(r["chain_edge_warning"], r["cfg"])
 
 
 class Calibration(unittest.TestCase):
