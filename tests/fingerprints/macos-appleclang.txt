@@ -3,21 +3,18 @@
 #   Apple clang 21.0.0 (clang-2100.1.1.101), Release, split-radix float32 engine, step "Test".
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
-# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9);
-# the same 14 lines on main runs 36207009410 (197423f) and 36159717174 (edf160e, DspTap
-# 0db95b6), on different runners of the same image.
-# No local rig: CI is the only place these lines can be produced.
-FINGERPRINT fdaf float ee72bb70d63bde0c
-FINGERPRINT fd_kalman float a1bd1f147dce7f5c
-FINGERPRINT pem_afc float 54a93be2933abe4b
-FINGERPRINT postfilter float 9cb0c05e7c51222b
-FINGERPRINT nn_suppressor float 5f60f01b546dfc16
-FINGERPRINT aec_chain float 8f152782a0812c60
-FINGERPRINT aec_chain_nn float 0cd76783661adb1b
-FINGERPRINT fdaf double 80cf9cdde17d4bbc
-FINGERPRINT fd_kalman double d7a2dd8c5f0681d6
-FINGERPRINT pem_afc double 8ea029ea3372655f
-FINGERPRINT postfilter double 7ace664be98b346b
-FINGERPRINT nn_suppressor double dde5df2c8c4d9d70
-FINGERPRINT aec_chain double e8ac5afeaef9c21b
-FINGERPRINT aec_chain_nn double 658e6cbfc5d8d2b7
+# Recorded: DspTap 0c5bf59, run https://github.com/tap/MuTap/actions/runs/36263334634 (job "build-and-test", commit ae489bd, runner image macos26 20260907.0351.1).
+FINGERPRINT fdaf float 7e7817404f43f1a4
+FINGERPRINT fd_kalman float 8ae2bde631aaa0f0
+FINGERPRINT pem_afc float 3b91dbb5cf3656ea
+FINGERPRINT postfilter float a528a45259fa6699
+FINGERPRINT nn_suppressor float 2b72918c2f787376
+FINGERPRINT aec_chain float 316d55ad0e2aef85
+FINGERPRINT aec_chain_nn float 0f47c092e00009ea
+FINGERPRINT fdaf double dc4c476fc74d5a09
+FINGERPRINT fd_kalman double a5c22741fb42e1b5
+FINGERPRINT pem_afc double 63d976eefb68499b
+FINGERPRINT postfilter double 62b9bdcda03ae1f8
+FINGERPRINT nn_suppressor double 7b86e66050fd4712
+FINGERPRINT aec_chain double 81934f42ce15c5e6
+FINGERPRINT aec_chain_nn double d8f6ba75adc67394

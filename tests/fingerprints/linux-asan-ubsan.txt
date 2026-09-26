@@ -3,22 +3,18 @@
 #   RelWithDebInfo with -fsanitize=address,undefined, step "Test".
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
-# Recorded: DspTap 0c5bf59, NOT from a run of this job: it printed no lines before
-# the gate (main run 36250656223 included). These are the linux-gcc/linux-clang
-# lines, which a GCC 13.3.0 RelWithDebInfo ASan+UBSan build reproduced locally byte
-# for byte (the runner image has no clang sanitizer runtime to check locally), and
-# which the first gated run of this job, PR #64 run 36257961713, confirmed.
-FINGERPRINT fdaf float b05f67a7426ed1f7
-FINGERPRINT fd_kalman float d0dfe8c5f184d382
-FINGERPRINT pem_afc float 5183c6aacd998a43
-FINGERPRINT postfilter float 2e96c478d53c5eaa
-FINGERPRINT nn_suppressor float 60e3762dfcef9fe2
-FINGERPRINT aec_chain float 7982243bf2aab6f8
-FINGERPRINT aec_chain_nn float 9b0add89588061da
-FINGERPRINT fdaf double f9b5694359b78075
-FINGERPRINT fd_kalman double 95567d89cbd871c7
-FINGERPRINT pem_afc double 19423ce8e48b6b48
-FINGERPRINT postfilter double 7143cf725565d4ab
-FINGERPRINT nn_suppressor double 9b692f0e7ec4ae7c
-FINGERPRINT aec_chain double 8208d54a5b57198a
-FINGERPRINT aec_chain_nn double c9616eb564dfaed1
+# Recorded: DspTap 0c5bf59, run https://github.com/tap/MuTap/actions/runs/36263334634 (job "sanitizers", commit ae489bd, runner image ubuntu24 20260920.314.1).
+FINGERPRINT fdaf float 7009261e914583ed
+FINGERPRINT fd_kalman float d867be65894e59b0
+FINGERPRINT pem_afc float 1cae849baa7420db
+FINGERPRINT postfilter float b48e09bc0769e305
+FINGERPRINT nn_suppressor float a00dd02d46be5e74
+FINGERPRINT aec_chain float 3e25aa43c5427d6c
+FINGERPRINT aec_chain_nn float 03b84aa79a814f81
+FINGERPRINT fdaf double b4e380269f45fb59
+FINGERPRINT fd_kalman double a9ceb034d7cf576c
+FINGERPRINT pem_afc double 43939274dba64f5c
+FINGERPRINT postfilter double b5b26928beb2acf2
+FINGERPRINT nn_suppressor double 2cfa9ba7eb04dfee
+FINGERPRINT aec_chain double 4bdbee90f928a488
+FINGERPRINT aec_chain_nn double 74a593122218a9ca
