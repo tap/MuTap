@@ -281,6 +281,8 @@ through `tap::dsp::periodic_hann`, the identical expression (constructor
 code). Measured locally, main (`edf160e`, pin `0db95b6`) against the PR head
 on the committed toolchain/QEMU pair: every m55 and m33 row is identical
 count for count (0 instructions on all 20 rows), so nothing is re-recorded.
+The pin is DspTap `0c5bf59`, the #37 squash on DspTap `main` (the same tree
+as the PR head `63cdfdf` that #60 merged with).
 
 ## FFT backend (Arm Helium)
 
