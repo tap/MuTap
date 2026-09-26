@@ -15,7 +15,7 @@
 //     signal and the near-end source, which is the very term that biases the
 //     closed-loop estimate (see test_closed_loop.cpp) and the term PEM
 //     prewhitening exists to remove. They are COMPLEMENTARY, not
-//     alternatives - asserted below.
+//     alternatives - asserted in test_afc_decorrelation.cpp.
 //
 //   * an AUXILIARY SPEAKER FEED. A karaoke backing track is summed into the
 //     loudspeaker signal after the loop gain, and it is uncorrelated with the
@@ -25,18 +25,37 @@
 //
 // Both sit between the loop gain and the loudspeaker, so the canceller's
 // reference u is what the DAC actually plays, exactly as on the target.
-// A decorrelator's own group delay is INSIDE `forward_delay`, so a run with
-// one has the same total loop latency as a run without: the comparison
-// isolates decorrelation from the added-delay effect, which buys stable gain
-// on its own.
+//
+// LOOP DELAY. `forward_delay` is the fixed delay from the canceller's output
+// to the loudspeaker. In plain mode the loop is exactly closed_loop_sim's
+// (L = K z^-d F, so exact_msg_db(F, d) is its open-loop limit). Delay
+// modulation wobbles around d. The frequency shifter's delay does NOT come
+// out of d: it is a causal IIR whose group delay depends on frequency, so a
+// shifted loop is longer than a plain one at the same d, by 2.56 ms at
+// 100 Hz, 1.39 ms at 200 Hz, 0.94 ms at 300 Hz (the held note) and 0.29 ms
+// at 1 kHz (AfcDecorrelation.ShifterGroupDelayIsFrequencyDependent).
+// Comparisons plain vs shifted at one d therefore include that extra delay;
+// it is part of what the shifter costs a product.
+//
+// THE SHIFTER (iir_ssb_shifter, below) is a single-sideband frequency shift
+// x cos(wt) - H{x} sin(wt) with the analytic pair from an IIR allpass-pair
+// Hilbert transformer (Olli Niemitalo's 4+4 design). Image rejection of a
+// +5 Hz shift, measured by AfcDecorrelation.ShifterIsSingleSideband: 44.3 dB
+// at 30 Hz, 55.7 at 100 Hz, 44.8 at 300 Hz, 49.0 at 1 kHz, 46.8 at 5 kHz.
+// It replaced the branch's 65-tap Hamming-windowed Hilbert FIR, which was
+// partly double sideband at the held note (the anti-howl PoC's phase 0
+// review measured its image rejection at 2.5 dB at 100 Hz and 7.7 dB at
+// 300 Hz; the review's dl_iir.h is where these mechanics come from).
 
 #pragma once
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
 #include <numbers>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "closed_loop.h"
@@ -44,11 +63,55 @@
 namespace mutap_test {
 
     /// What the forward path does to the loop signal before it reaches the
-    /// loudspeaker. Every mode preserves the TOTAL loop delay.
+    /// loudspeaker.
     enum class forward_mode {
         plain,           ///< gain and delay only (matches closed_loop_sim)
-        shift,           ///< single-sideband frequency shift, `shift_hz`
+        shift,           ///< SSB frequency shift by `shift_hz` (IIR allpass-pair Hilbert)
         delay_modulation ///< delay wobbled +-`depth`/2 samples at `rate_hz`
+    };
+
+    /// Single-sideband frequency shifter: the analytic pair from Olli
+    /// Niemitalo's 4+4 IIR allpass-pair Hilbert transformer (two chains of
+    /// four 2nd-order allpasses in z^-2; the quadrature chain is delayed one
+    /// sample), rotated by the caller's phase: out = re cos(theta) - im
+    /// sin(theta). A positive phase ramp shifts every partial UP. Causal, with
+    /// the frequency-dependent group delay the file comment gives. Double
+    /// precision, test-side only (the library's shifter is a separate item).
+    class iir_ssb_shifter {
+      public:
+        /// Advance one sample: x in, the shifted sample out.
+        double process(double x, double theta) {
+            const double re = chain(0, x);
+            const double im = m_im_delay;
+            m_im_delay      = chain(1, x);
+            return re * std::cos(theta) - im * std::sin(theta);
+        }
+
+      private:
+        /// Chain 0 gives the in-phase output, chain 1 (then one sample of
+        /// delay) the quadrature one. Each section: y = c^2 (x + y[n-2]) - x[n-2].
+        static constexpr std::array<std::array<double, 4>, 2> k_allpass = {{
+            {0.4021921162426, 0.8561710882420, 0.9722909545651, 0.9952884791278},
+            {0.6923878, 0.9360654322959, 0.9882295226860, 0.9987488452737},
+        }};
+
+        double chain(size_t c, double x) {
+            for (size_t s = 0; s < 4; ++s) {
+                const double c2 = k_allpass[c][s] * k_allpass[c][s];
+                const double y  = c2 * (x + m_out[c][s][1]) - m_in[c][s][1];
+                m_in[c][s][1]   = m_in[c][s][0];
+                m_in[c][s][0]   = x;
+                m_out[c][s][1]  = m_out[c][s][0];
+                m_out[c][s][0]  = y;
+                x               = y;
+            }
+            return x;
+        }
+
+        /// States [chain][section][x or y at n-1, n-2].
+        std::array<std::array<std::array<double, 2>, 4>, 2> m_in{};
+        std::array<std::array<std::array<double, 2>, 4>, 2> m_out{};
+        double                                              m_im_delay = 0.0;
     };
 
     /// Loop with a decorrelator and an auxiliary speaker feed. Same contract
@@ -60,7 +123,7 @@ namespace mutap_test {
         struct config {
             std::vector<Sample> feedback_path;          ///< F: true room path (RIR)
             size_t              block_size      = 64;   ///< must match the canceller's
-            size_t              forward_delay   = 128;  ///< TOTAL mic-in to speaker-out, samples
+            size_t              forward_delay   = 128;  ///< d: canceller out to speaker, samples (see above)
             double              forward_gain_db = 0.0;  ///< K
             double              speaker_limit   = 1000; ///< hard clip on |u|
             double              sample_rate     = 48000.0;
@@ -83,32 +146,20 @@ namespace mutap_test {
             , m_u_work(m_cfg.feedback_path.size() - 1 + m_cfg.block_size, Sample(0))
             , m_u(m_cfg.block_size)
             , m_y(m_cfg.block_size)
-            , m_e(m_cfg.block_size) {
+            , m_e(m_cfg.block_size)
+            , m_aux(m_cfg.block_size, Sample(0)) {
             if (m_cfg.feedback_path.empty()) {
                 throw std::invalid_argument("decorrelated_loop: empty feedback path");
             }
-            // The decorrelators read the error history both sides of the
-            // nominal delay (a Hilbert half-length, or half the modulation
-            // depth), and only samples older than one block exist yet.
+            // Delay modulation reads the error history up to depth/2 past the
+            // nominal delay, and only samples older than one block exist yet.
+            // The IIR shifter is causal and needs no lookahead.
             const size_t lookahead =
-                (m_cfg.mode == forward_mode::shift) ? k_hilbert_half : static_cast<size_t>(0.5 * m_cfg.depth + 1.0);
+                (m_cfg.mode == forward_mode::delay_modulation) ? static_cast<size_t>(0.5 * m_cfg.depth + 1.0) : 0;
             if (m_cfg.forward_delay < m_cfg.block_size + lookahead) {
                 throw std::invalid_argument("decorrelated_loop: forward_delay too short for this mode");
             }
             set_forward_gain_db(m_cfg.forward_gain_db);
-
-            // Odd-length Hilbert FIR, Hamming windowed; its group delay is
-            // k_hilbert_half samples, taken out of forward_delay.
-            m_hilbert.assign(2 * k_hilbert_half + 1, 0.0);
-            for (int k = -static_cast<int>(k_hilbert_half); k <= static_cast<int>(k_hilbert_half); ++k) {
-                if (k % 2 == 0) {
-                    continue; // the even taps of a Hilbert transformer are zero
-                }
-                const int    idx = k + static_cast<int>(k_hilbert_half);
-                const double w =
-                    0.54 - 0.46 * std::cos(2.0 * std::numbers::pi * idx / (2.0 * static_cast<double>(k_hilbert_half)));
-                m_hilbert[static_cast<size_t>(idx)] = (2.0 / (std::numbers::pi * k)) * w;
-            }
         }
 
         void set_forward_gain_db(double k_db) {
@@ -128,9 +179,15 @@ namespace mutap_test {
 
             for (size_t i = 0; i < b; ++i) {
                 const long long t = m_t + static_cast<long long>(i);
-                double          u = m_gain * forward_sample(t);
+                // The forward signal is rounded to Sample before the gain,
+                // as the loudspeaker path of a Sample-typed chain would be.
+                const auto fwd = static_cast<Sample>(forward_sample(t));
+                double     u   = m_gain * static_cast<double>(fwd);
                 if (m_cfg.aux != nullptr && !m_cfg.aux->empty()) {
-                    u += m_cfg.aux_gain * static_cast<double>((*m_cfg.aux)[static_cast<size_t>(t) % m_cfg.aux->size()]);
+                    const double a =
+                        m_cfg.aux_gain * static_cast<double>((*m_cfg.aux)[static_cast<size_t>(t) % m_cfg.aux->size()]);
+                    m_aux[i] = static_cast<Sample>(a);
+                    u += a;
                 }
                 if (!(u >= -lim)) { // catches NaN too
                     u = -lim;
@@ -177,11 +234,13 @@ namespace mutap_test {
 
         const std::vector<Sample>& error_block() const { return m_e; }
         const std::vector<Sample>& speaker_block() const { return m_u; }
+        const std::vector<Sample>& mic_block() const { return m_y; }
+        /// The aux feed's contribution to the last speaker block (zeros without one).
+        const std::vector<Sample>& aux_block() const { return m_aux; }
 
       private:
         static constexpr size_t k_history      = 8192; ///< power of two; >> forward_delay
         static constexpr size_t k_history_mask = k_history - 1;
-        static constexpr size_t k_hilbert_half = 32; ///< Hilbert FIR group delay, samples
 
         double e_at(long long t) const {
             return static_cast<double>(m_e_hist[static_cast<size_t>(t) & k_history_mask]);
@@ -193,9 +252,9 @@ namespace mutap_test {
             return (1.0 - f) * e_at(i) + f * e_at(i + 1);
         }
 
-        /// The loop signal as it reaches the loudspeaker at absolute time t:
-        /// delayed by forward_delay in every mode, decorrelated in some.
-        double forward_sample(long long t) const {
+        /// The loop signal as it reaches the loudspeaker at absolute time t
+        /// (called once per sample, in order: the shifter carries state).
+        double forward_sample(long long t) {
             const double d = static_cast<double>(m_cfg.forward_delay);
             switch (m_cfg.mode) {
             case forward_mode::delay_modulation: {
@@ -206,19 +265,10 @@ namespace mutap_test {
                 return e_interpolated(static_cast<double>(t) - d + mod);
             }
             case forward_mode::shift: {
-                // Analytic pair about the centre tap, then rotate: the
-                // SSB shift x(t)cos(wt) - H{x}(t)sin(wt).
-                const long long c  = t - static_cast<long long>(d);
-                double          im = 0.0;
-                for (size_t k = 0; k < m_hilbert.size(); ++k) {
-                    if (m_hilbert[k] != 0.0) {
-                        im +=
-                            m_hilbert[k] * e_at(c + static_cast<long long>(k_hilbert_half) - static_cast<long long>(k));
-                    }
-                }
+                const double x = e_at(t - static_cast<long long>(d));
                 const double theta =
                     2.0 * std::numbers::pi * m_cfg.shift_hz * static_cast<double>(t) / m_cfg.sample_rate;
-                return e_at(c) * std::cos(theta) - im * std::sin(theta);
+                return m_shifter.process(x, theta);
             }
             case forward_mode::plain:
             default:
@@ -236,7 +286,8 @@ namespace mutap_test {
         std::vector<Sample> m_u;
         std::vector<Sample> m_y;
         std::vector<Sample> m_e;
-        std::vector<double> m_hilbert;
+        std::vector<Sample> m_aux; ///< the aux feed as played, this block
+        iir_ssb_shifter     m_shifter;
     };
 
     /// loop_howls() for decorrelated_loop (same 40 dB-over-unit-RMS rule).
