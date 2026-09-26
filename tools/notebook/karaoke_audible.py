@@ -24,7 +24,8 @@ for every configuration, as the criterion recommends with a shifter.
 Printed per configuration and delay: each seed's audible limit and the
 ramp's own runaway gain, both as dB over the dry loop's phase-exact
 open-loop MSG (exact_msg_db), and their medians. The "dry" configuration
-(no canceller) is the audible open-loop reference.
+(no canceller) is the audible open-loop reference. --merge prints the same
+table from the --json records of earlier invocations (e.g. two seed batches).
 
 Build the dump first:
     cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMUTAP_BUILD_KARAOKE_DUMP=ON
@@ -90,16 +91,52 @@ def one_run(dump: str, work: pathlib.Path, name: str, delay: int, seed: int, mat
     howl = json.loads(pathlib.Path(str(prefix) + ".howl.json").read_text())
     return dict(name=name, delay=delay, seed=seed, material=material, exact=meta["exact_msg_db"],
                 max_f=meta["theoretical_msg_db"], runaway=meta["runaway_db"], limit=howl.get("limit_db"),
-                warnings=howl.get("warnings", []))
+                limit_plain=plain_pass_limit(howl), warnings=howl.get("warnings", []))
+
+
+def plain_pass_limit(howl: dict) -> float | None:
+    """Gain at the first qualifying event the plain long pass found (no dechirp rate): a diagnostic
+    beside the criterion's limit, which also counts events only a dechirped pass found."""
+    evs = sorted((e for e in howl.get("events", []) if "long" in e.get("passes", [])), key=lambda e: e["onset_s"])
+    return evs[0].get("gain_at_onset_db") if evs else None
 
 
 def fmt(v: float | None) -> str:
     return "  none" if v is None else f"{v:+6.2f}"
 
 
+def print_table(runs: list, material: str) -> None:
+    delays = sorted({r["delay"] for r in runs})
+    names = [n for n in CONFIGS if any(r["name"] == n for r in runs)]
+    print(f"\nmaterial {material}; dB over exact_msg_db (dry loop, phase-exact); "
+          "audible = howl criterion, runaway = the ramp's 40 dB rule; per seed in seed order")
+    for d in delays:
+        for n in names:
+            rs = sorted((r for r in runs if r["name"] == n and r["delay"] == d), key=lambda r: r["seed"])
+            if not rs:
+                continue
+            aud = [None if r["limit"] is None else r["limit"] - r["exact"] for r in rs]
+            run = [None if r["runaway"] is None else r["runaway"] - r["exact"] for r in rs]
+            med_a = statistics.median([a for a in aud if a is not None]) if any(a is not None for a in aud) else None
+            med_r = statistics.median([a for a in run if a is not None]) if any(a is not None for a in run) else None
+            warn = sum(len(r["warnings"]) for r in rs)
+            seeds = ",".join(str(r["seed"]) for r in rs)
+            plain = [r.get("limit_plain") for r in rs]
+            note = None
+            if any(p is not None and a is not None and abs(p - r["exact"] - a) > 1e-9
+                   for p, a, r in zip(plain, aud, rs)):
+                note = ("         (first event the plain long pass found, per seed: "
+                        + " ".join(fmt(None if p is None else p - r["exact"]) for p, r in zip(plain, rs)) + ")")
+            print(f"d={d:4d} {n:11s} seeds {seeds:14s} audible " + " ".join(fmt(a) for a in aud)
+                  + f"  median {fmt(med_a)} | runaway " + " ".join(fmt(a) for a in run) + f"  median {fmt(med_r)}"
+                  f" | exact {rs[0]['exact']:+.3f} max|F| {rs[0]['max_f']:+.3f} | warnings {warn}")
+            if note:
+                print(note)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--dump", required=True, help="path to the karaoke_ramp_dump executable")
+    ap.add_argument("--dump", help="path to the karaoke_ramp_dump executable")
     ap.add_argument("--work", default="karaoke_audible_runs", help="directory for the runs (WAVs, JSON)")
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--seeds", default="2,22,42")
@@ -107,7 +144,22 @@ def main(argv=None) -> None:
     ap.add_argument("--material", default="held", choices=["held", "ar"])
     ap.add_argument("--configs", default=",".join(CONFIGS))
     ap.add_argument("--json", default=None, help="write every run's record here")
+    ap.add_argument("--merge", nargs="+", default=None, metavar="JSON",
+                    help="print the table from earlier runs' --json records (no runs; later files win)")
     args = ap.parse_args(argv)
+
+    if args.merge:
+        by_key = {}
+        for path in args.merge:
+            for r in json.loads(pathlib.Path(path).read_text()):
+                if "limit_plain" not in r:  # records from before the column existed: read the criterion's JSON
+                    hj = pathlib.Path(args.work) / f"{r['material']}_{r['name']}_d{r['delay']}_s{r['seed']}.howl.json"
+                    r["limit_plain"] = plain_pass_limit(json.loads(hj.read_text())) if hj.exists() else None
+                by_key[(r["name"], r["delay"], r["seed"], r["material"])] = r
+        print_table([r for r in by_key.values() if r["material"] == args.material], args.material)
+        return
+    if not args.dump:
+        ap.error("--dump is required unless --merge is given")
 
     work = pathlib.Path(args.work)
     work.mkdir(parents=True, exist_ok=True)
@@ -123,20 +175,7 @@ def main(argv=None) -> None:
                 for s in seeds]
         for f in concurrent.futures.as_completed(futs):
             runs.append(f.result())
-
-    print(f"\nmaterial {args.material}; dB over exact_msg_db (dry loop, phase-exact); "
-          "audible = howl criterion, runaway = the ramp's 40 dB rule")
-    for d in delays:
-        for n in names:
-            rs = sorted((r for r in runs if r["name"] == n and r["delay"] == d), key=lambda r: r["seed"])
-            aud = [None if r["limit"] is None else r["limit"] - r["exact"] for r in rs]
-            run = [None if r["runaway"] is None else r["runaway"] - r["exact"] for r in rs]
-            med_a = statistics.median([a for a in aud if a is not None]) if any(a is not None for a in aud) else None
-            med_r = statistics.median([a for a in run if a is not None]) if any(a is not None for a in run) else None
-            warn = sum(len(r["warnings"]) for r in rs)
-            print(f"d={d:4d} {n:11s} audible " + " ".join(fmt(a) for a in aud) + f"  median {fmt(med_a)}"
-                  f" | runaway " + " ".join(fmt(a) for a in run) + f"  median {fmt(med_r)}"
-                  f" | exact {rs[0]['exact']:+.3f} max|F| {rs[0]['max_f']:+.3f} | warnings {warn}")
+    print_table(runs, args.material)
     if args.json:
         pathlib.Path(args.json).write_text(json.dumps(runs, indent=1))
 
