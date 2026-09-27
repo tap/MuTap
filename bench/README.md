@@ -145,7 +145,7 @@ python3 scripts/icount.py --target m55 \
 ```
 
 Targets: `m55` (MPS3 AN547, CMSIS Helium FFT), `m33` (MPS2+ AN505 — the
-Raspberry Pi Pico 2 W class, the split-radix FFT engine, no MVE) and `hexagon`.
+Raspberry Pi Pico 2 W class, DspTap's srdif FFT engine, no MVE) and `hexagon`.
 
 **Seeding / re-recording:** a new target starts with an empty dict, so the
 job reports each scenario's count and fails with `NO BASELINE`. Capture
@@ -293,9 +293,10 @@ as the PR head `63cdfdf` that #60 merged with).
 The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on
 the bare-metal M55 profile (`docs/optimization.md`) — ~42% fewer instructions
 on every layer than the previous Ooura numbers. The ratchet therefore gates the
-deployed backend. The split-radix float32 path is still available on the M55 with
+deployed backend. The srdif float32 path is still available on the M55 with
 `-DTAP_DSP_FFT_CMSIS=OFF` (kept alive by a dedicated CI leg, not by this ratchet).
 The **hexagon** baselines are unaffected by that swap — Hexagon stays on the
-scalar split-radix engine (the vendored Ooura C until DspTap `b08f6c6`, its
-bit-identical C++20 port from DspTap `bbfa48d`; the port's counts are the
-2026-09-23 rows above).
+scalar engine (the vendored Ooura C until DspTap `b08f6c6`, its
+bit-identical C++20 port from DspTap `bbfa48d`, whose counts are the
+2026-09-23 rows above, and DspTap's srdif engine from `72977aa`, whose counts
+are the tap/DspTap#42 rows above).
