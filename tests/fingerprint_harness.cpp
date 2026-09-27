@@ -37,10 +37,11 @@
 // sanitizer build) agree on all 14, and the two M55 legs on the seven double
 // rows only (the float rows go through different FFT engines). The '#'
 // header names the float32 FFT backend the binary was compiled with
-// (backend=cmsis|vdsp|split_radix; "ooura" in logs from pins up to DspTap
-// 8350f13, when the default engine was Ooura's C or its bit-identical port)
-// and the ABI tag DspTap's fft.h compiled under
-// (abi=fft_cmsis|fft_vdsp|fft_split_radix, tap::dsp::k_real_fft_abi_tag), so
+// (backend=cmsis|vdsp|srdif; "ooura" in logs from pins up to DspTap
+// 8350f13, when the default engine was Ooura's C or its bit-identical port,
+// and "split_radix" from then until tap/DspTap#42 replaced the port) and the
+// ABI tag DspTap's fft.h compiled under
+// (abi=fft_cmsis|fft_vdsp|fft_srdif, tap::dsp::k_real_fft_abi_tag), so
 // a log is self-describing and each emulated leg asserts which engine it
 // ran. Neither is part of the compared FINGERPRINT lines.
 //
@@ -149,7 +150,7 @@ namespace {
 #elif defined(TAP_DSP_FFT_ACCELERATE)
     constexpr const char* k_backend = "vdsp";
 #else
-    constexpr const char* k_backend = "split_radix";
+    constexpr const char* k_backend = "srdif";
 #endif
 
     /// xorshift32 -> uniform in [-1, 1), exactly representable in float:

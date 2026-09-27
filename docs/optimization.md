@@ -15,7 +15,7 @@ The real FFT is the single hottest kernel in the chain. Profiling the M55
 Ooura float FFT (measured on the vendored Ooura C, `fftsg_float.c`, at that
 pin; since replaced by the bit-identical C++20 port `fft/split_radix.h` — routed
 to at DspTap `bbfa48d`, Stage 2b, with the C leaving the shipping tree at Stage
-2c, `8350f13`) — but not nearly
+2c, `8350f13` — and the port by DspTap's srdif engine at tap/DspTap#42) — but not nearly
 as well as Arm's hand-tuned CMSIS-DSP kernels. Measured, per forward transform,
 instructions under QEMU:
 
@@ -59,36 +59,40 @@ epsilon). Two things make that acceptable as the M55 default:
 
 So the backend is **default ON for the bare-metal M55 embedded profile** — the
 deployment target — and OFF everywhere else. The scalar float32 path (the
-split-radix engine, "Ooura" in older logs) remains one flag away
+srdif engine; "split_radix" and, earlier, "Ooura" in older logs) remains one flag away
 (`-DTAP_DSP_FFT_CMSIS=OFF`) and is kept alive by a dedicated CI leg.
 (History: the option was renamed from `MUTAP_FFT_CMSIS` to `TAP_DSP_FFT_CMSIS`
 when the FFT moved to DspTap, commit `14116f0`; the leg kept the old name, which
 CMake ignored, so from that commit until tap/MuTap#50 it silently rebuilt CMSIS.
 The job now asserts the typed cache entry `TAP_DSP_FFT_CMSIS:BOOL=OFF` — an
 unknown `-D` lands as `:UNINITIALIZED`, so a rename fails the leg — and the
-harness binary that ran prints `backend=split_radix abi=fft_split_radix` —
-`backend=ooura` up to the DspTap `8350f13` pin — which the leg greps for.)
+harness binary that ran prints `backend=srdif abi=fft_srdif` —
+`backend=split_radix abi=fft_split_radix` up to the DspTap `0c5bf59` pin,
+`backend=ooura` up to `8350f13` — which the leg greps for.)
 
 ### How it is wired
 
 The FFT lives in DspTap (`submodules/dsptap`, `tap::dsp`; `include/mutap/fft.h`
 is a re-export). Its `fft.h` routes `basic_real_fft<float>` through CMSIS when
-`TAP_DSP_FFT_CMSIS` is defined; the CMake option of that name defaults ON for
-the bare-metal M55 profile (`CMAKE_SYSTEM_NAME=Generic` + arm) and OFF
+`TAP_DSP_FFT_CMSIS` is defined; the CMake option of that name defaults ON
+where the compiler targets Helium with floating point (DspTap probes
+`__ARM_FEATURE_MVE & 2` since tap/DspTap#41; before that, every bare-metal
+Arm profile, which is why MuTap's M33 toolchain file pins it OFF) and OFF
 everywhere else, so desktop, the Max/C-ABI host builds (including Apple Silicon
 arm64), and Hexagon are untouched. Everywhere the option is off, and for
-`double` always, `basic_real_fft` is the split-radix engine
-(`fft/split_radix.h`, DspTap's C++20 port of the vendored Ooura C, routed since
-DspTap `bbfa48d`, Stage 2b; the C left the shipping tree at Stage 2c, `8350f13`,
-and DspTap Decision D6, tap/DspTap#36 (`0db95b6`), deleted the reference copy its parity
-gate compiled; the bit identity is now held by pinned fingerprints,
-DspTap's `tests/test_fft_split_radix_fingerprint.cpp`).
+`double` always, `basic_real_fft` is DspTap's srdif engine (`fft/srdif.h`, a
+split-radix DIF engine written from the literature, pinned by DspTap's
+`tests/test_fft_srdif_fingerprint.cpp`; routed since the `72977aa` pin,
+tap/DspTap#42). Before it: from DspTap `bbfa48d` (Stage 2b) the C++20 port of
+the vendored Ooura C, `fft/split_radix.h`, bit-identical to it; the C left the
+shipping tree at Stage 2c, `8350f13`, and DspTap Decision D6, tap/DspTap#36
+(`0db95b6`), deleted the reference copy its parity gate compiled.
 Since DspTap Stage 4 (tap/DspTap#35, pinned here from `0db95b6`) the engine is
 a template parameter, `basic_real_fft<Sample, Engine>`, whose default is what
 the option selects; the CMSIS engine is `detail::cmsis_real_fft_f32` in DspTap's
 `fft/backends/cmsis.h`.
 The wrapper re-presents CMSIS in **Ooura's exact numeric contract** so nothing
-downstream changes and every intermediate spectrum matches the split-radix
+downstream changes and every intermediate spectrum matches the srdif
 build to float epsilon:
 
 - **Sign convention.** CMSIS uses the engineering convention exp(−i2π/N);
@@ -103,21 +107,22 @@ build to float epsilon:
   those powers of two. Since Stage 4 DspTap states each engine's range as
   `k_min_size` / `k_max_size` with the predicate `supports_size(n)`, and the
   constructor's check is a debug-only precondition: in a release build an
-  unsupported N is undefined behaviour, on the M55 a HardFault at the first
-  transform (N = 4 did exactly that before Stage 4). So every MuTap class that
+  unsupported N is undefined behaviour, with no fault promised (DspTap
+  measured silently wrong spectra at N = 4, 16 and 8192 on the M55;
+  tap/DspTap#41). So every MuTap class that
   turns a configuration number into an FFT size checks it first and throws
   `std::invalid_argument` (`fft_detail::checked_fft_size` in
   `include/mutap/fft.h`): under CMSIS the cancellers take block sizes
   16 … 2048 (N = 2B), the residual suppressor needs
   `analysis_blocks * block_size` in 32 … 4096 (the default 8 blocks allow
   block sizes up to 512), and a learned-suppressor model's hop must be in
-  16 … 2048. `double`, and float on every other build, runs the split-radix engine
+  16 … 2048. `double`, and float on every other build, runs the srdif engine
   (4 … 2^30). `tests/test_fft_engine_contract.cpp` pins each path on every leg.
 - **ABI tag.** Because `basic_real_fft<float>`'s layout follows the selected
   engine, so does the layout of every MuTap class that holds one by value;
   those five classes are defined inside DspTap's inline namespace for the
   engine (`tap::mu::fft_cmsis::partitioned_fdaf<float>` on the M55,
-  `tap::mu::fft_split_radix::…` elsewhere), so two images built with
+  `tap::mu::fft_srdif::…` elsewhere), so two images built with
   different engines cannot share one weak definition. Lookup is unchanged
   (`include/mutap/fft.h` has the full statement).
 
@@ -138,13 +143,14 @@ Forcing the option ON on a non-Arm processor is a hard error (Helium/NEON only).
 ### What is validated
 
 - **DspTap's `tests/test_fft_backend.cpp`** (`fft_backend_parity/cmsis`,
-  typed rows beside `fft_backend_parity/split_radix` in one binary since Stage
+  typed rows beside the default engine's in one binary since Stage
   4) asserts the CMSIS forward output matches the reference float engine
   bin-for-bin (<5e-6 relative) and that the round trip reproduces the input,
   at both certified sizes (512, 2048). The reference is
-  `detail::split_radix_rdft<float>`, the port that is bit-identical to Ooura's
-  `rdft_f`, called directly; until DspTap `bbfa48d` (Stage 2b) it was the raw
-  `rdft_f` of `fftsg_float.c`. Since DspTap's embedded legs landed the suite runs under
+  `detail::srdif_rdft<float>`, called directly (since tap/DspTap#42; before
+  it `detail::split_radix_rdft<float>`, the port bit-identical to Ooura's
+  `rdft_f`, and until DspTap `bbfa48d`, Stage 2b, the raw `rdft_f` of
+  `fftsg_float.c`). Since DspTap's embedded legs landed the suite runs under
   QEMU on DspTap's own `cortex-m55` leg, where the CMSIS backend is on
   (`test_fft_backend.cpp` is in `tap_dsp_tests`, DspTap `tests/CMakeLists.txt`);
   before that, the float32 battery below was the only CMSIS gate anywhere and
@@ -179,8 +185,8 @@ scalar (0 HVX), so an FFT backend would be the biggest single lever there too �
 but there is no free HVX FFT: Qualcomm's is a proprietary SDK component, and
 HVX-float autovectorization does not fire on the strided packed-complex loop
 shape. Hexagon stays on the scalar Ooura-lineage engine (the vendored C when
-this was measured; from DspTap `bbfa48d` the bit-identical split-radix port)
-until an HVX FFT is available.
+this was measured; from DspTap `bbfa48d` the bit-identical split-radix port;
+from the `72977aa` pin DspTap's srdif engine) until an HVX FFT is available.
 
 ### Refreshing the vendored CMSIS subset
 

@@ -31,10 +31,11 @@ jobs:
             capi: ON
             fingerprint_leg: linux-clang
           # macOS gates on the float32 backend MuTap actually uses, which is
-          # the SPLIT-RADIX engine (DspTap's bit-identical C++20 port of Ooura's
-          # rdft) — the root CMakeLists turns DspTap's Apple vDSP default back
-          # off, with the measurements behind that decision recorded there and
-          # in docs/itu-compliance.md (tap/MuTap#31). No flag needed here: the
+          # DspTap's SRDIF engine (its split-radix DIF engine; until
+          # tap/DspTap#42 a C++20 port of Ooura's rdft) — the root CMakeLists
+          # turns DspTap's Apple vDSP default back off, with the measurements
+          # behind that decision recorded there and in docs/itu-compliance.md
+          # (tap/MuTap#31). No flag needed here: the
           # gate follows the product's default rather than overriding it, so
           # this leg cannot drift away from what ships.
           - name: macOS AppleClang
@@ -236,8 +237,9 @@ jobs:
           path: fingerprints-out/m55-cmsis.txt
           if-no-files-found: ignore
 
-      # Second leg keeps the split-radix float32 fallback alive (DspTap's C++20
-      # port of Ooura's rdft; the "Ooura" leg in logs up to DspTap 8350f13):
+      # Second leg keeps the split-radix float32 fallback alive (DspTap's srdif
+      # engine; until tap/DspTap#42 its C++20 port of Ooura's rdft, and the
+      # "Ooura" leg in logs up to DspTap 8350f13):
       # same emulated battery with DspTap's backend option forced OFF. The option was renamed from
       # MUTAP_FFT_CMSIS to TAP_DSP_FFT_CMSIS when the FFT moved to DspTap
       # (14116f0); this leg kept the old name, which CMake ignored, so from that
@@ -273,7 +275,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           scripts/fingerprints.sh check m55-split-radix --test-dir build-split-radix
-          grep -q 'backend=split_radix abi=fft_split_radix' fingerprints-out/m55-split-radix.log
+          grep -q 'backend=srdif abi=fft_srdif' fingerprints-out/m55-split-radix.log
 
       - name: Upload the re-recorded fingerprints (m55-split-radix)
         if: ${{ failure() }}
@@ -324,7 +326,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           scripts/fingerprints.sh check m33 --test-dir build
-          grep -q 'backend=split_radix abi=fft_split_radix' fingerprints-out/m33.log
+          grep -q 'backend=srdif abi=fft_srdif' fingerprints-out/m33.log
 
       - name: Upload the re-recorded fingerprints (m33)
         if: ${{ failure() }}
@@ -403,7 +405,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           scripts/fingerprints.sh check hexagon --test-dir build
-          grep -q 'backend=split_radix abi=fft_split_radix' fingerprints-out/hexagon.log
+          grep -q 'backend=srdif abi=fft_srdif' fingerprints-out/hexagon.log
 
       - name: Upload the re-recorded fingerprints (hexagon)
         if: ${{ failure() }}
