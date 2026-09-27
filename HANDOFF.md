@@ -156,6 +156,17 @@ carries the measured numbers; this is the map:
    number in `book/` that the test suite or notebook doesn't measure, no
    patch or attribute described that doesn't exist. If a chapter needs a
    feature, build the feature in the same change.
+9. **Slow tests: `MUTAP_SLOW=1`.** A C++ measurement sweep too long for
+   every ctest run is a gtest case that calls `GTEST_SKIP()` unless the
+   environment has `MUTAP_SLOW=1` (the C++ twin of the fixture tools'
+   `HOWL_SLOW=1`; documented in `tests/CMakeLists.txt`). It is discovered
+   and listed like any test and reports Skipped by default. It lives in a
+   host-only file when it uses threads (the bare-metal targets have none),
+   prints the tables it measures and records each row's median with
+   `RecordProperty`; the gated claims it backs quote those tables. First
+   user: `tests/test_afc_decorrelation_sweep.cpp`
+   (`MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='AfcDecorrelationSweep.*'`,
+   1:16:10 wall on 11 threads of the Intel Mac).
 
 ## What's next (ranked)
 
@@ -207,6 +218,78 @@ carries the measured numbers; this is the map:
      +11.6…+13.4, "the room where its NLMS incarnation destabilizes").
      Updating `tools/notebook/build_afc_demo.py` means re-executing the
      notebook, so it is left for that pass.
+9. **Karaoke / in-cabin AFC (2026-09-26; [`docs/karaoke-afc.md`](docs/karaoke-afc.md)).**
+   Landed: the decorrelated loop with an IIR allpass-pair SSB shifter
+   (`tests/support/decorrelated_loop.h`), the shared like-for-like ASG
+   measurement (`tests/support/karaoke_asg.h`), the gated suite
+   (`test_afc_decorrelation.cpp`, 2:46-2:56 serial) and the `MUTAP_SLOW` sweep, and the
+   audible-limit tooling (`tools/notebook/karaoke_ramp_dump.cpp`, option
+   `MUTAP_BUILD_KARAOKE_DUMP`; `tools/notebook/karaoke_audible.py`).
+   **Decided (Tim):** canceller-first. At S1 (10 ms) and S3 (20 ms) the
+   default chain is the canceller alone; its audible ASG on the held note in
+   the band-limited cabin is the headline (medians of five seeds: +16.16 at
+   S1, +10.81 at S3; runaway on the same ramp +20.71 / +21.05). The
+   frequency shift is a studied, material-dependent option that phase 1's
+   blind listening test on real singing decides: it raises the bisected
+   runaway limit at S1 in all five rooms (+5.01 to +9.05 per-seed medians
+   at 5 Hz) but on the bare held note it LOWERS the audible limit (+6.03 at
+   2 Hz, +4.69 at 5 Hz at S1), a worst case the doc labels as such; with
+   the backing track the shifted chains are audible only at runaway. The
+   2.7 ms "held note is the wall, the shift rescues it" story is a
+   regression row. Open:
+   - **Aux-only at S1 is audible at +3.90 (median), unexplained.** Four of
+     five seeds flag between +1.64 and +6.63, one only at runaway (+21.27);
+     at S3 the same feed is audible only at runaway (+24.03), and with a
+     shift added it is at runaway at S1 too. The runaway limit (+23.51)
+     is not the issue; what the criterion flags that early is.
+   - **Ramp vs bisected runaway differ by protocol.** A slowly ramped,
+     continuously adapting canceller holds more than one converged at
+     MSG − 6 and then probed (canceller, S1: ramp +20.71 against bisected
+     +11.63 at 40 s; S3 +21.05 / +18.31). Neither is wrong; the bisection
+     is what the tests gate, the ramp is what a room measurement sees.
+   - **Dechirp-only early events.** The criterion's limit can come from an
+     event only a dechirped pass found: 2 Hz, S1, seed 2 reads −17.46
+     (0.55 s at 5.23 kHz, pass long@−500) where the plain long pass first
+     fires at +6.79 (the driver prints both); the median is +6.03 either way.
+     Recorded as a note, not a criterion change.
+   - **The S3 shift direction is room-dependent** (the cabin loses −1.41 at
+     40 s; studio / rehearsal / mt5 / mt9 +1.85 / +0.09 / +1.85 / +6.24 at
+     20 s) and is not gated.
+   - Not re-landed from the branch's first doc (its numbers came from
+     scratch harnesses that are not in the repo): the sung-melody and
+     chord materials, the "what did not help" rows (filter length, LP order,
+     analysis window, Kalman transition), the pitch search stopping at
+     120 Hz (`speech_predictor::max_lag` 400 at 48 kHz) and a predictor
+     whose short-term stage is a template parameter. Each needs a measurement
+     under these rules before it is claimed again.
+10. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
+   The per-bin spectral reverb shaped from F̂ is commit `8abe958` on the
+   local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
+   bundle); it did not land. Measured during the karaoke landing with a
+   scratch harness (cabin band-limited, held note, wet 0.15, RT60 1 s,
+   PEM + FD-Kalman, like-for-like ASG, five seeds; not reproducible from
+   this repo until the class returns):
+   - **Shaped-from-F̂ loses to flat everywhere.** 40 s probes: S1 dry
+     +11.66 / flat +2.81 / shaped −27.66 (three seeds at the −30 bracket
+     floor); S3 +18.34 / +9.20 / +7.09; at the branch's 5.3 ms +5.45 /
+     +6.45 / +6.27. At S1 in studio / rehearsal / mt5 / mt9 (20 s) shaped
+     reads +0.92 / −1.60 / +6.21 / +3.28 against flat +7.77 / +6.48 /
+     +12.77 / +14.36. The branch's "shaped ≥ flat" came from 0.8 s probes
+     (at S1 then: shaped +12.29, flat +7.48, dry +10.41).
+   - **Reverb-with-canceller bisection had not converged by 40 s:** the
+     20 s -> 40 s step still moved the medians by -25.73 (shaped, S1) to
+     +0.24 dB (flat, 5.3 ms), so no in-loop reverb claim was assertable.
+   - **Flat is unsafe open loop:** −18.05 to −24.61 dB against the dry
+     room (cabin S1 −24.61 at a 160 s probe; studio −18.05, rehearsal
+     −20.62, mt5 −20.86, mt9 −21.62 at 80 s).
+   - **Hypothesis, untested:** the shaping's per-bin allowance (up to
+     `shape_max` = 4, i.e. wet gain ×4 and decay time ×4 in the bins where
+     |F̂| is weakest) builds high-Q resonances where the canceller's
+     estimate is poorest, which the loop then finds.
+   - **Fix when it returns:** it holds a `basic_real_fft<Sample>` by value
+     but is not defined inside `tap::mu::inline TAP_DSP_FFT_ABI` and does
+     not pass its FFT size through `fft_detail::checked_fft_size` (working
+     note 6 (a) and (b)); pin it in `test_fft_engine_contract.cpp`.
 
 ## The next effort (Rev 4): AEC objects + echo chapter
 
