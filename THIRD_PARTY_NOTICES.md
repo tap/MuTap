@@ -9,48 +9,65 @@ exception those files grant (quoted in its section below) leaves the compiled
 code's license free.
 
 If you redistribute binaries built from MuTap, you are responsible for
-carrying forward the notices of whichever components you link in (notably the
-Ooura FFT, whose derived port compiles into every consumer via the header
-`tap::dsp` provides).
+carrying forward the notices of whichever components you link in (notably,
+for builds from DspTap pins before tap/DspTap#42, the Ooura FFT, whose derived
+port compiled into every consumer via the header `tap::dsp` provides; see
+below).
 
 ---
 
 ## Vendored (committed into this repository)
 
-### Ooura FFT — the C++20 port in `submodules/dsptap/include/tap/dsp/fft/split_radix.h`
+### Ooura FFT — license record only (no code since the DspTap `72977aa` pin)
 Takuya Ooura's General Purpose FFT Package (split-radix "Fast Version III").
-What MuTap ships is not the C: since DspTap Stage 2c (tap/DspTap#32, pin
-`8350f13`) the library is header-only, and every floating-point transform MuTap
-runs on its default engine is DspTap's C++20 port of `rdft`,
-`submodules/dsptap/include/tap/dsp/fft/split_radix.h` — a statement-for-statement
-transliteration that landed beside the vendored C at Stage 2a (tap/DspTap#28),
-bit-identical to it in both precisions (held by DspTap's parity gate against
-the C until Decision D6, and since then by the pinned fingerprints that gate
-measured, `submodules/dsptap/tests/test_fft_split_radix_fingerprint.cpp`), and that
-`basic_real_fft` has routed to since Stage 2b (tap/DspTap#31, `bbfa48d`; this
-repository's fingerprint harness held all 14 lines, float rows included,
-across every bump since). The double profile always runs the port; the float
-profile runs it everywhere except under DspTap's two opt-in accelerated
-engines (CMSIS-DSP on the bare-metal Cortex-M55, below; Apple vDSP, which
-MuTap's root `CMakeLists.txt` turns off by default). It is compiled into every
-consumer through the header `tap::dsp` provides; no `MuTap::fft` or
-`tap_dsp_fft` target exists in a MuTap build (the latter appears only under
-DspTap's `TAP_DSP_FFT_CMSIS` and carries only Arm's Apache-2.0 CMSIS-DSP
-objects).
+**What MuTap ships today carries no code from it, in DspTap's maintainer's
+judgement.** Since the DspTap pin `72977aa` (tap/DspTap#42) every
+floating-point transform MuTap runs on its default engine is DspTap's srdif
+engine, `submodules/dsptap/include/tap/dsp/fft/srdif.h` — a split-radix DIF
+engine written from the published literature under a recorded clean-room
+procedure, MIT — and the fixed-point engine beside it had its real post-pass
+re-derived from the literature at tap/DspTap#39. The double profile always
+runs srdif; the float profile runs it everywhere except under DspTap's two
+accelerated engines (CMSIS-DSP on the bare-metal Cortex-M55, below; Apple
+vDSP, which MuTap's root `CMakeLists.txt` turns off by default). It is
+compiled into every consumer through the header `tap::dsp` provides; no
+`MuTap::fft` or `tap_dsp_fft` target exists in a MuTap build (the latter
+appears only under DspTap's `TAP_DSP_FFT_CMSIS` and carries only Arm's
+Apache-2.0 CMSIS-DSP objects). `submodules/dsptap/NOTICE.md` is the canonical
+statement of that judgement, of the clean-room records behind it
+(`submodules/dsptap/docs/fft-design.md`) and of its limits; it is a
+maintainer judgement, not legal advice.
 
-The port is a **derivative work, not the ORIGINAL package**. It carries
-`SPDX-License-Identifier: LicenseRef-Ooura AND MIT` — Ooura's notice verbatim
-as the governing terms for the derived portion, MIT for the wrapper and
-DspTap's additions — plus a line stating that it is a derivative work with the
-modification copyright. Its redistribution relies on the **modification grant**
-of the notice ("modify this code for any purpose"), since distribution of a
-modified derivative is not expressly granted; `submodules/dsptap/NOTICE.md` is
-the canonical statement of that position and of its reasoning.
+**History, for binaries built from older MuTap trees.** MuTap's own history
+pins DspTap trees that did carry code from the package, and a binary built
+from one of them carries it too:
+
+- MuTap trees before `14116f0` (which moved the FFT to DspTap) vendor
+  Ooura's C under `third_party/ooura/`.
+- DspTap pins before Stage 2c (`8350f13`, tap/DspTap#32) compile Ooura's C
+  itself (`fftsg.c` and DspTap's single-precision wrapper around it).
+- Pins from Stage 2b (`bbfa48d`, tap/DspTap#31; from 2b to 2c beside the C)
+  up to and including `0c5bf59` route every floating transform through DspTap's C++20 port of
+  `rdft`, `include/tap/dsp/fft/split_radix.h` — a statement-for-statement
+  transliteration, bit-identical to the C. The port was a **derivative work,
+  not the ORIGINAL package**; it carried
+  `SPDX-License-Identifier: LicenseRef-Ooura AND MIT` (Ooura's notice verbatim
+  as the governing terms for the derived portion, MIT for the wrapper and
+  DspTap's additions), and its redistribution relied on the **modification
+  grant** of the notice ("modify this code for any purpose"), since
+  distribution of a modified derivative is not expressly granted.
+- Pins from Stage 3b (`b08f6c6`, tap/DspTap#27) up to and including
+  `0c5bf59` also carry a fixed-point real post-pass transcribed from the
+  package (`fft/fixed_point.h`), which MuTap does not instantiate.
+- Pins from `72977aa` on carry only the license record below.
+
+DspTap's `NOTICE.md` ("Which trees carry what") gives the same history by
+DspTap tree.
 
 - **Notice**, verbatim from `submodules/dsptap/LICENSES/LicenseRef-Ooura.txt`
   (the upstream package readme's copyright section; the readme itself is kept
   permanently at `submodules/dsptap/third_party/ooura/readme.txt` as the
-  license record for the derived code):
+  license record for the older trees above):
 
 ```text
 Copyright:
@@ -60,16 +77,6 @@ Copyright:
     You may use, copy, modify this code for any purpose and
     without fee. You may distribute this ORIGINAL package.
 ```
-
-**Not shipped, not present:** Ooura's C (`fftsg.c`, and DspTap's
-single-precision wrapper around it) is compiled into nothing a MuTap build
-produces, on any target, and has not been since the Stage 2c pin; since DspTap
-Decision D6 (tap/DspTap#36, `0db95b6`) it exists nowhere in the tree either — the
-reference copy DspTap kept under `tests/reference/ooura/` for its parity gate
-was deleted once MuTap and MuTap-Max both pinned a Stage 2c tree. What remains
-of the package is the derived port above, shipped under `LicenseRef-Ooura AND
-MIT`, and DspTap's license record for it: `third_party/ooura/readme.txt` and
-`LICENSES/LicenseRef-Ooura.txt`.
 
 ### Toy dataset fixture — `tools/ml/kws/fixtures/toy/`
 The wake-word dataset builder's bring-up corpus (wake-word plan §6 M4a): four

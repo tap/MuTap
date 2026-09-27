@@ -38,13 +38,14 @@ algorithmically complete. What exists today:
 - `mutap::basic_real_fft<Sample>` — DspTap's real FFT (`tap::dsp`, re-exported
   by [`include/mutap/fft.h`](include/mutap/fft.h)) for float and double
   (`mutap::real_fft`, `mutap::real_fft32`): Ooura's packed spectrum layout and
-  sign convention, run by the split-radix engine (DspTap's C++20 port of
-  Ooura's `rdft`, bit-identical to the C) and locked down by DspTap's tests.
+  sign convention, run by DspTap's srdif engine (a split-radix DIF engine
+  written from the literature; until tap/DspTap#42 a C++20 port of Ooura's
+  `rdft`) and locked down by DspTap's tests.
   On the bare-metal Cortex-M55 the float32 transform runs a vendored CMSIS-DSP
   Helium FFT instead (~42% fewer chain instructions; FFT sizes 32 … 4096, which
   every MuTap constructor checks); Apple's vDSP is available on macOS but off
   in MuTap by default (root `CMakeLists.txt`); double always stays on the
-  split-radix engine, the golden model. See
+  srdif engine, the golden model. See
   [`docs/optimization.md`](docs/optimization.md).
 - `mutap::partitioned_fdaf<Sample>` — partitioned-block frequency-domain
   adaptive filter (overlap-save, per-bin NLMS update, optional gradient
@@ -389,9 +390,9 @@ battery.
 
 ```
 include/mutap/       the library (header-only; umbrella header mutap.h)
-submodules/dsptap/   DspTap submodule: the shared FFT (the header-only split-radix
-                     port under include/tap/dsp/fft/; its Ooura readme at
-                     third_party/ooura/readme.txt — see THIRD_PARTY_NOTICES.md)
+submodules/dsptap/   DspTap submodule: the shared FFT (the header-only srdif
+                     engine under include/tap/dsp/fft/; see
+                     THIRD_PARTY_NOTICES.md)
 tests/               GoogleTest suite (fetched at configure time)
 tools/capi/          C ABI shared library for FFI consumers (notebooks)
 tools/notebook/      notebook builders + the ITU measurement dump (C++)

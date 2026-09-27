@@ -6,13 +6,15 @@
 // The real FFT used to live here as a vendored copy of Ooura's C with a
 // wrapper. It now lives in DspTap (tap::dsp), consumed via the
 // submodules/dsptap submodule and shared with the rest of the family:
-// header-only, one numeric contract (Ooura's packing, exp(+i) sign and
-// unnormalized inverse) over an engine selected per build. The double profile
-// always runs the split-radix engine (tap/dsp/fft/split_radix.h, DspTap's
-// C++20 port of Ooura's rdft, bit-identical to the C it replaced); the float
+// header-only, one numeric contract (the packing, exp(+i) sign and
+// unnormalized inverse Ooura's package defined) over an engine selected per
+// build. The double profile always runs DspTap's srdif engine
+// (tap/dsp/fft/srdif.h, a split-radix DIF kernel written from the
+// literature; until tap/DspTap#42 a C++20 port of Ooura's rdft); the float
 // profile runs the same engine unless the build selects CMSIS-DSP Helium
-// (TAP_DSP_FFT_CMSIS, the default on the bare-metal Cortex-M55; FFT sizes
-// 32 ... 4096 only) or Apple vDSP (TAP_DSP_FFT_ACCELERATE, which MuTap's root
+// (TAP_DSP_FFT_CMSIS, on by default where the compiler targets Helium with
+// floating point, i.e. the bare-metal Cortex-M55; FFT sizes 32 ... 4096
+// only) or Apple vDSP (TAP_DSP_FFT_ACCELERATE, which MuTap's root
 // CMakeLists.txt turns off by default; see there). This header keeps the
 // historical include path (`mutap/fft.h`) and the unqualified names
 // (`real_fft`, `real_fft32`, `basic_real_fft`) working inside tap::mu, and
@@ -48,7 +50,7 @@ namespace tap::mu {
     //
     //     namespace tap::mu::inline TAP_DSP_FFT_ABI { ... }
     //
-    // (TAP_DSP_FFT_ABI is fft_split_radix, fft_cmsis or fft_vdsp, set by
+    // (TAP_DSP_FFT_ABI is fft_srdif, fft_cmsis or fft_vdsp, set by
     // tap/dsp/fft.h), which puts the engine in every mangled name and changes
     // nothing else: an inline namespace's members are members of tap::mu for
     // lookup, so `tap::mu::partitioned_fdaf<float>` and every unqualified use
@@ -56,7 +58,7 @@ namespace tap::mu {
     // aec_chain and aec_chain_nn are not tagged themselves: their Canceller
     // and Post are template arguments, so the tag reaches their mangled names
     // through the arguments. The double instantiations carry the tag too
-    // (the tag keys on the float default; double always runs the split-radix
+    // (the tag keys on the float default; double always runs the srdif
     // engine), which costs nothing but a longer name.
     //
     // THE RULE IS TRANSITIVE. The hazard belongs to any class whose object
@@ -68,7 +70,7 @@ namespace tap::mu {
     // defined inside the tag (or take the embedder as a template argument,
     // as aec_chain does). Holders of the double profiles only are exempt:
     // the tag is keyed on the float default, and double always runs the
-    // split-radix engine, so their layout is the same in every build (the
+    // srdif engine, so their layout is the same in every build (the
     // C ABI's MutapFdaf / MutapAfc / MutapAec in tools/capi, the ITU dump,
     // and MuTap-Max's externals, whose `engine` structs hold <double>
     // instances behind a unique_ptr, are all of this kind — nothing there
@@ -111,7 +113,7 @@ namespace tap::mu {
 /// string literal.
 #define MUTAP_FFT_SIZE_RANGES                                                                                           \
     " is not an FFT size this build supports (basic_real_fft::supports_size: the float engine is " TAP_DSP_FFT_ABI_NAME \
-    ", " MUTAP_FFT_FLOAT_RANGE "; double runs split-radix, 4 ... 2^30; CMSIS-DSP on the"                                \
+    ", " MUTAP_FFT_FLOAT_RANGE "; double runs srdif, 4 ... 2^30; CMSIS-DSP on the"                                      \
     " Cortex-M55 takes 32 ... 4096)"
 
 // The literals above restate DspTap's numbers; these keep them honest.
@@ -128,7 +130,7 @@ static_assert(tap::dsp::basic_real_fft<float>::k_min_size == 4
 #else
 static_assert(tap::dsp::basic_real_fft<float>::k_min_size == 4
                   && tap::dsp::basic_real_fft<float>::k_max_size == (std::size_t{1} << 30),
-              "MUTAP_FFT_FLOAT_RANGE states the split-radix range as 4 ... 2^30");
+              "MUTAP_FFT_FLOAT_RANGE states the srdif range as 4 ... 2^30");
 #endif
 
 // Inside the tag: the check's code depends on the selected engine's range.
@@ -144,11 +146,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// config-error convention). Without it a size outside the engine's
         /// range reaches basic_real_fft's constructor, whose
         /// precondition is a debug-only assertion: in a release build that is
-        /// undefined behaviour, and under CMSIS-DSP on the Cortex-M55 a
-        /// HardFault at the first transform.
+        /// undefined behaviour, with no fault promised (under CMSIS-DSP on
+        /// the Cortex-M55, DspTap measured silently wrong spectra at N = 4,
+        /// 16 and 8192; tap/DspTap#41).
         ///
         /// The ranges (basic_real_fft<Sample>::k_min_size / k_max_size, powers
-        /// of two): split-radix (double always; float by default) 4 ... 2^30;
+        /// of two): srdif (double always; float by default) 4 ... 2^30;
         /// vDSP (float, TAP_DSP_FFT_ACCELERATE) 4 ... 2^20; CMSIS-DSP (float,
         /// TAP_DSP_FFT_CMSIS, the Cortex-M55 default) 32 ... 4096. What a
         /// MuTap block size maps to: N = 2 * block_size for the cancellers,
@@ -163,7 +166,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// first version that formatted the size with std::to_string grew
         /// the one-TU Cortex-M33 ratchet workloads past GCC's
         /// large-unit-insns budget, which then rationed inlining inside the
-        /// split-radix engine (+0.37 % on fdkf and shadow, no MuTap loop
+        /// split-radix port of the time (+0.37 % on fdkf and shadow, no MuTap loop
         /// changed; bench/README.md).
         /// @param n       the FFT size the caller is about to construct
         /// @param message the exception text, a literal

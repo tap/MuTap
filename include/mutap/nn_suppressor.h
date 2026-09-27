@@ -75,7 +75,7 @@ namespace tap::mu {
 
 // The ABI tag (mutap/fft.h): nn_suppressor holds a basic_real_fft<Sample> by
 // value, so its layout follows the build's float FFT engine, and it is defined
-// inside DspTap's inline namespace for that engine (fft_split_radix /
+// inside DspTap's inline namespace for that engine (fft_srdif /
 // fft_cmsis / fft_vdsp).
 namespace tap::mu::inline TAP_DSP_FFT_ABI {
 

@@ -7,18 +7,20 @@ project(MuTap VERSION 0.1.0 LANGUAGES C CXX)
 # ------------------------------------------------------------------------------
 # Shared real FFT (DspTap), formerly vendored here (include/mutap/fft.h +
 # third_party/{ooura,cmsis-dsp}). Now consumed from the tap/dsptap submodule as
-# tap::dsp: header-only, one numeric contract (Ooura's), with the engine chosen
-# per build. double always runs the split-radix engine, DspTap's C++20 port of
-# Ooura's rdft (bit-identical to the C it replaced); float runs the same engine
-# except under CMSIS-DSP Helium, which DspTap turns on for the bare-metal
-# Cortex-M55 (TAP_DSP_FFT_CMSIS; FFT sizes 32 ... 4096), or Apple vDSP
+# tap::dsp: header-only, one numeric contract (Ooura's packing, sign and
+# scale), with the engine chosen per build. double always runs DspTap's srdif
+# engine (fft/srdif.h, a split-radix DIF engine written from the literature
+# that replaced DspTap's C++20 port of Ooura's rdft at tap/DspTap#42); float
+# runs the same engine except under CMSIS-DSP Helium, which DspTap turns on for the bare-metal
+# Cortex-M55 (TAP_DSP_FFT_CMSIS, on where the compiler targets Helium with
+# floating point; FFT sizes 32 ... 4096), or Apple vDSP
 # (TAP_DSP_FFT_ACCELERATE), which MuTap turns off below. Override with
 # -DTAP_DSP_FFT_CMSIS=OFF / -DTAP_DSP_FFT_ACCELERATE=ON.
 #
-# APPLE float32 USES THE SPLIT-RADIX ENGINE, NOT vDSP — DspTap defaults vDSP ON
+# APPLE float32 USES THE SRDIF ENGINE, NOT vDSP — DspTap defaults vDSP ON
 # for Apple and MuTap deliberately turns it back off. Two measured reasons
 # (tap/MuTap#31, measured when the scalar engine was still the vendored Ooura
-# C, to which today's split-radix port is bit-identical):
+# C; "Ooura" below is that engine, which srdif replaced):
 #
 #   1. Accuracy. On spectra with exactly-empty bins — an on-bin tone, which is
 #      what the G.168 tone rows drive the chain with — the vDSP kernel selected

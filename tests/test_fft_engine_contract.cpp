@@ -33,7 +33,7 @@
 // range and requires construction to succeed exactly where
 // basic_real_fft<Sample>::supports_size says so, in both profiles; the rows
 // the plan names (16 and 8192 rejected under CMSIS, accepted by the
-// split-radix engine) are stated explicitly per build. What each path maps
+// srdif engine) are stated explicitly per build. What each path maps
 // to an FFT size:
 //     partitioned_fdaf, partitioned_fdkf  N = 2 * block_size
 //     pem_afc                             N = 2 * fdaf.block_size (its own gate,
@@ -78,7 +78,7 @@ namespace {
     static_assert(k_declared_in_tag<float>, "every float FFT embedder is defined inside the ABI tag");
     static_assert(k_declared_in_tag<double>, "every double FFT embedder is defined inside the ABI tag");
 
-    constexpr const char* k_all_tags[] = {"fft_split_radix", "fft_cmsis", "fft_vdsp"};
+    constexpr const char* k_all_tags[] = {"fft_srdif", "fft_cmsis", "fft_vdsp"};
 
     template <typename T>
     void expect_only_this_builds_tag() {
@@ -188,7 +188,7 @@ namespace {
     }
 
     /// Block sizes 4 ... 4096: FFT sizes 8 ... 8192 for the cancellers,
-    /// below and above the CMSIS range and inside the split-radix one.
+    /// below and above the CMSIS range and inside the srdif one.
     std::vector<std::size_t> block_sweep() {
         std::vector<std::size_t> b;
         for (std::size_t n = 4; n <= 4096; n *= 2) {
@@ -265,9 +265,9 @@ TEST(FftEngineContract, LearnedSuppressorHopIsGatedBySupportsSize) {
 }
 
 // The plan's rows, stated per build rather than read from the predicate: the
-// double profile always runs the split-radix engine (4 ... 2^30); the float
+// double profile always runs the srdif engine (4 ... 2^30); the float
 // profile runs CMSIS-DSP (32 ... 4096) on the Cortex-M55 leg, vDSP
-// (4 ... 2^20) under TAP_DSP_FFT_ACCELERATE, the split-radix engine elsewhere.
+// (4 ... 2^20) under TAP_DSP_FFT_ACCELERATE, the srdif engine elsewhere.
 TEST(FftEngineContract, ConfiguredSizesThisBuildRejects) {
     static_assert(fft<double>::k_min_size == 4 && fft<double>::k_max_size == (std::size_t{1} << 30));
     EXPECT_TRUE(fdaf_accepts<double>(8));    // N = 16
