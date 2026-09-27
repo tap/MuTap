@@ -656,11 +656,12 @@ all green on the host CI legs) — with one backend carved out below.
 
 Precision is not the only axis the float32 path varies over: the float32
 real FFT has three backends, and "float32" alone does not name a
-configuration. The certified numbers above are measured on **Ooura**
+configuration. The certified numbers above were measured on **Ooura**
 (Linux GCC, Linux Clang, Windows MSVC, **and macOS on both architectures** —
 see below) and on **CMSIS Helium** and its **Ooura fallback** on the
 Cortex-M55 leg — which together cover every deployment target that ships
-today. All are deterministic across processes, which is the property that
+today — and the battery re-checks them on Ooura's successor, **srdif**,
+from the DspTap `72977aa` pin (glossary below). All are deterministic across processes, which is the property that
 makes a single run of a row count as evidence at all.
 
 **Glossary — "Ooura".** Wherever this document (and the `backend=ooura`
@@ -678,6 +679,25 @@ by this repository's fingerprint harness at the bump (all 14 lines, float
 rows included, unchanged), so the certified rows below are the same numbers
 on either side of that SHA; the word is kept rather than scrubbed so each
 row stays traceable to the backend it was measured on.
+
+**srdif, from the DspTap `72977aa` pin (tap/DspTap#42).** The port was
+replaced by DspTap's srdif engine, a split-radix DIF engine written from the
+literature, in both precisions; every floating output bit changed, so the
+float32 rows are **not** the same numbers across that pin (the harness
+prints `backend=srdif abi=fft_srdif` from it on). Measured at the bump, the
+whole typed ITU battery at 0c5bf59 against 72977aa (Linux GCC, Release): every
+double row reads the same to two decimals; the float32 rows move by
+−0.9 … +0.8 dB, in both directions, and every gate holds except one:
+`ITU_EchoStability` at 48 kHz, 2.68 → 3.37 dB against the 3 dB target. That
+reading is rounding noise, not an engine property: a float32 FFT computed in
+double and rounded once per output reads 3.57, and twelve seeds of random
+±1-ulp output perturbation on it read 2.72 … 3.57 dB (median 3.03) at
+48 kHz and 3.75 … 4.51 at 16 kHz. Its float column therefore became the
+first float gate to differ from the double one: 4.0 dB at 48 kHz and 5.0 at
+16 kHz, above every draw and ≥ 1 dB inside the 6 dB requirement, with the
+48 kHz float32 row a target miss (T) (`tests/test_itu_echo.cpp` has the
+numbers). The certified table above is the double column and did not
+move.
 
 **On Apple, MuTap uses Ooura for float32, not vDSP** — DspTap defaults vDSP
 ON for Apple and MuTap's root `CMakeLists.txt` turns it back off. The
@@ -754,11 +774,15 @@ in double — they are measurement instrumentation, not the DUT. The
 (exactly the deployment path: the converter hands the float32 core
 double-sourced audio at the ADC) and a zero-copy pass-through for
 double (so the certified double gates are provably unchanged). The
-per-precision gate tables (`prec_gate`) carry a column each; today the
-float column equals the double column because float32 meets the same
-gate — the strongest statement available, not a loosened one. Any row
-that ever needed a looser-but-still-compliant float gate would pin the
-ITU requirement and be called out here.
+per-precision gate tables (`prec_gate`) carry a column each; the float
+column equals the double column wherever float32 meets the same gate —
+the strongest statement available, not a loosened one. A row that needs a
+looser-but-still-compliant float gate is called out here. One does, since
+the DspTap srdif bump: `ITU_EchoStability` (float 4.0 / 5.0 dB against
+double 3.0 / 4.5; requirement 6), whose float32 reading is rounding noise
+around the 3 dB target (above, "srdif, from the DspTap `72977aa` pin").
+Its float gate is set above the measured noise distribution rather than at
+the requirement, so it still catches a real regression.
 
 `tests/test_float32.cpp` remains the on-target (M55/Hexagon) float32
 gate battery — the headline rows run in the emulated selection where the
