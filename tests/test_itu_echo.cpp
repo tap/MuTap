@@ -19,6 +19,9 @@
 //   ITU_EchoLevel cab/studio  -76.4 / -85.7       -81.0 / -101.2 dBm0(A)
 //   ITU_EchoStability (worst) 2.75 dB             4.02 dB (target 3: miss,
 //                                                  at 74..85 dB attenuation)
+//     at float32 (srdif FFT)  3.37 dB (target 3:      4.05 dB
+//                             miss; rounding noise,
+//                             see the row's comment)
 //   ITU_ConvergenceQuiet      33.6 / 47.8 dB      34.1 / 45.4 dB (the
 //                             600 ms half-time target is missed at both
 //                             rates — the low-band cap's sustained
@@ -140,6 +143,20 @@ namespace {
     // target missed by 1.0 dB at attenuation depths of 74..85 dB, where
     // the variation is the meter reading the suppressor floor; the
     // requirement is met with 2.3 dB to spare (gate at 4.5).
+    //
+    // FLOAT32 COLUMN (the first float gate that differs from the double
+    // one): 4.0 at 48 kHz, 5.0 at 16 kHz, because at float32 this reading is
+    // rounding noise around the 3 dB target, not an engine property.
+    // Measured on the DspTap srdif bump (72977aa), worst of the three levels:
+    // srdif 3.37 dB at 48 kHz, 4.05 at 16 kHz; the port it replaced read
+    // 2.68 / 4.47. A float FFT computed in double and rounded once per
+    // output reads 3.57 / 3.88, and twelve seeds of random +-1-ulp output
+    // perturbation on that FFT read 2.72 .. 3.57 (median 3.03, 6 of 12 over
+    // 3.0) at 48 kHz and 3.75 .. 4.51 at 16 kHz. So any float32 FFT sits at a
+    // coin flip against 3.0 at 48 kHz, and the float 48 kHz row misses the
+    // target (T). The gates sit above every draw (3.57, 4.51) with >= 0.43 dB
+    // to spare and >= 1 dB inside the 6 dB requirement. The double column is
+    // unchanged (its readings did not move at the bump).
     TYPED_TEST(itu_echo, EchoStability) {
         for (const auto& rs : required_rates()) {
             compliance_dut<TypeParam>         c(chain_config<TypeParam>(rs), rs.block);
@@ -168,7 +185,7 @@ namespace {
                     amin           = std::min(amin, a);
                 }
                 measure<TypeParam>("EchoStability", rs, amax - amin);
-                EXPECT_LE(amax - amin, expected<TypeParam>({{3.0, 4.5}, {3.0, 4.5}}, rs))
+                EXPECT_LE(amax - amin, expected<TypeParam>({{3.0, 4.5}, {4.0, 5.0}}, rs))
                     << "fs " << rs.fs << " level " << lvl;
             }
         }
