@@ -680,7 +680,7 @@ rows included, unchanged), so the certified rows below are the same numbers
 on either side of that SHA; the word is kept rather than scrubbed so each
 row stays traceable to the backend it was measured on.
 
-**srdif, from the DspTap `72977aa` pin (tap/DspTap#42).** The port was
+**srdif, from the DspTap `72977aa` pin (tap/DspTap#42; pinned here at `d9c1e33`, which adds tap/DspTap#44's Hexagon tuning and moves no output bit on the Linux GCC host the battery was measured on).** The port was
 replaced by DspTap's srdif engine, a split-radix DIF engine written from the
 literature, in both precisions; every floating output bit changed, so the
 float32 rows are **not** the same numbers across that pin (the harness

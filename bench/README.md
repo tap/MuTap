@@ -298,5 +298,5 @@ deployed backend. The srdif float32 path is still available on the M55 with
 The **hexagon** baselines are unaffected by that swap — Hexagon stays on the
 scalar engine (the vendored Ooura C until DspTap `b08f6c6`, its
 bit-identical C++20 port from DspTap `bbfa48d`, whose counts are the
-2026-09-23 rows above, and DspTap's srdif engine from `72977aa`, whose counts
-are the tap/DspTap#42 rows above).
+2026-09-23 rows above, and DspTap's srdif engine from `72977aa`, tuned for
+Hexagon at tap/DspTap#44 (`d9c1e33`), whose counts are the srdif rows above).
