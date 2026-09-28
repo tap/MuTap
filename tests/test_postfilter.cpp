@@ -34,8 +34,8 @@
 //   convergence from cold start (CSS -16 dBm0, 35 ms meters):
 //     ERL 43.2 dB by 600 ms, 46.9 by 1200, 55.3 by 2000, 60.6 by 5000
 //   comfort noise (Hoth at -46 dBm0 near end, CSS -16 dBm0 far end):
-//     level delta -1.20 dB; band spectrum deviation <= 1.69 dB;
-//     noise pumping 3.3 dB; DT-onset build-up 20.9 ms (gain_release
+//     level delta -1.21 dB; band spectrum deviation <= 1.48 dB;
+//     noise pumping 3.4 dB; DT-onset build-up 15.8 ms (gain_release
 //     0.85; 0.9 measured 26.0 ms against the switching rows' 25 ms
 //     margin target, which is what set the default)
 //
@@ -313,8 +313,8 @@ namespace {
     // ITU_ComfortNoiseLevel (+1/-2.5 dB target), ITU_ComfortNoiseSpectrum
     // (half-mask: +-6 dB 200-800 Hz, +-5 to 2 kHz, +-3 above) and
     // ITU_NoisePump* (<= 5 dB target): Hoth noise at -46 dBm0 in the near
-    // end, far-end CSS bursts. Measured: level delta -1.20 dB, worst band
-    // deviation 1.69 dB, pumping 3.3 dB.
+    // end, far-end CSS bursts. Measured: level delta -1.21 dB, worst band
+    // deviation 1.48 dB, pumping 3.4 dB.
     TEST(ItuChain, ComfortNoiseMatchesFloor) {
         chain_kalman                      c(aec_config<chain_kalman>());
         typename echo_sim<double>::config sc;
@@ -405,7 +405,7 @@ namespace {
     }
 
     // Switching build-up target <= 25 ms: near-end onset mid-double-talk
-    // reaches within 3 dB of its settled send level in 20.9 ms (measured).
+    // reaches within 3 dB of its settled send level in 15.8 ms (measured).
     TEST(ItuChain, NearEndBuildUpTime) {
         chain_kalman                      c(aec_config<chain_kalman>());
         typename echo_sim<double>::config sc;
