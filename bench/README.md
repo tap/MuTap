@@ -288,6 +288,66 @@ count for count (0 instructions on all 20 rows), so nothing is re-recorded.
 The pin is DspTap `0c5bf59`, the #37 squash on DspTap `main` (the same tree
 as the PR head `63cdfdf` that #60 merged with).
 
+**2026-09-28 — DspTap d9c1e33 (the srdif engine, tap/DspTap#39 … #44), tap/MuTap#66.**
+Reason: DspTap's float FFT moved from the C++20 port of Ooura's package to
+DspTap's clean-room srdif engine (#42, pin `72977aa`) and then had that engine
+tuned for clang/Hexagon (#44, pin `d9c1e33`). At `72977aa` this ratchet read
+m33 −4.4 … −5.4 % and hexagon **+12.1 … +13.0 %** on the FFT-bound scenarios
+(run [36353001224](https://github.com/tap/MuTap/actions/runs/36353001224)),
+so the bump was held and #44 was done first, to DspTap's "must not regress" bar:
+DspTap's own hexagon key now reads −7.6 / −5.9 / −3.2 % against the port on
+`rfft_f32_512` / `rfft_f32_2048` / `rfft_f64_512`. Measured here at `d9c1e33`:
+every hexagon and m33 scenario is below its committed count, eight of ten on
+each key beyond the −3 % band. Improvement, re-recorded so the gate stays
+tight; the m55 rows (CMSIS Helium, no srdif on that key's FFT path) move by at
+most 6,183 instructions (±0.005 %) and are re-recorded with the others so all
+three keys sit at +0.00 % on one run. Counts taken from the ratchet job of the
+PR's `push` run
+[36367854503](https://github.com/tap/MuTap/actions/runs/36367854503)
+(head `0eea6e2`). Toolchain/QEMU: as in the 2026-09-23 record (m33 and m55
+`arm-none-eabi-gcc 13.2.1 (15:13.2.rel1-2)`, `qemu-system-arm 8.2.2
+(1:8.2.2+ds-0ubuntu1.18)`; hexagon
+`clang+llvm-19.1.5-cross-hexagon-unknown-linux-musl`, `qemu-hexagon` built
+from `qemu-8.2.2.tar.xz` with `--enable-plugins`). `main SHA`: **pending**
+(the counts cannot exist on `main` before the pin does). Cross-check: the m33
+and m55 workloads rebuilt and counted locally on the same toolchain/QEMU pair
+reproduce all 20 counts exactly; hexagon has no count-exact local rig (a local
+`qemu-hexagon` reads a fixed per-process offset from CI) and is confirmed by the
+PR's next ratchet run.
+
+| key | scenario | before | after | delta |
+|---|---|---:|---:|---:|
+| m55 | chain_16k | 360,469,416 | 360,474,046 | +0.00 % |
+| m55 | chain_48k | 417,305,870 | 417,313,588 | +0.00 % |
+| m55 | fdkf_16k | 80,854,249 | 80,857,344 | +0.00 % |
+| m55 | fdkf_48k | 139,974,824 | 139,981,007 | +0.00 % |
+| m55 | nn_suppressor_16k | 571,653,908 | 571,652,879 | −0.00 % |
+| m55 | nn_suppressor_48k | 202,250,798 | 202,245,974 | −0.00 % |
+| m55 | shadow_16k | 51,274,158 | 51,275,709 | +0.00 % |
+| m55 | shadow_48k | 51,279,122 | 51,280,673 | +0.00 % |
+| m55 | suppressor_16k | 228,296,924 | 228,296,908 | −0.00 % |
+| m55 | suppressor_48k | 224,696,602 | 224,696,586 | −0.00 % |
+| m33 | chain_16k | 699,424,715 | 660,030,550 | −5.63 % |
+| m33 | chain_48k | 823,396,754 | 776,138,029 | −5.74 % |
+| m33 | fdkf_16k | 173,967,046 | 164,851,962 | −5.24 % |
+| m33 | fdkf_48k | 299,830,854 | 282,731,596 | −5.70 % |
+| m33 | nn_suppressor_16k | 1,034,777,566 | 1,026,506,091 | −0.80 % |
+| m33 | nn_suppressor_48k | 374,743,684 | 367,351,528 | −1.97 % |
+| m33 | shadow_16k | 111,021,150 | 105,899,256 | −4.61 % |
+| m33 | shadow_48k | 111,022,401 | 105,900,504 | −4.61 % |
+| m33 | suppressor_16k | 430,123,690 | 405,831,275 | −5.65 % |
+| m33 | suppressor_48k | 426,448,046 | 402,155,678 | −5.70 % |
+| hexagon | chain_16k | 402,079,750 | 383,266,103 | −4.68 % |
+| hexagon | chain_48k | 468,543,290 | 445,873,569 | −4.84 % |
+| hexagon | fdkf_16k | 91,898,877 | 86,498,991 | −5.88 % |
+| hexagon | fdkf_48k | 160,681,664 | 151,426,114 | −5.76 % |
+| hexagon | nn_suppressor_16k | 458,552,230 | 456,644,189 | −0.42 % |
+| hexagon | nn_suppressor_48k | 152,482,121 | 150,945,034 | −1.01 % |
+| hexagon | shadow_16k | 57,506,164 | 54,033,774 | −6.04 % |
+| hexagon | shadow_48k | 57,506,147 | 54,033,902 | −6.04 % |
+| hexagon | suppressor_16k | 255,177,206 | 245,231,120 | −3.90 % |
+| hexagon | suppressor_48k | 251,494,761 | 241,548,685 | −3.95 % |
+
 ## FFT backend (Arm Helium)
 
 The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on

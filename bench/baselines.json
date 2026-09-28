@@ -1,38 +1,38 @@
 {
   "hexagon": {
-    "chain_16k": 402079750,
-    "chain_48k": 468543290,
-    "fdkf_16k": 91898877,
-    "fdkf_48k": 160681664,
-    "nn_suppressor_16k": 458552230,
-    "nn_suppressor_48k": 152482121,
-    "shadow_16k": 57506164,
-    "shadow_48k": 57506147,
-    "suppressor_16k": 255177206,
-    "suppressor_48k": 251494761
+    "chain_16k": 383266103,
+    "chain_48k": 445873569,
+    "fdkf_16k": 86498991,
+    "fdkf_48k": 151426114,
+    "nn_suppressor_16k": 456644189,
+    "nn_suppressor_48k": 150945034,
+    "shadow_16k": 54033774,
+    "shadow_48k": 54033902,
+    "suppressor_16k": 245231120,
+    "suppressor_48k": 241548685
   },
   "m33": {
-    "chain_16k": 699424715,
-    "chain_48k": 823396754,
-    "fdkf_16k": 173967046,
-    "fdkf_48k": 299830854,
-    "nn_suppressor_16k": 1034777566,
-    "nn_suppressor_48k": 374743684,
-    "shadow_16k": 111021150,
-    "shadow_48k": 111022401,
-    "suppressor_16k": 430123690,
-    "suppressor_48k": 426448046
+    "chain_16k": 660030550,
+    "chain_48k": 776138029,
+    "fdkf_16k": 164851962,
+    "fdkf_48k": 282731596,
+    "nn_suppressor_16k": 1026506091,
+    "nn_suppressor_48k": 367351528,
+    "shadow_16k": 105899256,
+    "shadow_48k": 105900504,
+    "suppressor_16k": 405831275,
+    "suppressor_48k": 402155678
   },
   "m55": {
-    "chain_16k": 360469416,
-    "chain_48k": 417305870,
-    "fdkf_16k": 80854249,
-    "fdkf_48k": 139974824,
-    "nn_suppressor_16k": 571653908,
-    "nn_suppressor_48k": 202250798,
-    "shadow_16k": 51274158,
-    "shadow_48k": 51279122,
-    "suppressor_16k": 228296924,
-    "suppressor_48k": 224696602
+    "chain_16k": 360474046,
+    "chain_48k": 417313588,
+    "fdkf_16k": 80857344,
+    "fdkf_48k": 139981007,
+    "nn_suppressor_16k": 571652879,
+    "nn_suppressor_48k": 202245974,
+    "shadow_16k": 51275709,
+    "shadow_48k": 51280673,
+    "suppressor_16k": 228296908,
+    "suppressor_48k": 224696586
   }
 }

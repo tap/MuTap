@@ -4,19 +4,18 @@
 #   1:8.2.2+ds-0ubuntu1.18, split-radix float32 FFT.
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
-# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
-# No local rig: CI is the only place these lines can be produced.
-FINGERPRINT fdaf float ee72bb70d63bde0c
-FINGERPRINT fd_kalman float a1bd1f147dce7f5c
-FINGERPRINT pem_afc float 75e691813d151139
-FINGERPRINT postfilter float 3367354236554abc
-FINGERPRINT nn_suppressor float 3be0b5116b9d05be
-FINGERPRINT aec_chain float a3c848107f40176d
-FINGERPRINT aec_chain_nn float e94007cc5ec25f42
-FINGERPRINT fdaf double c7dce2fa5d971026
-FINGERPRINT fd_kalman double 16a1667bd5103356
-FINGERPRINT pem_afc double 375006be8fe42f7f
-FINGERPRINT postfilter double d7bc2daa1d05c41f
-FINGERPRINT nn_suppressor double f1031aa7bb5af5a9
-FINGERPRINT aec_chain double a167e536eb942d36
-FINGERPRINT aec_chain_nn double 1ca98055cd37e407
+# Recorded: DspTap d9c1e33, run https://github.com/tap/MuTap/actions/runs/36367854503 (job "hexagon-qemu", commit 0eea6e2, runner image ubuntu24 20260920.314.1).
+FINGERPRINT fdaf float 2a21db53afabdb48
+FINGERPRINT fd_kalman float 12ebda41263e2c25
+FINGERPRINT pem_afc float 9b0ed0b6a4135012
+FINGERPRINT postfilter float 934b5e83641a3112
+FINGERPRINT nn_suppressor float c5463694ffa2e91e
+FINGERPRINT aec_chain float 94257cbdb0f9e5c7
+FINGERPRINT aec_chain_nn float 39ac0c6a1e46953c
+FINGERPRINT fdaf double 8f01cc678932755e
+FINGERPRINT fd_kalman double 0faee0744cebdca7
+FINGERPRINT pem_afc double e67db00b2fcdb383
+FINGERPRINT postfilter double 82849630c79b2357
+FINGERPRINT nn_suppressor double b4a071129e05a28a
+FINGERPRINT aec_chain double 04f0d561e35ac281
+FINGERPRINT aec_chain_nn double bd40c283addeea89

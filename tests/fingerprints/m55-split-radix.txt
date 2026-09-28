@@ -4,19 +4,18 @@
 #   qemu-system-arm 8.2.2 (1:8.2.2+ds-0ubuntu1.18), branch-free suppressor.
 # The harness fails this leg on any difference. To change these lines on purpose,
 # follow "Re-recording" at the top of tests/fingerprint_harness.cpp.
-# Recorded: DspTap 0c5bf59 from main run 36250656223 (MuTap 0385ea9).
-# Reproduced locally on the same toolchain/QEMU pair at 0c5bf59, byte for byte.
-FINGERPRINT fdaf float 9ebea54ab33d0858
-FINGERPRINT fd_kalman float 466d9516d89bc6e3
-FINGERPRINT pem_afc float 1c04b56702b01a39
-FINGERPRINT postfilter float dd5e10c5fe0f04ce
-FINGERPRINT nn_suppressor float 2cf9c59318c0f049
-FINGERPRINT aec_chain float 8e987708f86fc622
-FINGERPRINT aec_chain_nn float 3858042382ad220a
-FINGERPRINT fdaf double 67dcf93e3831ae4f
-FINGERPRINT fd_kalman double 496c6ce816bab714
-FINGERPRINT pem_afc double 1384cc948a483a58
-FINGERPRINT postfilter double a8d95a03763ac61a
-FINGERPRINT nn_suppressor double 7779e803062b797b
-FINGERPRINT aec_chain double e157b5809c5ce0d3
-FINGERPRINT aec_chain_nn double 1f2231281157e7ee
+# Recorded: DspTap d9c1e33, run https://github.com/tap/MuTap/actions/runs/36367854503 (job "cortex-m55-qemu", commit 0eea6e2, runner image ubuntu24 20260920.314.1).
+FINGERPRINT fdaf float a2fb52651b359597
+FINGERPRINT fd_kalman float aef4826960b076be
+FINGERPRINT pem_afc float 8ee335738934ac41
+FINGERPRINT postfilter float 0000f40b16d98a67
+FINGERPRINT nn_suppressor float 8947dbd9f6b8261a
+FINGERPRINT aec_chain float d485528ca6b81eed
+FINGERPRINT aec_chain_nn float 6021894fdbf2c772
+FINGERPRINT fdaf double a8a1d4cc802566c2
+FINGERPRINT fd_kalman double 8d634198d44c1de0
+FINGERPRINT pem_afc double 8e438cfe84f636e9
+FINGERPRINT postfilter double fb76c0434495c286
+FINGERPRINT nn_suppressor double 7b4c0ee4a1de91e1
+FINGERPRINT aec_chain double 3da9b50fe99dbf3d
+FINGERPRINT aec_chain_nn double 2cbd3d773c64fe9e

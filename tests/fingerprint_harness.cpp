@@ -32,10 +32,11 @@
 // and the harness runs unchanged on bare metal. Determinism holds per
 // (host, compiler, flags, C library): libm, fp-contraction and the float FFT
 // backend differ across targets, so every CI leg has its own expected lines,
-// committed in tests/fingerprints/<leg>.txt. Measured at DspTap 0c5bf59: no
-// line is the same on all nine legs; the two Linux compilers (and the
-// sanitizer build) agree on all 14, and the two M55 legs on the seven double
-// rows only (the float rows go through different FFT engines). The '#'
+// committed in tests/fingerprints/<leg>.txt. Measured at DspTap 0c5bf59 and
+// again at d9c1e33 (the srdif engine): no line is the same on all nine legs;
+// the two Linux compilers (and the sanitizer build) agree on all 14, and the
+// two M55 legs on the seven double rows only (the float rows go through
+// different FFT engines). The '#'
 // header names the float32 FFT backend the binary was compiled with
 // (backend=cmsis|vdsp|srdif; "ooura" in logs from pins up to DspTap
 // 8350f13, when the default engine was Ooura's C or its bit-identical port,
