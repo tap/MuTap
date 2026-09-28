@@ -25,6 +25,7 @@
 
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
+#include "portable_random.h"
 
 namespace mutap_test {
 
@@ -140,9 +141,9 @@ namespace mutap_test {
 
     template <typename Sample>
     std::vector<Sample> white_near_end(size_t n, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<Sample>              v(n);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        std::vector<Sample>        v(n);
         for (auto& x : v) {
             x = static_cast<Sample>(dist(gen));
         }
@@ -154,10 +155,10 @@ namespace mutap_test {
     /// biases a naive closed-loop adaptive estimate.
     template <typename Sample>
     std::vector<Sample> tonal_near_end(size_t n, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<Sample>              v(n);
-        const double                     amp = std::sqrt(2.0 / 3.0); // unit total RMS over 3 tones
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        std::vector<Sample>        v(n);
+        const double               amp = std::sqrt(2.0 / 3.0); // unit total RMS over 3 tones
         for (size_t i = 0; i < n; ++i) {
             const double t = static_cast<double>(i);
             const double s = amp
@@ -175,8 +176,8 @@ namespace mutap_test {
     /// RMS. Strongly self-correlated -> biases a naive closed-loop estimate.
     template <typename Sample>
     std::vector<Sample> ar_near_end(size_t n, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
         // Two resonator pole pairs: r=0.97 at 0.03*2pi and r=0.95 at 0.11*2pi.
         const double        a1[] = {-2.0 * 0.97 * std::cos(0.03 * 2.0 * std::numbers::pi), 0.97 * 0.97};
         const double        a2[] = {-2.0 * 0.95 * std::cos(0.11 * 2.0 * std::numbers::pi), 0.95 * 0.95};
@@ -208,14 +209,14 @@ namespace mutap_test {
     /// fully needs BOTH predictor stages (envelope AND pitch periodicity).
     template <typename Sample>
     std::vector<Sample> voiced_near_end(size_t n, unsigned seed, size_t pitch_period = 160) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        const double                     a1[] = {-2.0 * 0.97 * std::cos(0.03 * 2.0 * std::numbers::pi), 0.97 * 0.97};
-        const double                     a2[] = {-2.0 * 0.95 * std::cos(0.11 * 2.0 * std::numbers::pi), 0.95 * 0.95};
-        std::vector<double>              x(n, 0.0);
-        double                           s1[2]  = {0.0, 0.0};
-        double                           s2[2]  = {0.0, 0.0};
-        double                           energy = 0.0;
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        const double               a1[] = {-2.0 * 0.97 * std::cos(0.03 * 2.0 * std::numbers::pi), 0.97 * 0.97};
+        const double               a2[] = {-2.0 * 0.95 * std::cos(0.11 * 2.0 * std::numbers::pi), 0.95 * 0.95};
+        std::vector<double>        x(n, 0.0);
+        double                     s1[2]  = {0.0, 0.0};
+        double                     s2[2]  = {0.0, 0.0};
+        double                     energy = 0.0;
         for (size_t i = 0; i < n; ++i) {
             double w = (i % pitch_period == 0) ? std::sqrt(static_cast<double>(pitch_period)) : 0.0;
             w += 0.01 * dist(gen);
@@ -244,12 +245,12 @@ namespace mutap_test {
     /// the material the frequency-warped predictor exists for.
     template <typename Sample>
     std::vector<Sample> music_near_end(size_t n, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        const double                     f0[] = {55.0 / 48000.0, 69.296 / 48000.0, 82.407 / 48000.0};
-        const double        phase[3][4]       = {{0.1, 1.9, 4.2, 0.7}, {2.3, 5.1, 1.4, 3.8}, {0.9, 3.3, 5.7, 2.2}};
-        std::vector<double> x(n, 0.0);
-        double              energy = 0.0;
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        const double               f0[]        = {55.0 / 48000.0, 69.296 / 48000.0, 82.407 / 48000.0};
+        const double               phase[3][4] = {{0.1, 1.9, 4.2, 0.7}, {2.3, 5.1, 1.4, 3.8}, {0.9, 3.3, 5.7, 2.2}};
+        std::vector<double>        x(n, 0.0);
+        double                     energy = 0.0;
         for (size_t i = 0; i < n; ++i) {
             const double t = static_cast<double>(i);
             double       s = 0.0;

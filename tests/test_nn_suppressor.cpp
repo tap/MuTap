@@ -34,6 +34,7 @@
 
 #include "mutap/nn_suppressor.h"
 #include "mutap/postfilter.h"
+#include "support/portable_random.h"
 #include "tap/dsp/math.h"
 
 namespace {
@@ -49,9 +50,9 @@ namespace {
     /// the output is driven by out_bias alone (saturating the sigmoid);
     /// otherwise the network is live and the gains vary with the input.
     nn_suppressor_weights make_weights(unsigned seed, float out_bias, bool bias_only, const nn_geometry& g = {}) {
-        std::mt19937                    gen(seed);
-        std::normal_distribution<float> dist(0.0f, 0.3f);
-        const auto                      fill = [&](std::vector<float>& v, size_t n) {
+        std::mt19937              gen(seed);
+        mutap_test::normal<float> dist(0.0f, 0.3f);
+        const auto                fill = [&](std::vector<float>& v, size_t n) {
             v.resize(n);
             for (auto& x : v) {
                 x = dist(gen);
@@ -83,9 +84,9 @@ namespace {
 
     template <typename Sample>
     std::vector<Sample> noise(size_t n, unsigned seed, double rms = 1.0) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, rms);
-        std::vector<Sample>              v(n);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, rms);
+        std::vector<Sample>        v(n);
         for (auto& x : v) {
             x = static_cast<Sample>(dist(gen));
         }

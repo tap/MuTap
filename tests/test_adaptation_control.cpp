@@ -39,6 +39,7 @@
 
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
+#include "support/portable_random.h"
 #include "support/rooms.h"
 #include "tap/dsp/math.h"
 
@@ -338,9 +339,9 @@ namespace {
         fdaf.copy_impulse_response(before.data());
 
         // One spiked block: +30 dB of independent noise on the desired signal.
-        std::vector<double>              noisy(k_block);
-        std::mt19937                     gen(77);
-        std::normal_distribution<double> dist(0.0, 1.0);
+        std::vector<double>        noisy(k_block);
+        std::mt19937               gen(77);
+        mutap_test::normal<double> dist(0.0, 1.0);
         for (size_t i = 0; i < k_block; ++i) {
             noisy[i] = d[100 * k_block + i] + 30.0 * dist(gen);
         }

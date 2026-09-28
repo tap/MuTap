@@ -44,6 +44,7 @@
 #include <gtest/gtest.h>
 
 #include "faust_generated.h"
+#include "support/portable_random.h"
 #include "tap/dsp/math.h"
 
 namespace {
@@ -172,10 +173,10 @@ namespace {
     /// Pink noise at `rms_target` (Paul Kellet's refined filter over
     /// Gaussian white noise, seeded).
     std::vector<double> pink(size_t n, unsigned seed, double rms_target) {
-        std::mt19937                     rng(seed);
-        std::normal_distribution<double> white(0.0, 1.0);
-        std::vector<double>              x(n);
-        double                           b0 = 0.0, b1 = 0.0, b2 = 0.0, b3 = 0.0, b4 = 0.0, b5 = 0.0, b6 = 0.0;
+        std::mt19937               rng(seed);
+        mutap_test::normal<double> white(0.0, 1.0);
+        std::vector<double>        x(n);
+        double                     b0 = 0.0, b1 = 0.0, b2 = 0.0, b3 = 0.0, b4 = 0.0, b5 = 0.0, b6 = 0.0;
         for (size_t i = 0; i < n; ++i) {
             const double w = white(rng);
             b0             = 0.99886 * b0 + w * 0.0555179;

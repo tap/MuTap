@@ -35,6 +35,7 @@
 #include <vector>
 
 #include "mutap/fft.h"
+#include "portable_random.h"
 #include "tap/dsp/math.h"
 #include "window.h"
 
@@ -282,14 +283,13 @@ namespace mutap_test::itu {
         std::vector<double> meas(noise_n);
         std::mt19937        gen(cfg.seed);
         if (st) {
-            constexpr size_t            n_fft = 8192;
-            tap::mu::real_fft           fft(n_fft);
-            std::vector<double>         spec(n_fft, 0.0);
-            std::bernoulli_distribution bit(0.5);
+            constexpr size_t    n_fft = 8192;
+            tap::mu::real_fft   fft(n_fft);
+            std::vector<double> spec(n_fft, 0.0);
             spec[0] = 0.0;
             spec[1] = 0.0; // DC and Nyquist zero
             for (size_t k = 1; k < n_fft / 2; ++k) {
-                spec[2 * k]     = bit(gen) ? 1.0 : -1.0; // exp(j pi i_k) with i_k in {0,1}
+                spec[2 * k]     = mutap_test::bernoulli(gen, 0.5) ? 1.0 : -1.0; // exp(j pi i_k) with i_k in {0,1}
                 spec[2 * k + 1] = 0.0;
             }
             std::vector<double> block(n_fft);
@@ -308,7 +308,7 @@ namespace mutap_test::itu {
             }
         }
         else {
-            std::normal_distribution<double> dist(0.0, 1.0);
+            mutap_test::normal<double> dist(0.0, 1.0);
             for (auto& v : meas) {
                 v = dist(gen);
             }
@@ -528,9 +528,9 @@ namespace mutap_test::itu {
         static const std::vector<std::pair<double, double>> k_corners = {
             {100.0, 0.0},    {200.0, -1.7},   {400.0, -5.7},   {800.0, -12.4},
             {1000.0, -14.7}, {2000.0, -22.6}, {4000.0, -30.5}, {8000.0, -39.0}};
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<double>              x(samples);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        std::vector<double>        x(samples);
         for (auto& v : x) {
             v = dist(gen);
         }
@@ -546,9 +546,9 @@ namespace mutap_test::itu {
         static const std::vector<std::pair<double, double>> k_corners = {
             {50.0, 0.0},     {120.0, 0.0},    {240.0, -12.0},  {480.0, -22.0},
             {1000.0, -30.0}, {4000.0, -42.0}, {12000.0, -54.0}};
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<double>              x(samples);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        std::vector<double>        x(samples);
         for (auto& v : x) {
             v = dist(gen);
         }
