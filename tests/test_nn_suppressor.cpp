@@ -120,7 +120,7 @@ namespace {
             ref += static_cast<double>(e[i - k_block]) * static_cast<double>(e[i - k_block]);
         }
         // Reconstruction sits at the profile's own rounding floor: float64-deep
-        // for double, a float32 epsilon walk (~-135 dB measured) for float.
+        // for double, a float32 epsilon walk (~-138 dB measured) for float.
         const double bound_db = std::is_same_v<TypeParam, double> ? -140.0 : -120.0;
         EXPECT_LT(tap::dsp::power_db(err / ref), bound_db) << "reconstruction should sit at the rounding floor";
     }

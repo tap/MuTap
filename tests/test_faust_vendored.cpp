@@ -8,8 +8,10 @@
 // compiled for the cross / bare-metal targets (tests/CMakeLists.txt), and no
 // emulated selection names the FaustVendored suite.
 //
-// Measured (macOS x86_64, AppleClang 17, Release, 48 kHz); every threshold
-// below is one of these with margin:
+// Measured (macOS x86_64, AppleClang 17, Release, 48 kHz; the howl-detector
+// rows, whose pink noise comes from tests/support/portable_random.h, on
+// Linux x86-64, GCC 13.3, Release); every threshold below is one of these
+// with margin:
 //
 //   Dattorro as shipped, paper defaults: f32 vs f64 max |diff| 2.481e-08,
 //     difference energy -139.42 dB re the IR (phase 0: 2.48e-08, -137 to
@@ -25,8 +27,8 @@
 //     at 100 / 300 / 1000 Hz. +4 Hz on 1000 Hz (guard 100): 1003.999753 Hz,
 //     image at 996 Hz -7.3 dB.
 //   Howl detector, 1 kHz tone 3 dB over pink noise: confidence > 0.5 after
-//     0.1528 / 0.1562 / 0.1538 s (seeds 1-3); pink noise alone: confidence 0,
-//     prominence at most 7.32 dB (threshold 15).
+//     0.1530 / 0.1557 / 0.1539 s (seeds 1-3); pink noise alone: confidence at
+//     most 1.12e-4, prominence at most 7.20 dB (threshold 15).
 //
 // Every signal here is deterministic (fixed seeds), so each number repeats
 // exactly on a given platform; the margins absorb libm / FMA differences
@@ -471,10 +473,10 @@ namespace {
                         "confidence > 0.5 after %.4f s, at %.2f Hz, prominence %.2f dB (final)\n",
                         seed, noise_max, prom_max, rise_s, y[1][n - 1], y[2][n - 1]);
             EXPECT_LT(noise_max, 0.01) << seed;           // measured 0 (seeds 1-3)
-            EXPECT_LT(prom_max, 11.0) << seed;            // measured 6.98 / 5.42 / 7.32 dB (threshold 15)
-            EXPECT_LT(rise_s, 0.25) << seed;              // measured 0.1528 / 0.1562 / 0.1538 s
+            EXPECT_LT(prom_max, 11.0) << seed;            // measured 6.86 / 5.19 / 7.20 dB (threshold 15)
+            EXPECT_LT(rise_s, 0.25) << seed;              // measured 0.1530 / 0.1557 / 0.1539 s
             EXPECT_NEAR(y[1][n - 1], band, 0.01) << seed; // measured 1006.84 Hz
-            EXPECT_GT(y[2][n - 1], 15.5) << seed;         // measured 16.85 / 17.11 / 16.62 dB
+            EXPECT_GT(y[2][n - 1], 15.5) << seed;         // measured 16.92 / 17.22 / 16.54 dB
 
             // pink noise alone for 10 s
             faust_block<mutap_faust::icc_howl_detect_f32, float> det2(k_fs);
@@ -487,8 +489,8 @@ namespace {
             }
             std::printf("howl detect seed %u: 10 s pink noise, max confidence %.3g, max prominence %.2f dB\n",
                         seed + 100U, long_max, long_prom);
-            EXPECT_LT(long_max, 0.01) << seed + 100U;  // measured 0 (seeds 101-103)
-            EXPECT_LT(long_prom, 11.0) << seed + 100U; // measured 6.66 / 7.10 / 6.51 dB
+            EXPECT_LT(long_max, 0.01) << seed + 100U;  // measured 0 / 0 / 1.12e-4 (seeds 101-103)
+            EXPECT_LT(long_prom, 11.0) << seed + 100U; // measured 6.65 / 6.93 / 6.52 dB
         }
     }
 
