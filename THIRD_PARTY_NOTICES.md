@@ -18,10 +18,11 @@ below).
 
 ## Vendored (committed into this repository)
 
-### Ooura FFT — license record only (no code since the DspTap `72977aa` pin)
+### Ooura FFT — license record only (no code in DspTap trees from `72977aa` on)
 Takuya Ooura's General Purpose FFT Package (split-radix "Fast Version III").
 **What MuTap ships today carries no code from it, in DspTap's maintainer's
-judgement.** Since the DspTap pin `72977aa` (tap/DspTap#42) every
+judgement.** In DspTap trees from `72977aa` (tap/DspTap#42) on — MuTap pins
+`d9c1e33`, which adds the Hexagon tuning of tap/DspTap#44 — every
 floating-point transform MuTap runs on its default engine is DspTap's srdif
 engine, `submodules/dsptap/include/tap/dsp/fft/srdif.h` — a split-radix DIF
 engine written from the published literature under a recorded clean-room

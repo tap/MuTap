@@ -82,8 +82,8 @@ everywhere else, so desktop, the Max/C-ABI host builds (including Apple Silicon
 arm64), and Hexagon are untouched. Everywhere the option is off, and for
 `double` always, `basic_real_fft` is DspTap's srdif engine (`fft/srdif.h`, a
 split-radix DIF engine written from the literature, pinned by DspTap's
-`tests/test_fft_srdif_fingerprint.cpp`; routed since the `72977aa` pin,
-tap/DspTap#42). Before it: from DspTap `bbfa48d` (Stage 2b) the C++20 port of
+`tests/test_fft_srdif_fingerprint.cpp`; routed since DspTap `72977aa`,
+tap/DspTap#42, and tuned for Hexagon at tap/DspTap#44, the `d9c1e33` pin). Before it: from DspTap `bbfa48d` (Stage 2b) the C++20 port of
 the vendored Ooura C, `fft/split_radix.h`, bit-identical to it; the C left the
 shipping tree at Stage 2c, `8350f13`, and DspTap Decision D6, tap/DspTap#36
 (`0db95b6`), deleted the reference copy its parity gate compiled.
