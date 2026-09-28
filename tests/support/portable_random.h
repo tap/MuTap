@@ -35,6 +35,14 @@
 // run it too. What stays per host is the last bits: std::log and std::sqrt
 // (sqrt is correctly rounded; log need not be) and fp-contraction of
 // V1^2 + V2^2 can move a variate by an ulp, never the sequence of draws.
+//
+// libc++ (and the MSVC STL) return V1's variate first, so their rooms and
+// signals were the other scenario, and most of the measured numbers the
+// tests' comments quoted until this header came from it (a macOS host).
+// Those comments were re-measured on this scenario when the header landed:
+// Linux x86-64, GCC 13.3, Release, DspTap 0c5bf59. A single-seed number
+// still moves between hosts by the arithmetic (libm, contraction, the float
+// FFT backend); the medians the claims assert are what carries across.
 #pragma once
 
 #include <cmath>

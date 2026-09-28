@@ -139,7 +139,7 @@ algorithmically complete. What exists today:
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
   SampleRateTap ([`platform/`](platform/),
   [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
-  59 tests run on-target: the float32 typed suites (the embedded profile),
+  63 tests run on-target: the float32 typed suites (the embedded profile),
   the LP conditioning suite, the float closed-loop canaries (single-seed
   checks that target arithmetic tracks the host, including the PEM tonal
   and burst-gating scenarios; the acoustic claims are host-side), and the
@@ -152,7 +152,7 @@ algorithmically complete. What exists today:
   ([`cmake/hexagon-linux-musl.cmake`](cmake/hexagon-linux-musl.cmake)).
   A hosted Linux target needs no platform rig — stock gtest, ctest and
   exit codes work unchanged. Per-push CI runs the same emulation-sized
-  selection as the M55 leg (59 tests, ~8 min of TCG); the full 74-test
+  selection as the M55 leg (63 tests, ~8 min of TCG); the full 74-test
   suite, double-typed adaptive suites included, has also been validated
   once on the ISA (double is hardware on the Hexagon scalar core). What
   this leg deliberately does not cover: VTCM placement, L2 streaming
