@@ -27,20 +27,21 @@
 // THE HELD NOTE IS NOT GATED, and alignment is not a win there. On the
 // held note (voiced_near_end, 160-sample period) the largest identified
 // tap is the closed-loop bias, not the room: it lands where the reference
-// is in phase with the note (aligned: tap 32 at delay 480, taps 12 / 972
-// at delay 500; unaligned: 96 + k 160), so the readback check is only
-// meaningful after broadband material (the soundcheck's backing track,
-// speech). And aligned minus unaligned ASG medians on the held note at
-// delay 480 read -1.06 / +5.27 / +2.81 / -4.57 / -2.81 / -0.35 dB (cabin,
-// studio, rehearsal, hall, mt5, mt9); at 500, -0.70 / 0.00 / +7.38 / -2.11
-// / -3.51 / -1.40. On speech the same differences are +4.21 to +8.78 dB
-// in all six rooms at both delays. Untested hypothesis: filter length is
-// not free on tonal material (the karaoke branch's filter-length row,
-// not re-landed: HANDOFF item 9), and the unaligned filter models only 608
-// taps of the room; a 640-tap aligned filter's held-note medians at 480
-// read +13.48 / +10.35 / +5.08 / +7.85 / +14.18 / +12.77, above the
-// 1024-tap unaligned medians in four of six rooms (one sweep, by a
-// temporary partitions override; not gated, not in this file).
+// is in phase with the note (aligned: tap 32 at delay 480, 992 = 32 + 6 x
+// 160 in 3 of 30 runs; taps 12 / 972 at delay 500; unaligned: 96 + k 160),
+// so the readback check is only meaningful after broadband material (the
+// soundcheck's backing track, speech). And aligned minus unaligned ASG
+// medians on the held note at delay 480 read -3.87 / +4.57 / +1.76 / -2.82
+// / -2.81 / +4.21 dB (cabin, studio, rehearsal, hall, mt5, mt9); at 500,
+// -2.11 / -1.76 / +2.11 / -1.75 / -3.16 / +1.76. On speech the same
+// differences are +3.51 to +8.08 dB in all six rooms at both delays.
+// Untested hypothesis: filter length is not free on tonal material (the
+// karaoke branch's filter-length row, not re-landed: HANDOFF item 9), and
+// the unaligned filter models only 608 taps of the room; a 640-tap aligned
+// filter's held-note medians at 480 read +13.12 / +10.35 / +5.08 / +7.85 /
+// +13.48 / +13.48, above the 1024-tap unaligned medians in four of six
+// rooms (one sweep, by a temporary partitions override; not gated, not in
+// this file).
 
 #include <algorithm>
 #include <atomic>
@@ -484,8 +485,10 @@ namespace {
     constexpr size_t k_s1     = 480; ///< the modelled electrical delay: 10 ms at 48 kHz
     constexpr size_t k_margin = 32;  ///< the jitter margin
     /// reference_aligned()'s tolerance in the claims: in the band-limited
-    /// image-source rooms the identified peak sat 0 or 1 tap from the
-    /// expected one (studio 88 / 89 against 89) in every measured run.
+    /// image-source rooms the identified peak sat on the expected one in all
+    /// 40 aligned speech runs of the sweep (four rooms, five seeds, delays
+    /// 480 and 500), and unaligned 0 or 1 tap from the true tap + the
+    /// electrical delay - the block (studio 472 / 473 against 473 at 480).
     constexpr size_t k_tolerance = 4;
 
     using chain_f = tap::mu::afc_chain<float>;
@@ -749,13 +752,13 @@ namespace {
     // cancellers converge and the bus stays finite. NO two-mic ASG claim:
     // that is the two-mic go/no-go experiment's question (PoC plan §2.5).
     // Measured (seed sets 0..4, float):
-    //   uncertainty_ratio   cabin -18.14 .. -18.31 dB, mt5 -17.80 .. -18.12 dB
-    //   misalignment        cabin -5.05 .. -5.68 dB,   mt5 -4.64 .. -5.48 dB
-    //   peak bus block RMS  2.634 .. 3.199 (the howl rule is 100)
+    //   uncertainty_ratio   cabin -19.04 .. -19.31 dB, mt5 -18.76 .. -18.95 dB
+    //   misalignment        cabin -6.19 .. -7.01 dB,   mt5 -5.87 .. -6.54 dB
+    //   peak bus block RMS  2.898 .. 3.232 (the howl rule is 100)
     // For context (not like for like: each room alone, at its own
-    // exact_msg_db - 6): one mic reads cabin -18.25 .. -18.47 / -5.57 ..
-    // -6.17 dB and mt5 -17.93 .. -18.09 / -4.97 .. -5.65 dB. From reset the
-    // ratio is 0 dB.
+    // exact_msg_db - 6, the sweep's aligned speech rows at 480): one mic
+    // reads cabin -18.19 .. -18.45 / -5.50 .. -6.05 dB and mt5 -17.86 ..
+    // -18.03 / -5.11 .. -5.39 dB. From reset the ratio is 0 dB.
     TEST(AfcChainClosedLoop, TwoMicsBothConverge) {
         std::vector<two_mic_run>           runs(mutap_test::k_claim_seed_sets);
         std::vector<std::function<void()>> jobs;
@@ -770,10 +773,10 @@ namespace {
                         set, r.unc_db[0], r.unc_db[1], r.mis_db[0], r.mis_db[1], r.tap[0], r.true_tap[0], r.tap[1],
                         r.true_tap[1], r.peak_rms, r.finite ? 1 : 0);
             EXPECT_TRUE(r.finite) << "set " << set;
-            EXPECT_LT(r.peak_rms, 100.0) << "set " << set << ": measured <= 3.199";
+            EXPECT_LT(r.peak_rms, 100.0) << "set " << set << ": measured <= 3.232";
             for (size_t m = 0; m < 2; ++m) {
-                EXPECT_LT(r.unc_db[m], -15.0) << "set " << set << " mic " << m << ": measured <= -17.80 dB";
-                EXPECT_LT(r.mis_db[m], -3.0) << "set " << set << " mic " << m << ": measured <= -4.64 dB";
+                EXPECT_LT(r.unc_db[m], -16.0) << "set " << set << " mic " << m << ": measured <= -18.76 dB";
+                EXPECT_LT(r.mis_db[m], -4.0) << "set " << set << " mic " << m << ": measured <= -5.87 dB";
             }
         }
     }
@@ -787,9 +790,9 @@ namespace {
     //
     //                     direct tap (true)   ASG median (per seed)
     //   cabin aligned     83 in 5 of 5 (51)   +19.80 (+19.10 .. +20.16)
-    //   cabin unaligned   467 in 5 of 5       +15.59 (+15.23 .. +15.94)
-    //   mt9   aligned     43 in 5 of 5 (11)   +22.97 (+21.21 .. +23.32)
-    //   mt9   unaligned   427 in 5 of 5       +16.99 (+15.23 .. +17.34)
+    //   cabin unaligned   467 in 5 of 5       +16.29 (+15.23 .. +17.34)
+    //   mt9   aligned     44 in 3 of 5 (12)   +21.91 (+21.91 .. +22.27)
+    //   mt9   unaligned   441 in 4 of 5       +16.29 (+15.59 .. +17.70)
     //
     // Aligned, the direct path sits at the true tap + the margin; unaligned,
     // 416 taps later (the electrical delay minus the chain's block), where
@@ -797,7 +800,8 @@ namespace {
     // the end. The tap claim is asserted on the image-source room only: a
     // random_decaying_rir room has no physical direct path, its largest
     // taps near-tie, and the readback reads the other one in some runs
-    // (mt5: 3 of 5 aligned at delay 480, 0 of 5 at 500; mt9 3 of 5 at 500).
+    // (mt9 above: 57 in the other 2, 428 in the other 1; mt5: 2 of 5
+    // aligned at delay 480, 3 of 5 at 500; mt9 4 of 5 at 500).
     TEST(AfcChainClosedLoop, ReferenceDelayAlignsTheDirectPath) {
         const char* const                  rooms[] = {"cabin", "mt9"};
         alignment_run                      runs[2][2][mutap_test::k_claim_seed_sets];
@@ -838,7 +842,7 @@ namespace {
             std::printf("[ measured ] %s ASG median: aligned %+.2f, unaligned %+.2f\n", rooms[room], median(asg[0]),
                         median(asg[1]));
             EXPECT_GE(median(asg[0]), median(asg[1]))
-                << rooms[room] << ": measured cabin +19.80 vs +15.59, mt9 +22.97 vs +16.99";
+                << rooms[room] << ": measured cabin +19.80 vs +16.29, mt9 +21.91 vs +16.29";
         }
     }
 

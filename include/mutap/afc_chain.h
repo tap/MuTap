@@ -299,11 +299,11 @@ namespace tap::mu {
         ///
         /// Measured (tests/test_afc_chain.cpp: float, 1024 taps, a 480-sample
         /// electrical delay, a 32-sample margin): after 2 s of speech the
-        /// band-limited image-source rooms read the true peak + 32 to within
-        /// one tap in every run, and an unaligned reference reads 416 taps
-        /// later. It needs broadband material: after a held note the largest
-        /// tap is the closed-loop bias, where the reference is in phase with
-        /// the note, not the room. On synthetic rooms without a physical
+        /// band-limited image-source rooms read the true peak + 32 in every
+        /// run, and an unaligned reference reads 416 taps later (to within
+        /// one tap). It needs broadband material: after a held note the
+        /// largest tap is the closed-loop bias, where the reference is in
+        /// phase with the note, not the room. On synthetic rooms without a physical
         /// direct path (random taps under a decaying envelope) near-tied peaks
         /// make it read the runner-up in some runs.
         /// @param ir filter_length() samples of caller-provided scratch; the

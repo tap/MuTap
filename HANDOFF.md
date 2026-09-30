@@ -283,18 +283,19 @@ carries the measured numbers; this is the map:
    buffer. Measured (float, electrical delay 480, 1024 taps, speech, five
    seeds): aligned (384) the cabin's direct path lands at the true tap + the
    32-sample margin in 5 of 5 (83 against 51), unaligned (0) 416 taps later
-   (467); ASG medians aligned / unaligned cabin +19.80 / +15.59, mt9 +22.97 /
-   +16.99, and +4.21 to +8.78 dB better aligned in all six sweep rooms at
+   (467); ASG medians aligned / unaligned cabin +19.80 / +16.29, mt9 +21.91 /
+   +16.29, and +3.51 to +8.08 dB better aligned in all six sweep rooms at
    delays 480 and 500. Two mics (cabin + mt5, shared reference) both converge
-   (uncertainty ≤ −17.80 dB after 2 s); no two-mic ASG claim. **Open, not
+   (uncertainty ≤ −18.76 dB after 2 s); no two-mic ASG claim. **Open, not
    gated: on the held note alignment is not a win** — the largest tap is the
    closed-loop bias at the lag where the reference is in phase with the note
    (so the readback needs broadband material), and aligned − unaligned ASG
-   medians read −4.57 to +5.27 dB at 480 and −3.51 to +7.38 at 500, lower in
-   four of six rooms at each; a 640-tap aligned filter beat the 1024-tap unaligned one in four
-   of six, which points at filter length on tonal material. Not built: the
-   stages' own latencies in `latency()`, the per-mic safety duck, a
-   `frequency_shifter` class, an icount workload.
+   medians read −3.87 to +4.57 dB at 480 and −3.16 to +2.11 at 500, lower in
+   three of six rooms at 480 and four of six at 500; a 640-tap aligned filter
+   beat the 1024-tap unaligned one in four of six, which points at filter
+   length on tonal material. (Numbers re-measured on tap/MuTap#66's portable
+   variates.) Not built: the stages' own latencies in `latency()`, the
+   per-mic safety duck, a `frequency_shifter` class, an icount workload.
 10. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
    The per-bin spectral reverb shaped from F̂ is commit `8abe958` on the
    local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
