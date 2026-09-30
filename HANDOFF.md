@@ -165,8 +165,9 @@ carries the measured numbers; this is the map:
    prints the tables it measures and records each row's median with
    `RecordProperty`; the gated claims it backs quote those tables. First
    user: `tests/test_afc_decorrelation_sweep.cpp`
-   (`MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='AfcDecorrelationSweep.*'`,
-   1:16:10 wall on 11 threads of the Intel Mac).
+   (`MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='AfcDecorrelationSweep.*'`;
+   on the portable-random scenario 2:49:54 wall with `MUTAP_SLOW_THREADS=6`
+   on the Intel Mac).
 
 ## What's next (ranked)
 
@@ -227,39 +228,50 @@ carries the measured numbers; this is the map:
    Landed: the decorrelated loop with an IIR allpass-pair SSB shifter
    (`tests/support/decorrelated_loop.h`), the shared like-for-like ASG
    measurement (`tests/support/karaoke_asg.h`), the gated suite
-   (`test_afc_decorrelation.cpp`, 2:46-2:56 serial) and the `MUTAP_SLOW` sweep, and the
+   (`test_afc_decorrelation.cpp`, 3:47 serial) and the `MUTAP_SLOW` sweep, and the
    audible-limit tooling (`tools/notebook/karaoke_ramp_dump.cpp`, option
    `MUTAP_BUILD_KARAOKE_DUMP`; `tools/notebook/karaoke_audible.py`).
    **Decided (Tim):** canceller-first. At S1 (10 ms) and S3 (20 ms) the
    default chain is the canceller alone; its audible ASG on the held note in
-   the band-limited cabin is the headline (medians of five seeds: +16.16 at
-   S1, +10.81 at S3; runaway on the same ramp +20.71 / +21.05). The
-   frequency shift is a studied, material-dependent option that phase 1's
-   blind listening test on real singing decides: it raises the bisected
-   runaway limit at S1 in all five rooms (+5.01 to +9.05 per-seed medians
-   at 5 Hz) but on the bare held note it LOWERS the audible limit (+6.03 at
-   2 Hz, +4.69 at 5 Hz at S1), a worst case the doc labels as such; with
-   the backing track the shifted chains are audible only at runaway. The
-   2.7 ms "held note is the wall, the shift rescues it" story is a
-   regression row. Open:
-   - **Aux-only at S1 is audible at +3.90 (median), unexplained.** Four of
-     five seeds flag between +1.64 and +6.63, one only at runaway (+21.27);
-     at S3 the same feed is audible only at runaway (+24.03), and with a
-     shift added it is at runaway at S1 too. The runaway limit (+23.51)
-     is not the issue; what the criterion flags that early is.
+   the band-limited cabin is the headline (medians of five seeds on the
+   portable-random scenario, macOS x86_64: +14.96 at S1, +11.65 at S3;
+   runaway on the same ramp +21.43 / +21.86). The frequency shift is a
+   studied, material-dependent option that phase 1's blind listening test
+   on real singing decides: it raises the bisected runaway limit at S1 in
+   all five rooms (+5.01 to +8.88 per-seed medians at 5 Hz) but on the bare
+   held note it LOWERS the audible limit (+5.50 at 2 Hz, +1.65 at 5 Hz at
+   S1), a worst case the doc labels as such; with the backing track the
+   shifted chains are audible only at runaway. The 2.7 ms "held note is the
+   wall, the shift rescues it" story is a regression row. The doc's numbers
+   are macOS measurements; the gated test's comments are #66's Linux GCC
+   run. The signals are identical, but the chaotic loop moves single rows by
+   dB between hosts (e.g. the 2.7 ms naive core: median -8.75 on macOS,
+   four probe floors and -14.61 on Linux). Open:
+   - **Aux-only at S1 is audible at +3.59 (median), unexplained.** Four of
+     five seeds flag between −0.54 and +4.20, one only at runaway (+22.99);
+     at S3 the same feed is audible only at runaway (+23.79 over four seeds;
+     seed 42 had no qualifying event), and with a shift added it is at
+     runaway at S1 too. The runaway limit (+23.01) is not the issue; what
+     the criterion flags that early is. (The same feed LOWERS the bisected
+     runaway limit at S3 in all five rooms: cabin +16.82 against +17.87 at
+     40 s.)
    - **Ramp vs bisected runaway differ by protocol.** A slowly ramped,
      continuously adapting canceller holds more than one converged at
-     MSG − 6 and then probed (canceller, S1: ramp +20.71 against bisected
-     +11.63 at 40 s; S3 +21.05 / +18.31). Neither is wrong; the bisection
+     MSG − 6 and then probed (canceller, S1: ramp +21.43 against bisected
+     +11.72 at 40 s; S3 +21.86 / +17.87). Neither is wrong; the bisection
      is what the tests gate, the ramp is what a room measurement sees.
    - **Dechirp-only early events.** The criterion's limit can come from an
-     event only a dechirped pass found: 2 Hz, S1, seed 2 reads −17.46
-     (0.55 s at 5.23 kHz, pass long@−500) where the plain long pass first
-     fires at +6.79 (the driver prints both); the median is +6.03 either way.
-     Recorded as a note, not a criterion change.
-   - **The S3 shift direction is room-dependent** (the cabin loses −1.41 at
-     40 s; studio / rehearsal / mt5 / mt9 +1.85 / +0.09 / +1.85 / +6.24 at
-     20 s) and is not gated.
+     event only a dechirped pass found (the driver prints where the plain
+     long pass first fires): 5 Hz, S1, seed 42 reads +1.27 (0.51 s at
+     657–686 Hz, pass long@−250) against the plain pass's +7.24; also 5 Hz,
+     S3, seeds 2 and 82, and 2 Hz, S1, seed 82. Counting the plain pass
+     alone, the medians move by 0.31 to 1.77 dB and stay far under the
+     canceller alone. The earlier −17.46 artifact (2 Hz, S1, seed 2) is gone
+     on the new variates. Recorded as a note, not a criterion change.
+   - **The S3 shift direction is room-dependent** and is not gated. At 20 s
+     the 5 Hz shift loses in the cabin (−1.23; −1.14 at 40 s) and studio
+     (−0.70) and gains in rehearsal (+1.23), mt5 (+3.78) and mt9 (+3.43);
+     the 2 Hz shift loses in the cabin (−2.37) and rehearsal (−0.26).
    - Not re-landed from the branch's first doc (its numbers came from
      scratch harnesses that are not in the repo): the sung-melody and
      chord materials, the "what did not help" rows (filter length, LP order,
@@ -272,8 +284,9 @@ carries the measured numbers; this is the map:
    local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
    bundle); it did not land. Measured during the karaoke landing with a
    scratch harness (cabin band-limited, held note, wet 0.15, RT60 1 s,
-   PEM + FD-Kalman, like-for-like ASG, five seeds; not reproducible from
-   this repo until the class returns):
+   PEM + FD-Kalman, like-for-like ASG, five seeds, on the variates from
+   before tap/MuTap#66; not reproducible from this repo until the class
+   returns):
    - **Shaped-from-F̂ loses to flat everywhere.** 40 s probes: S1 dry
      +11.66 / flat +2.81 / shaped −27.66 (three seeds at the −30 bracket
      floor); S3 +18.34 / +9.20 / +7.09; at the branch's 5.3 ms +5.45 /

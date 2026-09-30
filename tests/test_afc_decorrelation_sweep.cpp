@@ -27,8 +27,9 @@
 //                     canceller and + 5 Hz, 20 s probes: what the branch's
 //                     unbanded numbers turn into.
 //
-// Wall time: 1:16:10 on the 12-thread Intel Mac it was written on (11
-// worker threads; HANDOFF.md, working note 9).
+// Wall time on the portable-random scenario: 2:49:54 with
+// MUTAP_SLOW_THREADS=6 on the 12-thread Intel Mac (macOS 15, AppleClang,
+// Release; HANDOFF.md, working note 9).
 
 #include <algorithm>
 #include <atomic>
