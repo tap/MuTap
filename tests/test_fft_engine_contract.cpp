@@ -17,8 +17,9 @@
 //     would then name two templates);
 //   - at run time, by typeid: the type's name contains this build's tag
 //     (tap::dsp::k_real_fft_abi_tag) and neither of the other two, for both
-//     profiles and for the two second-level embedders (aec_chain and
-//     aec_chain_nn), which carry the tag through their template arguments.
+//     profiles and for the three second-level embedders (aec_chain,
+//     aec_chain_nn and afc_chain), which carry the tag through their
+//     template arguments.
 //     The bare-metal legs build with RTTI (the toolchain files pass no
 //     -fno-rtti), so this runs on the M33 and M55 too.
 //
@@ -54,6 +55,7 @@
 
 #include <gtest/gtest.h>
 
+#include "mutap/afc_chain.h"
 #include "mutap/fd_kalman.h"
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
@@ -100,6 +102,7 @@ namespace {
         expect_only_this_builds_tag<tap::mu::nn_suppressor<Sample>>();
         expect_only_this_builds_tag<tap::mu::aec_chain<Sample>>();
         expect_only_this_builds_tag<tap::mu::aec_chain_nn<Sample>>();
+        expect_only_this_builds_tag<tap::mu::afc_chain<Sample>>();
     }
 
     template <typename Sample>
