@@ -40,6 +40,7 @@ FetchContent_MakeAvailable(googletest)
 add_executable(mutap_tests
     test_fdaf.cpp
     test_fd_kalman.cpp
+    test_frequency_shifter.cpp
     test_convergence_stats.cpp
     test_lpc.cpp
     test_pem_afc.cpp
@@ -98,13 +99,14 @@ else()
     # selection as the Cortex-M55 leg (tests/bare_metal_main.cpp): the
     # float32 typed suites, the double Kalman core, the LP/conditioning
     # suites, the float closed-loop canaries (one seed each; the claims are
-    # the host-only *_host_test suites, see tests/support/rooms.h) and the
-    # validation/contract tests. (The FFT suites left with the FFT: they run
+    # the host-only *_host_test suites, see tests/support/rooms.h), the
+    # validation/contract tests and the frequency shifter's float suite (not
+    # its 10-minute drift test). (The FFT suites left with the FFT: they run
     # in DspTap's own CI.)
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*")
+            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)
