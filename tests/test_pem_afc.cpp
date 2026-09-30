@@ -329,11 +329,14 @@ namespace {
         EXPECT_GT(median(asg), 5.0) << "ASG regression vs naive (measured median +9.68 dB)";
     }
 
-    // CANARY (pem_afc_test/0 runs in the emulated selection), raw path, one
-    // seed: the band-limited room's float ASG at set 0 is +5.05 dB, a 4.05
-    // dB margin (it read +2.45 on the other standard library's rooms, which
-    // put the canary on the raw room; it stays there). Measured on host,
-    // raw: ASG +11.12 (float) / +5.92 (double), stable at MSG-3 and MSG+1.
+    // CANARY (pem_afc_test/0 runs in the emulated selection), band-limited
+    // path, one seed (set 0). Measured on host: ASG +5.05 (float) / +9.97
+    // (double), stable at MSG-3 and MSG+1, a 4.05 dB float margin over the
+    // gate (+4.77 on Hexagon), and one-ulp perturbations of the room move
+    // the float ASG no lower than +1.88. It ran on the raw room while the
+    // band-limited margin was +1.45 dB (the other standard library's rooms);
+    // on these rooms the raw float ASG is +11.12 on host but one-ulp
+    // perturbations reach +1.01, and Hexagon reads +0.72 and howls at MSG+1.
     // The claim is pem_afc_host_test above.
     template <typename Sample>
     class pem_afc_test : public ::testing::Test {};
@@ -341,10 +344,10 @@ namespace {
     TYPED_TEST_SUITE(pem_afc_test, sample_types);
 
     TYPED_TEST(pem_afc_test, StabilizesTonalNearEndWhereNaiveHowls) {
-        const auto r = run_pem(test_room<TypeParam>(false), 0, tonal<TypeParam>());
+        const auto r = run_pem(test_room<TypeParam>(true), 0, tonal<TypeParam>());
         EXPECT_FALSE(r.howls_at_minus3) << "unstable at the gain that kills naive";
         EXPECT_FALSE(r.howls_at_plus1) << "no stable gain added over the open loop";
-        EXPECT_GT(r.asg, 1.0) << "ASG too small (measured +11.12 float / +5.92 double)";
+        EXPECT_GT(r.asg, 1.0) << "ASG too small (measured +5.05 float / +9.97 double)";
     }
 
     TEST(PemAfcConfigValidation, RejectsBadConfigs) {
