@@ -190,10 +190,16 @@ jobs:
         with:
           submodules: recursive
 
+      # A stalled Ubuntu mirror once ate a leg's whole 45-minute budget twice in a
+      # row while fetching the 463 MB libstdc++-arm-none-eabi-newlib package
+      # (tap/MuTap#67). Fail the fetch fast and retry it instead.
       - name: Install toolchain and QEMU
+        timeout-minutes: 15
         run: >
           sudo apt-get update -q &&
-          sudo apt-get install -y -q gcc-arm-none-eabi qemu-system-arm
+          sudo apt-get install -y -q
+          -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60
+          gcc-arm-none-eabi qemu-system-arm
 
       - name: Configure
         run: >
@@ -301,10 +307,16 @@ jobs:
         with:
           submodules: recursive
 
+      # A stalled Ubuntu mirror once ate a leg's whole 45-minute budget twice in a
+      # row while fetching the 463 MB libstdc++-arm-none-eabi-newlib package
+      # (tap/MuTap#67). Fail the fetch fast and retry it instead.
       - name: Install toolchain and QEMU
+        timeout-minutes: 15
         run: >
           sudo apt-get update -q &&
-          sudo apt-get install -y -q gcc-arm-none-eabi qemu-system-arm
+          sudo apt-get install -y -q
+          -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60
+          gcc-arm-none-eabi qemu-system-arm
 
       - name: Configure
         run: >
