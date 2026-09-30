@@ -198,7 +198,12 @@ carries the measured numbers; this is the map:
    not asserted; each is a single-seed reading from the scratch sweep
    that set the band-limited thresholds (rooms mt5–mt9 from the tests'
    `std::mt19937` generator, np5–np10 from the notebook's numpy one; 256
-   taps, d = 128, double, seed set 0):
+   taps, d = 128, double, seed set 0). *These rooms came from libc++'s
+   `std::normal_distribution` (a macOS host); the tests now draw from
+   `tests/support/portable_random.h`, libstdc++'s sequence on every host,
+   so mt5–mt9 are other rooms today, and on the test room the two claims
+   below read Kalman tonal +7.19 (median) and gated-burst containment 5 of
+   5 in both precisions. The issues stand as findings to re-check.*
    - **Kalman-PEM on tonal material, band-limited room 6: ASG −1.25 dB**,
      against NLMS-PEM's +5.92 on the same room and material (raw room 6:
      Kalman +4.38). Every other swept room reads ≥ +6.25 band-limited, and
