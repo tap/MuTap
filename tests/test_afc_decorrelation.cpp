@@ -35,16 +35,19 @@
 // medians over rooms.h's five seed sets (seeds 2, 22, 42, 62, 82). Probe
 // lengths were chosen as the shortest whose five-seed median sat within
 // 0.25 dB of the 40 s probe's (test_afc_decorrelation_sweep.cpp,
-// MUTAP_SLOW=1, prints the table; bisection there at 0.1 dB); on these
-// rooms the naive 2.7 ms row and the S1 shift row settle by 5 s, and the
-// suite keeps their 10 s probes:
+// MUTAP_SLOW=1, prints the table; bisection there at 0.1 dB; the table is
+// Linux x86-64, GCC 13.3, Release). On these rooms the naive 2.7 ms row
+// settles by 5 s and the suite keeps its 10 s probe. The S1 shift row
+// settles by 10 s on Linux, but on macOS 15 x86_64, AppleClang, Release
+// its 10 s median read +17.00 against +17.26 at 40 s (0.26 dB off), so the
+// gate uses the 20 s probe, within the rule on both hosts:
 //
 //   cabin, band-limited, medians     0.8 s    5 s    10 s    20 s    40 s   gated with
 //   held, canceller, 2.7 ms          -2.10  -1.63  -1.55  -1.55  -1.55     5 s
 //   held, + 5 Hz shift, 2.7 ms      +13.54 +14.01 +14.09 +13.56 +14.09     5 s
 //   held, naive + 5 Hz, 2.7 ms       -0.52 -15.08 -15.00 -15.00 -15.00    10 s (floor)
 //   held, canceller, S1             +10.47 +11.56 +11.64 +11.72 +11.72     5 s
-//   held, + 5 Hz shift, S1          +16.01 +17.10 +17.18 +17.26 +17.17    10 s (one probe)
+//   held, + 5 Hz shift, S1          +16.01 +17.10 +17.18 +17.26 +17.17    20 s (one probe)
 //   held, + aux feed, S1            +13.28 +14.38 +14.45 +14.53 +14.53    sweep only (5 s)
 //   held, naive + 5 Hz, S1           +3.96  -0.48  +5.05  -0.32 -15.00    not converged: sweep only
 //   held, + 5 Hz shift, S3          +14.40 +16.52 +16.76 +16.83 +16.90    sweep only (10 s)
@@ -267,9 +270,13 @@ TEST(AfcDecorrelation, LowLatencyRowShiftRescuesTheHeldNote) {
 // The canceller row is bisected (5 s probes): measured ASG per seed set
 // +7.50 +14.00 +11.50 +12.00 +10.50, median +11.50. The shift row is gated
 // as a median DIRECTION, to keep the suite inside its runtime budget: one
-// 10 s probe per seed set at that seed's canceller limit + 3 dB, which must
-// not run away in at least three of five (measured: stable in 5 of 5). The
-// sweep's bisected medians (0.1 dB, 40 s): canceller +11.72, + 5 Hz +17.17,
+// 20 s probe per seed set (the convergence rule's length on both hosts; see
+// the file comment) at that seed's canceller limit + 3 dB, which must not
+// run away in at least three of five. Measured: Linux x86-64, GCC 13.3, 10 s
+// probe, stable in 5 of 5; macOS 15 x86_64, AppleClang, Release, 20 s probe,
+// stable in 5 of 5 with the canceller row reading the same per-seed values
+// as above (and 5 of 5 at 10 s). The sweep's bisected medians (0.1 dB, 40 s,
+// Linux): canceller +11.72, + 5 Hz +17.17,
 // per-seed shift - canceller +5.80 / +3.26 / +5.45 / +3.34 / +7.47 (every
 // seed set over the 3 dB the gate probes).
 TEST(AfcDecorrelation, HeldNoteAtS1RunawayLimits) {
@@ -279,7 +286,7 @@ TEST(AfcDecorrelation, HeldNoteAtS1RunawayLimits) {
 
     int stable = 0;
     for (unsigned set = 0; set < mutap_test::k_claim_seed_sets; ++set) {
-        const bool howls = kk::howls_at(path, shifted(5.0), at(kk::k_s1, 10.0, 0.0, 0.0), seed_in_set(k_base_seed, set),
+        const bool howls = kk::howls_at(path, shifted(5.0), at(kk::k_s1, 20.0, 0.0, 0.0), seed_in_set(k_base_seed, set),
                                         plain.chain[set] + 3.0);
         std::printf("s1 + 5 Hz at the canceller limit + 3 dB, seed set %u: %s\n", set, howls ? "runs away" : "stable");
         stable += howls ? 0 : 1;
