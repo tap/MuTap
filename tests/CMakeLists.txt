@@ -77,6 +77,9 @@ if(NOT MUTAP_BARE_METAL AND NOT CMAKE_CROSSCOMPILING)
     # afc_chain's suite is host-only too (tests/test_afc_chain.cpp): its
     # closed-loop claims are gain bisections, and its sweep uses std::thread.
     target_sources(mutap_tests PRIVATE test_afc_chain.cpp)
+    # The two-mic go/no-go loop (the anti-howl PoC's D11): host-only for the
+    # same reasons; its smoke test runs seed sets on std::thread.
+    target_sources(mutap_tests PRIVATE test_two_mic.cpp test_two_mic_sweep.cpp)
     target_include_directories(mutap_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party/faust)
 endif()
 
