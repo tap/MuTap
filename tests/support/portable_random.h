@@ -76,14 +76,14 @@ namespace mutap_test {
     class normal {
       public:
         explicit normal(Real mean = Real(0), Real stddev = Real(1))
-            : mean_(mean)
-            , stddev_(stddev) {}
+            : m_mean(mean)
+            , m_stddev(stddev) {}
 
         Real operator()(std::mt19937& gen) {
             Real z;
-            if (saved_available_) {
-                saved_available_ = false;
-                z                = saved_;
+            if (m_saved_available) {
+                m_saved_available = false;
+                z                 = m_saved;
             }
             else {
                 Real v1;
@@ -94,19 +94,19 @@ namespace mutap_test {
                     v2 = Real(2) * canonical<Real>(gen) - Real(1);
                     s  = v1 * v1 + v2 * v2;
                 } while (s > Real(1) || s == Real(0));
-                const Real scale = std::sqrt(Real(-2) * std::log(s) / s);
-                saved_           = v1 * scale;
-                saved_available_ = true;
-                z                = v2 * scale;
+                const Real scale  = std::sqrt(Real(-2) * std::log(s) / s);
+                m_saved           = v1 * scale;
+                m_saved_available = true;
+                z                 = v2 * scale;
             }
-            return z * stddev_ + mean_;
+            return z * m_stddev + m_mean;
         }
 
       private:
-        Real mean_;
-        Real stddev_;
-        Real saved_           = Real(0);
-        bool saved_available_ = false;
+        Real m_mean;
+        Real m_stddev;
+        Real m_saved           = Real(0);
+        bool m_saved_available = false;
     };
 
     /// True with probability p (see the file comment).
