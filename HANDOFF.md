@@ -295,7 +295,8 @@ carries the measured numbers; this is the map:
    (467); ASG medians aligned / unaligned cabin +19.80 / +16.29, mt9 +21.91 /
    +16.29, and +3.51 to +8.08 dB better aligned in all six sweep rooms at
    delays 480 and 500. Two mics (cabin + mt5, shared reference) both converge
-   (uncertainty ≤ −18.76 dB after 2 s); no two-mic ASG claim. **Open, not
+   (uncertainty ≤ −18.76 dB after 2 s); the two-mic ASG is item 10's, measured
+   in a harness loop, not through `afc_chain`. **Open, not
    gated: on the held note alignment is not a win** — the largest tap is the
    closed-loop bias at the lag where the reference is in phase with the note
    (so the readback needs broadband material), and aligned − unaligned ASG
@@ -305,7 +306,44 @@ carries the measured numbers; this is the map:
    length on tonal material. (Numbers re-measured on tap/MuTap#66's portable
    variates.) Not built: the stages' own latencies in `latency()`, the
    per-mic safety duck, a `frequency_shifter` class, an icount workload.
-10. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
+10. **The two-mic go/no-go (2026-09-30; [`docs/two-mic-afc.md`](docs/two-mic-afc.md)).**
+   Landed (tap/MuTap#73, tests only): `tests/support/two_mic_loop.h`
+   (`multi_mic_loop`: each mic on its own band-limited 1024-tap path with
+   its own PEM + FD-Kalman, all on one reference built as `afc_chain` builds
+   it; bus → optional 2 Hz shift → gain → optional −12 dB aux), the
+   plumbing and smoke suite `test_two_mic.cpp` (runs by default, about 6 s)
+   and the `MUTAP_SLOW` sweep `test_two_mic_sweep.cpp` (180-condition grid,
+   probe convergence, 40 s re-check, beating unison, cost; `TWO_MIC_RAW`
+   resumes). The criterion: two-mic ASG ≥ ⅔ of the mean of the two
+   single-mic ASGs, with "unison" read as a beating unison (1.9 Hz). All
+   128 counted rows pass (120 separated and speech grid rows, 8 beating
+   unison). The phase-locked unison is kept as the labelled worst case, 59
+   of 60 pass: mt5+mt9, S1, −10 dB leakage, canceller alone reads 0.647
+   (0.653 at 40 s) and 0.975 when the unison beats. Against the larger
+   single-mic median, 5 rows fall below ⅔, all phase-locked unison at S1.
+   Two cancellers + bus cost ×1.97–×2.14 of one. Every number is macOS 15
+   x86_64, AppleClang, Release, shared machine at load 5–50, 10 s probes,
+   five seed sets; no second host has run it. Open:
+   - **One RIR at two truncations.** cabin, rehearsal and hall read one
+     fixture at taps [0, 1024) and [256, 1280); only mt5+mt9 has
+     independent paths. Physically placed second mics are not simulated.
+   - **The single-mic reference has no second singer.** One mic with the
+     other singer leaking in was not measured.
+   - **Runaway limits only**; no two-mic audible limit.
+   - **Shift and aux rows on cabin and mt5+mt9 only**; rehearsal and hall
+     ran the canceller alone, and the beating unison ran 8 conditions.
+   - **`multi_mic_loop` is not cross-checked against `afc_chain`** in a
+     loop.
+   - **The −12 dB white aux lowers runaway ASG in most rows**, for one mic
+     and for two (unison medians −1.41 two-mic, −0.90 single); unexplained.
+   - **The sweep predates #67.** It ran at 864e596, before the harness
+     Hilbert became the library's `allpass_hilbert`; only the smoke suite
+     was re-run after the rebase (identical). The shift rows are not
+     re-measured on main.
+   - **Single-mic numbers here are not karaoke-suite numbers**: the chain's
+     reference lags one block, so the cabin S1 held note reads +9.71 against
+     the karaoke suite's +11.63.
+11. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
    The per-bin spectral reverb shaped from F̂ is commit `8abe958` on the
    local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
    bundle); it did not land. Measured during the karaoke landing with a
