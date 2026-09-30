@@ -14,11 +14,11 @@
 // room 5 unless stated; ASG over max|F|, medians over seed sets 0..4):
 //
 //   PEM, tonal near-end:   stable at MSG-3 AND MSG+1 in every set; ASG
-//                          median +7.08 (double) / +7.66 (float)
-//   PEM, speech-envelope:  ASG median +9.68 dB
-//   PEM, voiced (pitch):   ASG median +3.61 dB   (naive: howls)
-//   PEM, white:            ASG median +9.68 dB   (no regression vs naive)
-//   warped+IPC, music:     per-room medians +6.88..+9.38 dB, rooms 5..9
+//                          median +9.39 (double) / +7.08 (float)
+//   PEM, speech-envelope:  ASG median +10.55 dB
+//   PEM, voiced (pitch):   ASG median +3.90 dB   (naive: howls)
+//   PEM, white:            ASG median +10.26 dB  (no regression vs naive)
+//   warped+IPC, music:     per-room medians +7.19..+9.38 dB, rooms 5..9
 //
 // Thresholds sit well inside those numbers so they gate regressions.
 
@@ -148,8 +148,8 @@ namespace {
     // the PEM canceller stays stable there, stays stable ABOVE the open-loop
     // MSG, and adds measurable stable gain. Measured on the band-limited
     // room: stable at MSG-3 and MSG+1 in 5 of 5 sets (10 of 10 over sets
-    // 0..9) in both precisions; ASG median +7.08 (double, per set
-    // +5.05..+7.66) / +7.66 (float, +2.45..+9.68).
+    // 0..9) in both precisions; ASG median +9.39 (double, per set
+    // +3.90..+9.97) / +7.08 (float, +5.05..+8.81).
     TYPED_TEST(pem_afc_host_test, StabilizesTonalNearEndWhereNaiveHowls) {
         const auto          path          = test_room<TypeParam>(true);
         int                 stable_minus3 = 0;
@@ -164,7 +164,7 @@ namespace {
         this->RecordProperty("median_asg_db", median(asg));
         EXPECT_GE(stable_minus3, 4) << "unstable at the gain that kills naive (measured stable in 5 of 5 sets)";
         EXPECT_GE(stable_plus1, 4) << "no stable gain added over the open loop (measured stable in 5 of 5 sets)";
-        EXPECT_GT(median(asg), 3.0) << "ASG too small (measured median +7.08 double / +7.66 float)";
+        EXPECT_GT(median(asg), 3.0) << "ASG too small (measured median +9.39 double / +7.08 float)";
     }
 
     // Same fixed-gain, fixed-material comparison as the M2 bias test: PEM's
@@ -172,8 +172,8 @@ namespace {
     // trajectory limit-cycles chaotically, so a single run's misalignment
     // is exquisitely sensitive to platform floating-point details; medians
     // over five seeds (2, 12, 22, 32, 42) are the claim. Measured on the
-    // band-limited room: PEM median +8.63 dB (per seed +7.93..+9.35), naive
-    // median +15.80 (+13.60..+18.33), a 7.17 dB gap.
+    // band-limited room: PEM median +5.91 dB (per seed +5.05..+7.64), naive
+    // median +13.38 (+7.56..+19.69), a 7.47 dB gap.
     TEST(PemAfc, ReducesTonalBiasVersusNaive) {
         const auto   path     = test_room<double>(true);
         const double open_msg = mutap_test::theoretical_msg_db(path);
@@ -205,13 +205,13 @@ namespace {
         }
         RecordProperty("median_pem_misalignment_db", median(pem_mis));
         RecordProperty("median_naive_misalignment_db", median(naive_mis));
-        EXPECT_LT(median(pem_mis), 11.0) << "PEM median misalignment (measured +8.63 dB)";
-        EXPECT_LT(median(pem_mis), median(naive_mis) - 3.0) << "PEM median vs naive median (measured gap 7.17 dB)";
+        EXPECT_LT(median(pem_mis), 11.0) << "PEM median misalignment (measured +5.91 dB)";
+        EXPECT_LT(median(pem_mis), median(naive_mis) - 3.0) << "PEM median vs naive median (measured gap 7.47 dB)";
     }
 
     // Speech-envelope-like (AR-colored) near-end: strongly self-correlated,
     // the case the short-term LP stage exists for. Measured ASG median
-    // +9.68 dB (per set +7.08..+14.88).
+    // +10.55 dB (per set +4.19..+15.75).
     TEST(PemAfc, AddsStableGainOnSpeechEnvelopeNearEnd) {
         const auto          path = test_room<double>(true);
         std::vector<double> asg;
@@ -221,13 +221,13 @@ namespace {
                           }).asg);
         }
         RecordProperty("median_asg_db", median(asg));
-        EXPECT_GT(median(asg), 4.0) << "ASG too small (measured median +9.68 dB)";
+        EXPECT_GT(median(asg), 4.0) << "ASG too small (measured median +10.55 dB)";
     }
 
     // Voiced (pitch-periodic) near-end: the case the long-term stage of the
     // speech cascade exists for; the naive canceller howls here. Measured:
-    // stable at MSG-3 in 5 of 5 sets; ASG median +3.61 dB (per set
-    // +1.59..+8.52).
+    // stable at MSG-3 in 5 of 5 sets; ASG median +3.90 dB (per set
+    // +1.88..+5.92).
     TEST(PemAfc, AddsStableGainOnVoicedNearEnd) {
         const auto          path   = test_room<double>(true);
         int                 stable = 0;
@@ -240,7 +240,7 @@ namespace {
         }
         RecordProperty("median_asg_db", median(asg));
         EXPECT_GE(stable, 4) << "unstable at MSG-3 (measured stable in 5 of 5 sets)";
-        EXPECT_GT(median(asg), 0.5) << "ASG too small (measured median +3.61 dB)";
+        EXPECT_GT(median(asg), 0.5) << "ASG too small (measured median +3.90 dB)";
     }
 
     // THE MUSIC PREDICTOR'S CLAIM (HANDOFF.md near-end-model decision): a
@@ -253,7 +253,7 @@ namespace {
     // open-loop MSG (~1 room in 5, at every (lambda, order) tried, found on
     // the raw rooms). With it, no room collapses: per-room medians over
     // seed sets 0..4 on the band-limited rooms {5..9} measure
-    // +9.38/+8.12/+6.88/+8.12/+6.88 dB (lowest single set +4.06, room 9);
+    // +8.12/+8.44/+7.19/+9.38/+9.06 dB (lowest single set +4.38, room 8);
     // over sets 0..9 on room 9 it never reached the -15 dB probe floor,
     // where the speech cascade at its defaults did once in ten.
     TEST(PemAfc, WarpedPredictorRobustOnMusicAcrossRooms) {
@@ -280,14 +280,14 @@ namespace {
                               - open_msg);
             }
             RecordProperty("median_asg_db_room_" + std::to_string(room), median(asg));
-            EXPECT_GT(median(asg), 4.0) << "room " << room << " (measured medians >= +6.88 dB)";
+            EXPECT_GT(median(asg), 4.0) << "room " << room << " (measured medians >= +7.19 dB)";
         }
     }
 
     // And the warped predictor (in its documented pairing with IPC-scaled
     // stepping) is safe on the speech-envelope material the cascade was
     // built for — no collapse, and more headroom than the cascade measures
-    // there. Measured ASG median +19.38 dB (per set +17.81..+22.50).
+    // there. Measured ASG median +17.81 dB (per set +17.19..+20.94).
     TEST(PemAfc, WarpedPredictorHandlesSpeechEnvelopeToo) {
         const auto          path     = test_room<double>(true);
         const double        open_msg = mutap_test::theoretical_msg_db(path);
@@ -311,12 +311,12 @@ namespace {
                 - open_msg);
         }
         RecordProperty("median_asg_db", median(asg));
-        EXPECT_GT(median(asg), 10.0) << "measured median +19.38 dB";
+        EXPECT_GT(median(asg), 10.0) << "measured median +17.81 dB";
     }
 
     // No regression where the naive canceller was already fine. Measured
-    // ASG median +9.68 dB (per set +7.95..+10.26); the naive canceller's
-    // median on the same room and material is +8.23 (test_closed_loop.cpp).
+    // ASG median +10.26 dB (per set +7.95..+10.26); the naive canceller's
+    // median on the same room and material is +7.95 (test_closed_loop.cpp).
     TEST(PemAfc, MatchesNaiveOnWhiteNearEnd) {
         const auto          path = test_room<double>(true);
         std::vector<double> asg;
@@ -329,10 +329,14 @@ namespace {
         EXPECT_GT(median(asg), 5.0) << "ASG regression vs naive (measured median +9.68 dB)";
     }
 
-    // CANARY (pem_afc_test/0 runs in the emulated selection), raw path, one
-    // seed: the band-limited room's float ASG at set 0 is +2.45 dB, a 1.45
-    // dB margin, so the canary stays on the raw room. Measured on host,
-    // raw: ASG +7.66 (float) / +3.90 (double), stable at MSG-3 and MSG+1.
+    // CANARY (pem_afc_test/0 runs in the emulated selection), band-limited
+    // path, one seed (set 0). Measured on host: ASG +5.05 (float) / +9.97
+    // (double), stable at MSG-3 and MSG+1, a 4.05 dB float margin over the
+    // gate (+4.77 on Hexagon), and one-ulp perturbations of the room move
+    // the float ASG no lower than +1.88. It ran on the raw room while the
+    // band-limited margin was +1.45 dB (the other standard library's rooms);
+    // on these rooms the raw float ASG is +11.12 on host but one-ulp
+    // perturbations reach +1.01, and Hexagon reads +0.72 and howls at MSG+1.
     // The claim is pem_afc_host_test above.
     template <typename Sample>
     class pem_afc_test : public ::testing::Test {};
@@ -340,10 +344,10 @@ namespace {
     TYPED_TEST_SUITE(pem_afc_test, sample_types);
 
     TYPED_TEST(pem_afc_test, StabilizesTonalNearEndWhereNaiveHowls) {
-        const auto r = run_pem(test_room<TypeParam>(false), 0, tonal<TypeParam>());
+        const auto r = run_pem(test_room<TypeParam>(true), 0, tonal<TypeParam>());
         EXPECT_FALSE(r.howls_at_minus3) << "unstable at the gain that kills naive";
         EXPECT_FALSE(r.howls_at_plus1) << "no stable gain added over the open loop";
-        EXPECT_GT(r.asg, 1.0) << "ASG too small (measured +7.66 float / +3.90 double)";
+        EXPECT_GT(r.asg, 1.0) << "ASG too small (measured +5.05 float / +9.97 double)";
     }
 
     TEST(PemAfcConfigValidation, RejectsBadConfigs) {

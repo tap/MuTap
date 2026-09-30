@@ -238,11 +238,11 @@ TEST(AfcDecorrelation, ShifterGroupDelayIsFrequencyDependent) {
 // and a 5 Hz shift rescues it; behind the same shift the naive core fails
 // outright, so decorrelation does not replace PEM prewhitening.
 // Measured here (5 seed sets; 5 s probes, naive 10 s; ASG per seed set):
-//   canceller alone   +0.00 +1.00 +4.75 -2.50 -1.50   median  +0.00
-//   + 5 Hz shift     +13.00 +14.50 +12.00 +13.00 +12.50  median +13.00
-//   naive + 5 Hz     -15.00 (the probe floor) in 4 of 5, -8.36
-//   shift - canceller, per seed: median +13.50 (min +7.25)
-//   PEM - naive behind the shift (chain limits): median +27.50 (min +21.36)
+//   canceller alone   -2.00 +3.50 -3.00 +6.00 -1.50   median  -1.50
+//   + 5 Hz shift     +13.50 +14.00 +12.50 +12.50 +15.50  median +13.50
+//   naive + 5 Hz     -15.00 (the probe floor) in 4 of 5, -14.61
+//   shift - canceller, per seed: median +15.50 (min +6.50)
+//   PEM - naive behind the shift (chain limits): median +28.50 (min +27.11)
 // The sweep (0.1 dB, 40 s): +0.29 / +13.21 / -15.00. On the raw (unbanded)
 // cabin the branch measured +0.6 -> +18.4 dB at seed 2 against max|F|.
 TEST(AfcDecorrelation, LowLatencyRowShiftRescuesTheHeldNote) {
@@ -250,11 +250,11 @@ TEST(AfcDecorrelation, LowLatencyRowShiftRescuesTheHeldNote) {
     const auto shift = run(shifted(5.0), at(kk::k_low, 5.0, 8.0, 16.0), "low_shift5");
     const auto naive = run(shifted(5.0, kk::engine::naive), at(kk::k_low, 10.0, -15.0, 10.0), "low_naive_shift5");
 
-    EXPECT_LT(median(plain.asg), 4.0) << "measured +0.00: no useful gain on a held note at 2.7 ms";
-    EXPECT_GT(median(shift.asg), 9.0) << "measured +13.00: the shift rescues it";
-    EXPECT_GT(median(differences(shift.asg, plain.asg, "low shift - plain ASG")), 8.0) << "measured +13.50";
+    EXPECT_LT(median(plain.asg), 4.0) << "measured -1.50: no useful gain on a held note at 2.7 ms";
+    EXPECT_GT(median(shift.asg), 9.0) << "measured +13.50: the shift rescues it";
+    EXPECT_GT(median(differences(shift.asg, plain.asg, "low shift - plain ASG")), 8.0) << "measured +15.50";
     EXPECT_GT(median(differences(shift.chain, naive.chain, "low PEM - naive chain")), 15.0)
-        << "measured +27.50: behind the shift, PEM vs the naive core";
+        << "measured +28.50: behind the shift, PEM vs the naive core";
 }
 
 // S1 (10 ms), held note, RUNAWAY limits. The canceller alone clears a floor
@@ -262,13 +262,13 @@ TEST(AfcDecorrelation, LowLatencyRowShiftRescuesTheHeldNote) {
 // further. (The AUDIBLE limit is a different story for the shift - see the
 // file comment and docs/karaoke-afc.md.)
 // The canceller row is bisected (5 s probes): measured ASG per seed set
-// +13.50 +9.50 +13.50 +11.50 +10.00, median +11.50. The shift row is gated
+// +7.50 +14.00 +11.50 +12.00 +10.50, median +11.50. The shift row is gated
 // as a median DIRECTION, to keep the suite inside its runtime budget: one
 // 10 s probe per seed set at that seed's canceller limit + 3 dB, which must
-// not run away in at least three of five (measured: stable in 4 of 5; seed
-// set 0 runs away). The sweep's bisected medians (0.1 dB, 40 s): canceller
-// +11.63, + 5 Hz +17.52, per-seed shift - canceller +2.20 / +8.35 / +3.87 /
-// +6.42 / +7.03 (seed set 0 is the +2.20).
+// not run away in at least three of five (measured: stable in 5 of 5). The
+// sweep's bisected medians (0.1 dB, 40 s): canceller +11.63, + 5 Hz +17.52,
+// per-seed shift - canceller +2.20 / +8.35 / +3.87 / +6.42 / +7.03 (seed set
+// 0 is the +2.20).
 TEST(AfcDecorrelation, HeldNoteAtS1RunawayLimits) {
     const auto path  = kk::room("cabin");
     const auto plain = run(kk::setup{}, at(kk::k_s1, 5.0, 4.0, 20.0), "s1_plain");
@@ -282,5 +282,5 @@ TEST(AfcDecorrelation, HeldNoteAtS1RunawayLimits) {
         stable += howls ? 0 : 1;
     }
     ::testing::Test::RecordProperty("s1_shift5_stable_at_plain_plus_3dB", stable);
-    EXPECT_GE(stable, 3) << "measured 4 of 5: the shift raises the runaway limit by > 3 dB in the median";
+    EXPECT_GE(stable, 3) << "measured 5 of 5: the shift raises the runaway limit by > 3 dB in the median";
 }

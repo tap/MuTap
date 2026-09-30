@@ -259,10 +259,10 @@ namespace {
     // idle transmitted noise from the pre-roll, SAME meter statistic.
     // Mask: <= ref+10 from 100 ms, <= ref by 1500 ms (req) / 750 ms
     // (target). Measured (max over window, 48 kHz / 16 kHz):
-    //   ref            -24.5 / -26.7
-    //   onset 100-200   -30.6 / -31.6   (mask ref+10: met by ~16 dB)
-    //   750-1000 ms     -28.6 / -33.2   (target <= ref: met)
-    //   1500-2000 ms    -26.9 / -30.6   (req <= ref: met)
+    //   ref            -24.5 / -25.5
+    //   onset 100-200   -30.6 / -31.1   (mask ref+10: met by ~16 dB)
+    //   750-1000 ms     -28.6 / -32.1   (target <= ref: met)
+    //   1500-2000 ms    -28.1 / -28.9   (req <= ref: met)
     // A quiet-noise variant (Hoth at -46 dBm0) meets the mask only from
     // ~600 ms: with echo 30 dB above BGN+10 at onset, the first mask
     // segment demands more switched loss than the A_H,S allowance —

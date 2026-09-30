@@ -17,7 +17,7 @@
 //   4 kHz, -106.5 at 5 kHz; AM-FM comb separation 94.3 dB with the
 //   spec's exact band edges (guard 0 — an 8 Hz guard collapses it to
 //   19 dB by reaching across the plans' 10 Hz interleave gaps); Hoth
-//   octave decline 100-200 -> 4k-8k measured 18.1 dB; driving-noise LF
+//   octave decline 100-200 -> 4k-8k measured 18.0 dB; driving-noise LF
 //   dominance 27.6 dB; cabin fixture RT60 66.6 ms (G.167 car figure:
 //   ~60 ms typical); P.56 meter on sparse bursts: activity 0.312 with
 //   level delta +5.06 dB (= 10 log10(1/activity), exact), and on CSS
@@ -162,7 +162,7 @@ namespace {
         const double h_hi  = octave_db(hoth, 4000.0, 8000.0);
         EXPECT_GT(h_lo, h_mid);
         EXPECT_GT(h_mid, h_hi);
-        EXPECT_NEAR(h_lo - h_hi, 18.1, 4.0) << "Hoth decline, measured 18.1 dB";
+        EXPECT_NEAR(h_lo - h_hi, 18.1, 4.0) << "Hoth decline, measured 18.0 dB";
 
         const auto drv = itu::make_driving_noise(static_cast<size_t>(4 * itu::k_fs), 7);
         EXPECT_GT(octave_db(drv, 60.0, 120.0) - octave_db(drv, 4000.0, 8000.0), 20.0)
