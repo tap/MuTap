@@ -73,6 +73,9 @@ if(NOT MUTAP_BARE_METAL AND NOT CMAKE_CROSSCOMPILING)
     # precision acoustic claims whose every row is a gain bisection, and the
     # sweep runs its jobs on std::thread, which the bare-metal targets lack.
     target_sources(mutap_tests PRIVATE test_afc_decorrelation.cpp test_afc_decorrelation_sweep.cpp)
+    # afc_chain's suite is host-only too (tests/test_afc_chain.cpp): its
+    # closed-loop claims are gain bisections, and its sweep uses std::thread.
+    target_sources(mutap_tests PRIVATE test_afc_chain.cpp)
     target_include_directories(mutap_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party/faust)
 endif()
 

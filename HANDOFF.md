@@ -267,6 +267,35 @@ carries the measured numbers; this is the map:
      120 Hz (`speech_predictor::max_lag` 400 at 48 kHz) and a predictor
      whose short-term stage is a template parameter. Each needs a measurement
      under these rules before it is claimed again.
+
+   **The chain skeleton, `afc_chain` (2026-09-29, `include/mutap/afc_chain.h`,
+   `tests/test_afc_chain.cpp`, host-only).** M cancellers (default PEM +
+   FD-Kalman, speech cascade) on ONE reference, summed into the bus, three
+   optional stage slots (decorrelator → reverb → safety; `afc_stage_ref`, a
+   non-owning object + function pointer to anything with a noexcept
+   `process_block(in, out, n)`; null = bypass, the canceller-first default),
+   the output delay line, then aux; the speaker feed is the reference. The
+   chain always lags the reference by one block (the speaker block written now
+   depends on this block's cancellation), so the canceller sees
+   `u[n] = speaker[n - block - reference_delay_samples]` and a rig sets
+   `reference_delay_samples = loopback round trip - block - jitter margin`.
+   `reference_aligned()` reads the largest tap through a caller-provided
+   buffer. Measured (float, electrical delay 480, 1024 taps, speech, five
+   seeds): aligned (384) the cabin's direct path lands at the true tap + the
+   32-sample margin in 5 of 5 (83 against 51), unaligned (0) 416 taps later
+   (467); ASG medians aligned / unaligned cabin +19.80 / +16.29, mt9 +21.91 /
+   +16.29, and +3.51 to +8.08 dB better aligned in all six sweep rooms at
+   delays 480 and 500. Two mics (cabin + mt5, shared reference) both converge
+   (uncertainty ≤ −18.76 dB after 2 s); no two-mic ASG claim. **Open, not
+   gated: on the held note alignment is not a win** — the largest tap is the
+   closed-loop bias at the lag where the reference is in phase with the note
+   (so the readback needs broadband material), and aligned − unaligned ASG
+   medians read −3.87 to +4.57 dB at 480 and −3.16 to +2.11 at 500, lower in
+   three of six rooms at 480 and four of six at 500; a 640-tap aligned filter
+   beat the 1024-tap unaligned one in four of six, which points at filter
+   length on tonal material. (Numbers re-measured on tap/MuTap#66's portable
+   variates.) Not built: the stages' own latencies in `latency()`, the
+   per-mic safety duck, a `frequency_shifter` class, an icount workload.
 10. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
    The per-bin spectral reverb shaped from F̂ is commit `8abe958` on the
    local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
