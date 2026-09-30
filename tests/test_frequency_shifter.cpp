@@ -15,6 +15,7 @@
 // The analysis runs in double on every target.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <complex>
 #include <cstddef>
@@ -78,14 +79,28 @@ namespace {
     }
 
     /// Deterministic uniform noise in [-1, 1) (a 64-bit LCG: same stream on
-    /// every target, no <random> distribution differences).
+    /// every target, no <random> distribution differences), one sample at a
+    /// time so a long run needs no buffer.
+    class lcg_noise {
+      public:
+        explicit lcg_noise(std::uint64_t seed)
+            : m_state(seed) {}
+
+        double next() {
+            m_state = m_state * 6364136223846793005ULL + 1442695040888963407ULL;
+            return static_cast<double>(m_state >> 11) * 0x1.0p-52 - 1.0;
+        }
+
+      private:
+        std::uint64_t m_state;
+    };
+
     template <typename Sample>
     std::vector<Sample> noise(size_t n, std::uint64_t seed) {
         std::vector<Sample> x(n);
-        std::uint64_t       s = seed;
+        lcg_noise           gen(seed);
         for (auto& v : x) {
-            s = s * 6364136223846793005ULL + 1442695040888963407ULL;
-            v = static_cast<Sample>(static_cast<double>(s >> 11) * 0x1.0p-52 - 1.0);
+            v = static_cast<Sample>(gen.next());
         }
         return x;
     }
@@ -219,33 +234,45 @@ namespace {
     // 48 kHz, through a live shift change (+5 -> -3 Hz) at 5 s. Measured on
     // the x86_64 host: max |float - double| 4.402e-05 (input in [-1, 1)),
     // error power -98.75 dB re the output.
+    //
+    // Streamed block by block: the noise is generated per 64-sample block and
+    // the statistics accumulate as it goes, so the test holds 1.5 KB of block
+    // buffers on the stack; its peak heap, measured on the host with a
+    // counting operator new, is 872 bytes, gtest's bookkeeping included.
+    // (Whole-signal buffers, 480000 samples in double and float in and out,
+    // were 11.5 MB: the Cortex-M55 leg's heap, the rest of 2 MB of ISRAM,
+    // threw bad_alloc.) The same stream as the buffered version: on the host
+    // the statistics are bit-identical to it.
     TEST(FrequencyShifterCrossPrecision, FloatTracksDouble) {
-        const size_t       n  = 480000;
-        const auto         xd = noise<double>(n, 11);
-        std::vector<float> xf(n);
-        for (size_t i = 0; i < n; ++i) {
-            xf[i] = static_cast<float>(xd[i]);
-        }
+        constexpr size_t          n     = 480000;
+        constexpr size_t          block = 64;
+        lcg_noise                 gen(11);
         frequency_shifter<double> d({48000.0, 5.0});
         frequency_shifter<float>  f({48000.0, 5.0F});
-        std::vector<double>       yd(n);
-        std::vector<float>        yf(n);
-        for (size_t i = 0; i < n; i += 64) {
+        std::array<double, block> xd{};
+        std::array<double, block> yd{};
+        std::array<float, block>  xf{};
+        std::array<float, block>  yf{};
+        double                    max_diff = 0.0;
+        double                    ref_sq   = 0.0;
+        double                    diff_sq  = 0.0;
+        for (size_t i = 0; i < n; i += block) {
             if (i == n / 2) {
                 d.set_shift_hz(-3.0);
                 f.set_shift_hz(-3.0F);
             }
-            d.process_block(&xd[i], &yd[i], 64);
-            f.process_block(&xf[i], &yf[i], 64);
-        }
-        double max_diff = 0.0;
-        double ref_sq   = 0.0;
-        double diff_sq  = 0.0;
-        for (size_t i = 0; i < n; ++i) {
-            const double e = static_cast<double>(yf[i]) - yd[i];
-            max_diff       = std::max(max_diff, std::abs(e));
-            ref_sq += yd[i] * yd[i];
-            diff_sq += e * e;
+            for (size_t k = 0; k < block; ++k) {
+                xd[k] = gen.next();
+                xf[k] = static_cast<float>(xd[k]);
+            }
+            d.process_block(xd.data(), yd.data(), block);
+            f.process_block(xf.data(), yf.data(), block);
+            for (size_t k = 0; k < block; ++k) {
+                const double e = static_cast<double>(yf[k]) - yd[k];
+                max_diff       = std::max(max_diff, std::abs(e));
+                ref_sq += yd[k] * yd[k];
+                diff_sq += e * e;
+            }
         }
         const double rel_db = 10.0 * std::log10(diff_sq / ref_sq);
         std::printf("float - double over 10 s: max |diff| %.3e, error power %.2f dB re output\n", max_diff, rel_db);
