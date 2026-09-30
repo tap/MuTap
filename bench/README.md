@@ -288,7 +288,7 @@ count for count (0 instructions on all 20 rows), so nothing is re-recorded.
 The pin is DspTap `0c5bf59`, the #37 squash on DspTap `main` (the same tree
 as the PR head `63cdfdf` that #60 merged with).
 
-**2026-09-28 — DspTap d9c1e33 (the srdif engine, tap/DspTap#39 … #44), tap/MuTap#66.**
+**2026-09-28 — DspTap d9c1e33 (the srdif engine, tap/DspTap#39 … #44).**
 Reason: DspTap's float FFT moved from the C++20 port of Ooura's package to
 DspTap's clean-room srdif engine (#42, pin `72977aa`) and then had that engine
 tuned for clang/Hexagon (#44, pin `d9c1e33`). At `72977aa` this ratchet read
