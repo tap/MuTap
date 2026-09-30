@@ -15,9 +15,9 @@
 // sweep, the test asserts studio only):
 //
 //   room       max|F| MSG   exact MSG   Kalman ASG   NLMS ASG
-//   studio      -7.00 dB    -6.64 dB     +19.38 dB    +11.88 dB
-//   rehearsal   -7.92 dB    -5.30 dB     +18.44 dB    +11.88 dB
-//   hall        -6.91 dB    -6.36 dB     +19.38 dB    +11.88 dB
+//   studio      -7.00 dB    -6.64 dB     +18.12 dB    +11.25 dB
+//   rehearsal   -7.92 dB    -5.30 dB     +19.38 dB    +10.94 dB
+//   hall        -6.91 dB    -6.36 dB     +19.38 dB    +11.25 dB
 //
 // Thresholds sit well inside those numbers so they gate regressions.
 
@@ -136,24 +136,24 @@ namespace {
 
     // The headline: on rooms with REAL reflection structure, the Kalman
     // canceller holds the same large broadband gains the synthetic rooms
-    // show (measured medians +18.44..+19.38 dB across the three rooms, per
-    // set +18.44..+20.62).
+    // show (measured medians +18.12..+19.38 dB across the three rooms, per
+    // set +17.19..+20.62).
     TEST(RirFixtures, KalmanPemAddsStableGainOnModeledRooms) {
         using pem = tap::mu::pem_afc<double, tap::mu::speech_predictor<double>, tap::mu::partitioned_fdkf<double>>;
         for (const auto& r : k_rooms) {
             const double med = median_asg<pem>(r);
             RecordProperty(std::string("median_asg_db_") + r.name, med);
-            EXPECT_GT(med, 14.0) << r.name << " (measured medians >= +18.44 dB)";
+            EXPECT_GT(med, 14.0) << r.name << " (measured medians >= +18.12 dB)";
         }
     }
 
     // And the classic engine's reference point on one room (measured median
-    // +11.88 dB, per set +10.31..+12.19) — the gap between these two tests
+    // +11.25 dB, per set +9.69..+11.88) — the gap between these two tests
     // is the v2 story told on realistic acoustics.
     TEST(RirFixtures, NlmsPemAddsStableGainOnStudio) {
         const double med = median_asg<tap::mu::pem_afc<double>>(k_rooms[0]);
         RecordProperty("median_asg_db", med);
-        EXPECT_GT(med, 6.0) << "measured median +11.88 dB";
+        EXPECT_GT(med, 6.0) << "measured median +11.25 dB";
     }
 
 } // namespace

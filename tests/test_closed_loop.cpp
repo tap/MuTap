@@ -12,13 +12,13 @@
 // seed. Measured (room 5, 256 taps, d = 128, converge at MSG-6 dB; medians
 // over seed sets 0..4, double = float unless both given):
 //
-//   open loop:            measured MSG median +1.91 dB over -20log10 max|F|,
-//                         +0.27 over the phase-exact limit (exact_msg_db,
-//                         itself +1.65 over max|F| on this room)
-//   naive FDAF, white v:  ASG median +8.23 dB (+3.90..+11.12)
+//   open loop:            measured MSG median +0.79 dB over -20log10 max|F|,
+//                         +0.26 over the phase-exact limit (exact_msg_db,
+//                         itself +0.53 over max|F| on this room)
+//   naive FDAF, white v:  ASG median +7.95 dB (+4.19..+11.12)
 //   naive FDAF, tonal v:  ASG median -15.00 dB, the probe floor (bias
 //                         DESTABILIZES the loop at gains the open loop
-//                         handles); misalignment median +15.80 / +16.78 dB
+//                         handles); misalignment median +12.95 / +13.97 dB
 //
 // Removing that failure is PEM prewhitening's whole job (milestone M3).
 
@@ -136,11 +136,11 @@ namespace {
     // The bisected open-loop MSG against both analytic references, on the
     // band-limited room, medians over seed sets 0..4 of the white probe
     // (0.53 s). Against the magnitude bound max|F| it sits above by the
-    // phase condition's slack (measured median +1.91 dB; the exact limit
-    // itself is +1.65 over max|F| here); against the phase-exact limit it
+    // phase condition's slack (measured median +0.79 dB; the exact limit
+    // itself is +0.53 over max|F| here); against the phase-exact limit it
     // sits just above (a short probe over-reads a slowly growing loop;
-    // measured median +0.27 dB), and must not sit below it. (Raw room, for
-    // the record: +0.94 over max|F|, where the old comment said 0.35.)
+    // measured median +0.26 dB), and must not sit below it. (Raw room, for
+    // the record: +0.35 over max|F|.)
     TEST(ClosedLoopMsg, MeasuredOpenLoopMsgMatchesTheory) {
         const auto          path   = test_room<double>(true);
         const double        theory = mutap_test::theoretical_msg_db(path);
@@ -157,9 +157,9 @@ namespace {
         RecordProperty("exact_minus_theory_db", exact - theory);
         RecordProperty("median_msg_minus_theory_db", median(over_theory));
         RecordProperty("median_msg_minus_exact_db", median(over_exact));
-        EXPECT_NEAR(median(over_theory), 0.0, 3.0) << "measured median +1.91 dB over max|F|";
-        EXPECT_GE(median(over_exact), 0.0) << "the bisected limit should not sit below the exact one (measured +0.27)";
-        EXPECT_LE(median(over_exact), 1.0) << "measured median +0.27 dB over the exact limit";
+        EXPECT_NEAR(median(over_theory), 0.0, 3.0) << "measured median +0.79 dB over max|F|";
+        EXPECT_GE(median(over_exact), 0.0) << "the bisected limit should not sit below the exact one (measured +0.26)";
+        EXPECT_LE(median(over_exact), 1.0) << "measured median +0.26 dB over the exact limit";
     }
 
     template <typename Sample>
@@ -170,7 +170,7 @@ namespace {
 
     // Stable 3 dB below the phase-exact limit, howling 3 dB above it, on
     // every seed set. The open loop is LTI, so the margins (the bisected
-    // limit sits a median +0.27 dB over the exact one) are not a chaotic
+    // limit sits a median +0.26 dB over the exact one) are not a chaotic
     // quantity.
     TYPED_TEST(closed_loop_host_test, OpenLoopStableBelowMsgHowlsAbove) {
         const auto   path         = test_room<TypeParam>(true);
@@ -190,8 +190,8 @@ namespace {
 
     // Benign case: white near-end is uncorrelated with the (delayed) loop
     // signal, so the naive closed-loop estimate is unbiased and the
-    // canceller ADDS stable gain. Measured ASG median +8.23 dB (per set
-    // +3.90..+11.12), float = double.
+    // canceller ADDS stable gain. Measured ASG median +7.95 dB (per set
+    // +4.19..+11.12), float = double.
     TYPED_TEST(closed_loop_host_test, NaiveCancellerAddsStableGainOnWhiteNearEnd) {
         const auto          path = test_room<TypeParam>(true);
         std::vector<double> asg;
@@ -205,11 +205,11 @@ namespace {
     // THE M2 REGRESSION BASELINE. Self-correlated (tonal) near-end biases
     // the naive closed-loop estimate so badly that the "canceller" is
     // DESTABILIZING: its maximum stable gain sits BELOW the open-loop MSG
-    // (measured median -15.00 dB, the probe's floor; per set
-    // -15.00..-9.69), and the estimate is worse than the zero filter
-    // (misalignment median +15.80 double / +16.78 float). PEM prewhitening
-    // (M3) exists to remove exactly this failure. Bisected MSGs, not single
-    // stability probes: the biased loop limit-cycles chaotically.
+    // (measured median -15.00 dB, the probe's floor, on every set), and
+    // the estimate is worse than the zero filter (misalignment median
+    // +12.95 double / +13.97 float). PEM prewhitening (M3) exists to remove
+    // exactly this failure. Bisected MSGs, not single stability probes: the
+    // biased loop limit-cycles chaotically.
     TYPED_TEST(closed_loop_host_test, NaiveCancellerDestabilizesOnTonalNearEnd) {
         const auto          path = test_room<TypeParam>(true);
         std::vector<double> mis;
@@ -238,7 +238,7 @@ namespace {
     TYPED_TEST_SUITE(closed_loop_test, sample_types);
 
     // CANARY, raw path: the band-limited room's +3 dB probe sits only
-    // 1.09 dB over its bisected limit (the raw room's 2.06 dB), under the
+    // 2.21 dB over its bisected limit (the raw room's 2.65 dB), under the
     // ~4 dB a canary needs.
     TYPED_TEST(closed_loop_test, OpenLoopStableBelowMsgHowlsAbove) {
         const auto   path   = test_room<TypeParam>(false);
@@ -252,16 +252,16 @@ namespace {
         EXPECT_TRUE(mutap_test::loop_howls<TypeParam>(above, nullptr, v));
     }
 
-    // CANARY, raw path: measured ASG +6.50 dB on host, float and double, on
-    // either path — a 3.50 dB margin, under the ~4 dB a canary needs on
-    // the band-limited path, so it stays where it was.
+    // CANARY, raw path: measured ASG +7.66 dB on host, float and double, on
+    // either path — a 4.66 dB margin, over the ~4 dB a canary needs on
+    // the band-limited path; it stays where it was.
     TYPED_TEST(closed_loop_test, NaiveCancellerAddsStableGainOnWhiteNearEnd) {
         EXPECT_GT(naive_white_asg(test_room<TypeParam>(false), 0), 3.0)
             << "naive canceller failed to add stable gain on white near-end";
     }
 
     // CANARY, band-limited path (margins are wide): measured misalignment
-    // +15.60 (float) / +15.80 (double) dB and ASG -15.00 dB, the probe
+    // +9.55 (float) / +11.73 (double) dB and ASG -15.00 dB, the probe
     // floor, in both precisions on host.
     TYPED_TEST(closed_loop_test, NaiveCancellerDestabilizesOnTonalNearEnd) {
         const auto [mis, asg] = naive_tonal(test_room<TypeParam>(true), 0);

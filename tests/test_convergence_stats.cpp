@@ -20,24 +20,24 @@
 // (a held 300 Hz pitch) plus a backing track 12 dB down in the speaker feed,
 // or the voiced near end alone (the held note).
 //
-// Measured on x86-64 macOS, Release, seeds 1-3 (float / double):
+// Measured on x86-64 Linux, GCC 13.3, Release, seeds 1-3 (float / double):
 //
-//   A' < -20 dB at (s)            studio 0.585 0.663 0.603 / 0.596 0.661 0.603
-//                                 cabin  0.584 0.569 0.403 / 0.584 0.607 0.403
-//   A' minimum, held note, 3 s    studio -11.424 -11.170 -11.263 / -11.701 -11.484 -11.287
-//   (dB)                          cabin  -11.725 -11.561 -11.336 / -11.588 -11.761 -11.649
-//   D, median over seeds (dB):    studio -> rehearsal  max 2..4 s -1.089 / -1.104,
-//                                   above -0.5 at +14 / +14 blocks after the swap
-//                                 cabin -> studio      max 2..4 s -1.424 / -1.616,
-//                                   above -0.5 at +11 / +12 blocks
+//   A' < -20 dB at (s)            studio 0.572 0.559 0.557 / 0.580 0.560 0.557
+//                                 cabin  0.461 0.444 0.435 / 0.461 0.444 0.433
+//   A' minimum, held note, 3 s    studio -11.078 -11.591 -11.548 / -11.033 -11.493 -11.077
+//   (dB)                          cabin  -11.690 -11.441 -11.617 / -11.679 -11.580 -11.306
+//   D, median over seeds (dB):    studio -> rehearsal  max 2..4 s -1.021 / -1.105,
+//                                   above -0.5 at +14 / +12 blocks after the swap
+//                                 cabin -> studio      max 2..4 s -1.693 / -1.742,
+//                                   above -0.5 at +10 / +9 blocks
 //
 // Three further seed triples (4-6, 7-9, 10-12, both precisions; measured
-// once, not gated) land in the same places: A' crosses -20 dB at 0.433 to
-// 0.623 s per seed and its held-note minimum runs -10.773 to -12.537 dB. D's
+// once, not gated) land in the same places: A' crosses -20 dB at 0.405 to
+// 0.656 s per seed and its held-note minimum runs -11.192 to -12.459 dB. D's
 // window is as narrow here as the experiment found (about 1 dB): the
-// converged maxima of the median ran -0.937 to -1.121 dB (studio ->
-// rehearsal) and -1.458 to -1.696 dB (cabin -> studio), and the -0.5 dB
-// crossing +2 to +14 blocks. The levels below are regression gates for this
+// converged maxima of the median ran -0.946 to -1.123 dB (studio ->
+// rehearsal) and -1.316 to -1.689 dB (cabin -> studio), and the -0.5 dB
+// crossing +0 to +14 blocks. The levels below are regression gates for this
 // loop, not the calibrated operating points a policy layer would pick (the
 // experiment calibrated A' at -23.842 dB and D at -1.235 dB).
 //
@@ -417,11 +417,11 @@ namespace {
     // time at which A' first falls below the level; the median over seeds
     // must beat the deadline in each room.
     //
-    // Measured, seeds 1-3, float / double: crossings studio 0.585 0.663 0.603
-    // / 0.596 0.661 0.603 s (median 0.603 / 0.603), cabin 0.584 0.569 0.403 /
-    // 0.584 0.607 0.403 s (median 0.569 / 0.584). Held-note minima over 3 s
-    // -11.170 to -11.761 dB: -20 dB sits 8.830 dB below the highest of them, and
-    // the 1.0 s deadline 0.397 s past the slowest median.
+    // Measured, seeds 1-3, float / double: crossings studio 0.572 0.559 0.557
+    // / 0.580 0.560 0.557 s (median 0.559 / 0.560), cabin 0.461 0.444 0.435 /
+    // 0.461 0.444 0.433 s (median 0.444 / 0.444). Held-note minima over 3 s
+    // -11.033 to -11.690 dB: -20 dB sits 8.967 dB below the highest of them, and
+    // the 1.0 s deadline 0.440 s past the slowest median.
     constexpr double k_a_level_db    = -20.0;
     constexpr double k_a_deadline_s  = 1.0;
     constexpr double k_held_length_s = 3.0;
@@ -452,9 +452,9 @@ namespace {
     // (every seed, both rooms, over three times the cold start's deadline):
     // a held note never identifies the path — in phase 0 the true margin
     // reached 6 dB in 0 of 72 held-note runs — and A' says so. Measured
-    // minima, float: studio -11.424 -11.170 -11.263, cabin -11.725 -11.561
-    // -11.336 dB; double: studio -11.701 -11.484 -11.287, cabin -11.588
-    // -11.761 -11.649 dB.
+    // minima, float: studio -11.078 -11.591 -11.548, cabin -11.690 -11.441
+    // -11.617 dB; double: studio -11.033 -11.493 -11.077, cabin -11.679
+    // -11.580 -11.306 dB.
     TYPED_TEST(convergence_stats_test, UncertaintyRatioRefusesAHeldNote) {
         using sample        = TypeParam;
         const size_t blocks = static_cast<size_t>(k_held_length_s * k_fs) / k_block;
@@ -480,9 +480,9 @@ namespace {
     // above it within the deadline after the swap.
     //
     // Measured (median over seeds 1-3, float / double): converged maxima
-    // studio -> rehearsal -1.089 / -1.104 dB, cabin -> studio -1.424 /
-    // -1.616 dB; the median crosses -0.5 dB +14 / +14 and +11 / +12 blocks
-    // after the swap. The level splits the narrow gap (0.589 dB above the
+    // studio -> rehearsal -1.021 / -1.105 dB, cabin -> studio -1.693 /
+    // -1.742 dB; the median crosses -0.5 dB +14 / +12 and +10 / +9 blocks
+    // after the swap. The level splits the narrow gap (0.521 dB above the
     // highest converged maximum); the deadline is 18 blocks past the latest
     // crossing.
     constexpr double k_d_level_db       = -0.5;
