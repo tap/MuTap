@@ -308,12 +308,12 @@ PR's `push` run
 `arm-none-eabi-gcc 13.2.1 (15:13.2.rel1-2)`, `qemu-system-arm 8.2.2
 (1:8.2.2+ds-0ubuntu1.18)`; hexagon
 `clang+llvm-19.1.5-cross-hexagon-unknown-linux-musl`, `qemu-hexagon` built
-from `qemu-8.2.2.tar.xz` with `--enable-plugins`). `main SHA`: **pending**
-(the counts cannot exist on `main` before the pin does). Cross-check: the m33
-and m55 workloads rebuilt and counted locally on the same toolchain/QEMU pair
-reproduce all 20 counts exactly; hexagon has no count-exact local rig (a local
-`qemu-hexagon` reads a fixed per-process offset from CI) and is confirmed by the
-PR's next ratchet run.
+from `qemu-8.2.2.tar.xz` with `--enable-plugins`). `main SHA`: `3cce744`
+(the re-record commit; #70 was rebase-merged, its tip on `main` is
+`9361346`). Cross-check: the m33 and m55 workloads rebuilt and counted
+locally on the same toolchain/QEMU pair reproduce all 20 counts exactly;
+hexagon has no count-exact local rig (a local `qemu-hexagon` reads a fixed
+per-process offset from CI) and is confirmed by the PR's next ratchet run.
 
 | key | scenario | before | after | delta |
 |---|---|---:|---:|---:|
