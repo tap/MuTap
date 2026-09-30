@@ -349,10 +349,10 @@ defaults:
 | DT send attenuation, cabin / studio | <= 1.5 dB | **1.05 / 0.93** |
 | DT echo loss, worst band 200-6950 Hz | >= 33 dB | **38.0 / 34.1** |
 | ERL by 600 / 1200 ms | >= 40 / >= 46 dB | 43.2 / 46.9 |
-| Comfort-noise level match | +1 / -2.5 dB | -1.20 |
-| Comfort-noise spectrum, worst band | half-mask (+-3..6) | 1.69 dB |
-| Noise pumping | <= 5 dB | 3.3 |
-| Near-end build-up at DT onset | <= 25 ms | 20.9 ms |
+| Comfort-noise level match | +1 / -2.5 dB | -1.21 |
+| Comfort-noise spectrum, worst band | half-mask (+-3..6) | 1.48 dB |
+| Noise pumping | <= 5 dB | 3.4 |
+| Near-end build-up at DT onset | <= 25 ms | 15.8 ms |
 
 Design decisions the numbers forced (full derivations in
 postfilter.h's comments, rejected designs kept in git history):
@@ -422,12 +422,12 @@ geometries are untouched, see HANDOFF.md); low-band suppression cap
 | ITU_DtSendAtten (integrated) | <= 3 dB | <= 1.5 | **0.91** | **-0.30** |
 | ITU_DtSentSpeech (worst band) | <= 3 dB | <= 1.5 | 1.61 (T) | 2.02 (T) |
 | ITU_DtEchoLoss (worst band) | >= 27 dB | >= 33 | **37.5** | **37.9** |
-| ITU_P340_Type1Transfer | +-3 dB | +-1.5 | 2.74 (T) | 2.23 (T) |
+| ITU_P340_Type1Transfer | +-3 dB | +-1.5 | 2.74 (T) | 1.52 (T) |
 | ITU_P340_HangoverRecovery (0.5 s / 1 s) | [20 dB @ 1 s] | 26 @ 0.5 s | **30.6 / 45.0** | 18.9 (T) / 23.1 |
-| ITU_P340_NoiseFluctuation | +-3 dB | span 3 | **3.09 span** | **2.90 span** |
-| ITU_ComfortNoiseLevel | +2/-5 dB | +1/-2.5 | **-1.31** | -2.91 (T) |
-| ITU_ComfortNoiseSpectrum (worst band) | mask | half-mask | **-1.58** | **-3.46** |
-| ITU_NoisePumpFarEnd (segment avg) | <= 10 dB | <= 5 | 8.0 (T) | 9.9 (T) |
+| ITU_P340_NoiseFluctuation | +-3 dB | span 3 | **3.09 span** | **3.13 span** |
+| ITU_ComfortNoiseLevel | +2/-5 dB | +1/-2.5 | **-1.31** | **-2.15** |
+| ITU_ComfortNoiseSpectrum (worst band) | mask | half-mask | **-1.58** | **-2.93** |
+| ITU_NoisePumpFarEnd (segment avg) | <= 10 dB | <= 5 | 8.0 (T) | 9.6 (T) |
 | ITU_StabilitySweep | stable at 0 dB ERL | — | **stable, floor reached** | **stable, floor reached** |
 | ITU_AlgorithmicDelay | 70 ms budget | <= 35 | **10.7 ms** | **32 ms** |
 
@@ -496,7 +496,7 @@ adaptations: leak-rate silence 45 s (rec 2 min), tone stability 30 s
 |---|---|---|
 | G168_Convergence (2A, worst level) | loss >= 20 dB by 50 ms; Fig 9 steady | **22.3-26.3 early; -68.8 vs -61 worst steady** |
 | G168_Convergence (2B, NLP off) | >= 20 dB by 1 s; Fig 11 by 10 s | **49.3 / 50.1; -75.2 / -86.8 vs -43.3** |
-| G168_ConvergenceNoise (2C) | <= LSgen by 1 s | **met by 0.5 s (-34.4 / -32.8 vs -29)** |
+| G168_ConvergenceNoise (2C) | <= LSgen by 1 s | **met by 0.5 s (-34.4 / -32.7 vs -29)** |
 | G168_DtLowNearEnd (3A) | converge <= 5 s | **converged by 2.5 s, out at the near end's level** |
 | G168_DtDivergence (3B) | Fig 11 + 10 after the 1 s grace | **-62.6 / -67.0 vs -38.3 (+5 target met)** |
 | G168_DtConversation (3C) | post-DT peaks <= LSgen | **-24.9 / -22.1 vs -17.7** |

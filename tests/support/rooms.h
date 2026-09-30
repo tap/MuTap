@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "loudspeaker_band.h"
+#include "portable_random.h"
 
 namespace mutap_test {
 
@@ -39,10 +40,10 @@ namespace mutap_test {
     /// by a precomputed 1 / sqrt(energy), which rounds differently.)
     template <typename Sample>
     std::vector<Sample> random_decaying_rir(size_t taps, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<Sample>              f(taps);
-        double                           energy = 0.0;
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        std::vector<Sample>        f(taps);
+        double                     energy = 0.0;
         for (size_t i = 0; i < taps; ++i) {
             const double v = dist(gen) * std::exp(-static_cast<double>(i) / (static_cast<double>(taps) / 4.0));
             f[i]           = static_cast<Sample>(v);

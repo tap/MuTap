@@ -185,7 +185,7 @@ namespace {
 
     // Test 2C: convergence in noise (Hoth at LRin - 15 dB). Requirement:
     // returned echo <= LSgen within 1 s (target 0.5 s). Measured max in
-    // [0.5, 1] s: -34.4 / -32.8 vs LSgen -29.1 / -28.8.
+    // [0.5, 1] s: -34.4 / -32.7 vs LSgen -29.1 / -28.8.
     TYPED_TEST(g168_adapted, ConvergenceInNoise) {
         for (const auto& rs : required_rates()) {
             const auto                cab = erl_path(room::cabin, rs, 6.0);
@@ -206,7 +206,7 @@ namespace {
 
     // Test 3A: a LOW near end (LRin - 15 dB, continuous) must not block
     // adaptation — converged within 5 s (target 2.5), output at the near
-    // end's own level. Measured out [1.25, 2.5] s: -31.9 / -35.9 vs
+    // end's own level. Measured out [1.25, 2.5] s: -31.9 / -34.4 vs
     // near-end max -30.8 / -28.6.
     TYPED_TEST(g168_adapted, LowNearEndDoesNotBlockAdaptation) {
         for (const auto& rs : required_rates()) {

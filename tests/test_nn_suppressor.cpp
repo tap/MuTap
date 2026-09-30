@@ -34,6 +34,7 @@
 
 #include "mutap/nn_suppressor.h"
 #include "mutap/postfilter.h"
+#include "support/portable_random.h"
 #include "tap/dsp/math.h"
 
 namespace {
@@ -49,9 +50,9 @@ namespace {
     /// the output is driven by out_bias alone (saturating the sigmoid);
     /// otherwise the network is live and the gains vary with the input.
     nn_suppressor_weights make_weights(unsigned seed, float out_bias, bool bias_only, const nn_geometry& g = {}) {
-        std::mt19937                    gen(seed);
-        std::normal_distribution<float> dist(0.0f, 0.3f);
-        const auto                      fill = [&](std::vector<float>& v, size_t n) {
+        std::mt19937              gen(seed);
+        mutap_test::normal<float> dist(0.0f, 0.3f);
+        const auto                fill = [&](std::vector<float>& v, size_t n) {
             v.resize(n);
             for (auto& x : v) {
                 x = dist(gen);
@@ -83,9 +84,9 @@ namespace {
 
     template <typename Sample>
     std::vector<Sample> noise(size_t n, unsigned seed, double rms = 1.0) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, rms);
-        std::vector<Sample>              v(n);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, rms);
+        std::vector<Sample>        v(n);
         for (auto& x : v) {
             x = static_cast<Sample>(dist(gen));
         }
@@ -119,7 +120,7 @@ namespace {
             ref += static_cast<double>(e[i - k_block]) * static_cast<double>(e[i - k_block]);
         }
         // Reconstruction sits at the profile's own rounding floor: float64-deep
-        // for double, a float32 epsilon walk (~-135 dB measured) for float.
+        // for double, a float32 epsilon walk (~-138 dB measured) for float.
         const double bound_db = std::is_same_v<TypeParam, double> ? -140.0 : -120.0;
         EXPECT_LT(tap::dsp::power_db(err / ref), bound_db) << "reconstruction should sit at the rounding floor";
     }

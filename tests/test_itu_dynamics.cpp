@@ -202,7 +202,7 @@ namespace {
             const auto   bq      = welch_psd_db(quiet, 8192);
             const double fmax    = std::min(8000.0, rs.fs / 2 * 0.94);
             const double edges[] = {200, 400, 800, 1600, 3150, 6300, 8000};
-            const double mask[]  = {6, 6, 5, 3, 3, 3}; // half-mask; worst measured -3.46 / +0.83
+            const double mask[]  = {6, 6, 5, 3, 3, 3}; // half-mask; worst measured -2.93 / +0.83
             for (size_t b = 0; b + 1 < 7; ++b) {
                 if (edges[b] >= fmax) {
                     break;

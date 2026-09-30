@@ -42,14 +42,15 @@ int main() {
         "AdaptationControlConfigValidation.*:"
         "kalman_loop_test/0.*:pem_afc_test/0.*:burst_test/0.*:aec_test/0.*:"
         "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:"
-        "FftEngineContract.*";
+        "FftEngineContract.*:PortableRandom.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is 59 tests (the FFT suites left with the FFT; FftEngineContract, the
-    // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump);
+    // is 63 tests (the FFT suites left with the FFT; FftEngineContract, the
+    // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump, and
+    // PortableRandom, the fixtures' variates, when they replaced <random>'s);
     // 30 leaves headroom for legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {

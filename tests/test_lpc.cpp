@@ -18,15 +18,16 @@
 
 #include "mutap/lpc.h"
 #include "support/closed_loop.h"
+#include "support/portable_random.h"
 #include "tap/dsp/math.h"
 
 namespace {
 
     template <typename Sample>
     std::vector<Sample> white_noise(size_t n, unsigned seed) {
-        std::mt19937                     gen(seed);
-        std::normal_distribution<double> dist(0.0, 1.0);
-        std::vector<Sample>              x(n);
+        std::mt19937               gen(seed);
+        mutap_test::normal<double> dist(0.0, 1.0);
+        std::vector<Sample>        x(n);
         for (auto& v : x) {
             v = static_cast<Sample>(dist(gen));
         }

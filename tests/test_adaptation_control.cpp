@@ -6,16 +6,16 @@
 //
 //   IPC (coherent-error-fraction estimate; the instantaneous
 //   pseudo-correlation of Gil-Cacho et al. 2014):
-//     open-loop AEC:  ~0.7 while unconverged (error IS echo),
+//     open-loop AEC:  ~0.6 while unconverged (error IS echo),
 //                     ~0.00 converged, ~0.02 under double-talk
 //     tonal closed loop (band-limited room, medians over five seed sets):
-//                     raw/naive pair 0.87, PEM-prewhitened 0.06 — the
+//                     raw/naive pair 0.82, PEM-prewhitened 0.08 — the
 //                     paper's "PEM heavily reduces IPC" headline
 //
 //   Burst robustness (tonal closed loop, +20 dB near-end for 50 blocks;
 //   band-limited room, medians over five seed sets): ungated worst block
-//   RMS 54,894 (double) / 77,743 (float); IPC step scaling + transient
-//   gate 88.91 / 134.40, contained under 1000 in 5 / 3 of the 5 sets
+//   RMS 27,076 (double) / 30,248 (float); IPC step scaling + transient
+//   gate 60.59 / 67.53, contained under 1000 in 5 / 5 of the 5 sets
 //
 //   Variable regularization: identification is scale-invariant
 //     (-163 dB misalignment at 1e-5x, 1x, 1000x input scale), where a
@@ -39,6 +39,7 @@
 
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
+#include "support/portable_random.h"
 #include "support/rooms.h"
 #include "tap/dsp/math.h"
 
@@ -126,7 +127,7 @@ namespace {
             }
         }
 
-        EXPECT_GT(early / n_early, 0.5) << "IPC should be high while the error is all echo (measured 0.70)";
+        EXPECT_GT(early / n_early, 0.5) << "IPC should be high while the error is all echo (measured 0.64)";
         EXPECT_LT(conv / n_conv, 0.1) << "IPC should vanish once converged (measured 0.00)";
         EXPECT_LT(dt / n_dt, 0.1) << "IPC should stay low under double-talk (measured 0.02)";
     }
@@ -134,8 +135,8 @@ namespace {
     // The FDAF-PEM paper's headline observation, AFC version: prewhitening
     // collapses the pseudo-correlation between the loop signal and the
     // near-end that biases the naive update. Band-limited room, medians over
-    // seed sets 0..4: naive 0.87 (per set 0.75..0.90), PEM 0.06
-    // (0.04..0.38).
+    // seed sets 0..4: naive 0.82 (per set 0.72..0.87), PEM 0.08
+    // (0.05..0.08).
     TEST(AdaptationControl, PemPrewhiteningReducesIpc) {
         const auto   path     = band_limited(random_decaying_rir<double>(k_taps, 5));
         const double open_msg = mutap_test::theoretical_msg_db(path);
@@ -190,8 +191,8 @@ namespace {
         }
         RecordProperty("median_ipc_naive", median(naive_ipc));
         RecordProperty("median_ipc_pem", median(pem_ipc));
-        EXPECT_GT(median(naive_ipc), 0.55) << "raw-pair IPC should be high in the tonal loop (measured median 0.87)";
-        EXPECT_LT(median(pem_ipc), 0.25) << "prewhitened-pair IPC should be low (measured median 0.06)";
+        EXPECT_GT(median(naive_ipc), 0.55) << "raw-pair IPC should be high in the tonal loop (measured median 0.82)";
+        EXPECT_LT(median(pem_ipc), 0.25) << "prewhitened-pair IPC should be low (measured median 0.08)";
         EXPECT_GT(median(naive_ipc), median(pem_ipc) + 0.3);
     }
 
@@ -264,14 +265,13 @@ namespace {
     TYPED_TEST_SUITE(burst_host_test, sample_types);
 
     // THE CLAIM, band-limited room, medians over seed sets 0..4. Measured:
-    // ungated worst block RMS median 54,894 (double, per set
-    // 28,215..106,229) / 77,743 (float, 20,156..84,190); gated 88.91
-    // (15.82..556.85) / 134.40 (15.74..5993.48); |gated excursion| median
-    // 0.77 / 0.98 dB. The gate does not contain every trajectory: the
-    // gated worst RMS stays <= 1000 in 5 (double) / 3 (float) of the 5 sets
-    // (recorded as contained_seed_sets and printed, not asserted), 9 / 8
-    // of 10 over sets 0..9 (the raw room: 8 / 7 of 10). The ungated check
-    // is a median too: band-limited double set 5 peaks at only 1003.
+    // ungated worst block RMS median 27,076 (double, per set
+    // 25,640..78,064) / 30,248 (float, 25,304..101,854); gated 60.59
+    // (37.81..215.45) / 67.53 (50.23..99.97); |gated excursion| median
+    // 1.23 / 1.55 dB. The gated worst RMS stays <= 1000 in 5 (double) /
+    // 5 (float) of the 5 sets (recorded as contained_seed_sets and printed,
+    // not asserted), 10 / 10 of 10 over sets 0..9 (the raw room: 10 / 10 of
+    // 10). The ungated check is a median too.
     TYPED_TEST(burst_host_test, GatingContainsNearEndBurst) {
         const auto          path = band_limited(random_decaying_rir<TypeParam>(k_taps, 5));
         std::vector<double> ungated;
@@ -290,18 +290,20 @@ namespace {
         this->RecordProperty("contained_seed_sets", contained);
         std::printf("burst_host_test: gated worst RMS <= 1000 in %d of %u seed sets\n", contained, k_claim_seed_sets);
         EXPECT_GT(median(ungated), 3000.0)
-            << "the burst should blow up the ungated loop (measured median 54,894 / 77,743)";
-        EXPECT_LT(median(gated), 1000.0) << "gating should contain the burst (measured median 88.91 / 134.40)";
+            << "the burst should blow up the ungated loop (measured median 27,076 / 30,248)";
+        EXPECT_LT(median(gated), 1000.0) << "gating should contain the burst (measured median 60.59 / 67.53)";
         EXPECT_LT(median(gated), median(ungated) / 10.0);
-        EXPECT_LT(median(excursion), 4.0) << "the gated estimate should survive the burst (measured 0.77 / 0.98 dB)";
+        EXPECT_LT(median(excursion), 4.0) << "the gated estimate should survive the burst (measured 1.23 / 1.55 dB)";
     }
 
     // CANARY (burst_test/0 runs in the emulated selection): raw path, one
     // seed, the thresholds the test has always had. On the band-limited
-    // room the float leg's gated worst RMS at this seed is 5993.48, over
-    // the 1000 threshold, so the canary stays on the raw room. Measured on
-    // host, raw: ungated 45,571 (float) / 45,499 (double), gated 237.87 /
-    // 189.74, excursion +0.80 / +1.90 dB. The claim is burst_host_test.
+    // room the float leg's gated worst RMS at this seed is 50.23, under
+    // the 1000 threshold (it read 5993.48 on the other standard library's
+    // rooms, which put the canary on the raw room; it stays there).
+    // Measured on host, raw: ungated 32,551 (float) / 56,318 (double),
+    // gated 26.25 / 25.02, excursion -0.56 / +0.37 dB. The claim is
+    // burst_host_test.
     template <typename Sample>
     class burst_test : public ::testing::Test {};
 
@@ -309,8 +311,8 @@ namespace {
 
     TYPED_TEST(burst_test, GatingContainsNearEndBurst) {
         const auto r = run_burst(random_decaying_rir<TypeParam>(k_taps, 5), 0);
-        EXPECT_GT(r.ungated_rms, 3000.0) << "the burst should blow up the ungated loop (measured ~45,500)";
-        EXPECT_LT(r.gated_rms, 1000.0) << "gating should contain the burst (measured 237.87 / 189.74)";
+        EXPECT_GT(r.ungated_rms, 3000.0) << "the burst should blow up the ungated loop (measured 32,551 / 56,318)";
+        EXPECT_LT(r.gated_rms, 1000.0) << "gating should contain the burst (measured 26.25 / 25.02)";
         EXPECT_LT(r.gated_rms, r.ungated_rms / 10.0);
         EXPECT_LT(std::abs(r.gated_excursion), 4.0) << "the gated estimate should survive the burst";
     }
@@ -338,9 +340,9 @@ namespace {
         fdaf.copy_impulse_response(before.data());
 
         // One spiked block: +30 dB of independent noise on the desired signal.
-        std::vector<double>              noisy(k_block);
-        std::mt19937                     gen(77);
-        std::normal_distribution<double> dist(0.0, 1.0);
+        std::vector<double>        noisy(k_block);
+        std::mt19937               gen(77);
+        mutap_test::normal<double> dist(0.0, 1.0);
         for (size_t i = 0; i < k_block; ++i) {
             noisy[i] = d[100 * k_block + i] + 30.0 * dist(gen);
         }

@@ -276,7 +276,7 @@ namespace {
     // Room sweep across BOTH generator families (working note: one room is
     // not an evaluation): the Kalman engine's double-talk behavior holds on
     // synthetic random-decay rooms and the physically-modeled fixture room
-    // alike. Measured suppression 13.2..16.0 dB, post-double-talk
+    // alike. Measured suppression 14.1..16.0 dB, post-double-talk
     // misalignment -13.7..-14.5 dB across these rooms at seed 2.
     TEST(AecDoubleTalk, KalmanHoldsAcrossRoomFamilies) {
         const auto ar_near = [](size_t n, unsigned seed) { return mutap_test::ar_near_end<double>(n, seed); };
@@ -293,7 +293,7 @@ namespace {
         for (const auto& room : rooms) {
             auto       kalman = make_pem<kalman_t>();
             const auto r      = run_double_talk(room.path, kalman, 2, ar_near);
-            EXPECT_GT(r.dt_suppression_db, 10.0) << room.name << " (measured >= 13.2 dB)";
+            EXPECT_GT(r.dt_suppression_db, 10.0) << room.name << " (measured >= 14.1 dB)";
             EXPECT_LT(r.mis_after_dt_db, -10.0) << room.name << " (measured <= -13.7 dB)";
             EXPECT_LT(r.mis_recovered_db, -15.0) << room.name << " recovery (measured <= -19 dB)";
         }
@@ -329,7 +329,7 @@ namespace {
                 warped_mis.push_back(rw.mis_after_dt_db);
             }
             EXPECT_GT(median3(warped_sup), median3(speech_sup) + 0.5)
-                << room.name << " (measured median gaps 2.9 / 2.1 dB)";
+                << room.name << " (measured median gaps 2.9 / 2.2 dB)";
             EXPECT_GT(median3(warped_sup), 15.0) << room.name << " (measured medians 19.6 / 17.3 dB)";
             EXPECT_LT(median3(warped_mis), -5.0) << room.name << " (measured ~ -9 dB)";
         }
