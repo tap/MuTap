@@ -1,10 +1,11 @@
 # Feedback cancellation for in-cabin karaoke
 
 *Measured September 2026 in simulation: the cabin RIR fixture and four other
-rooms, band-limited through a loudspeaker model. Nothing here has been heard
-in a real car. Every number below comes from a gated test, the `MUTAP_SLOW`
-sweep, or the `karaoke_audible.py` driver; [Provenance](#provenance) gives
-the exact commands.*
+rooms, band-limited through a loudspeaker model. Host: Linux x86-64, GCC
+13.3, Release ([Hosts](#hosts)). Nothing here has been heard in a real car.
+Every number below comes from a gated test, the `MUTAP_SLOW` sweep, or the
+`karaoke_audible.py` driver; [Provenance](#provenance) gives the exact
+commands.*
 
 The use case: a microphone and loudspeakers share a car cabin, and the mic
 signal is amplified back into the cabin so a passenger can sing. Three things
@@ -36,6 +37,7 @@ Setup:
   (`exact_msg_db`: S1 −6.897, S3 −6.860; `theoretical_msg_db`, max|F|,
   −7.054).
 - Medians over five seeds (2, 22, 42, 62, 82).
+- Host: Linux x86-64, GCC 13.3, Release (see [Hosts](#hosts)).
 
 | Chain | S1 audible | S1 runaway (ramp) | S1 runaway (bisected, 40 s) | S3 audible | S3 runaway (ramp) | S3 runaway (bisected, 40 s) |
 |---|---|---|---|---|---|---|
@@ -330,10 +332,43 @@ measured and the code's location.
 - **The shift's audible numbers are the least transferable.** They depend on
   the program's spectrum, which is why they carry the worst-case label.
 
+## Hosts
+
+Every ASG number above was measured on **Linux x86-64, GCC 13.3, Release**,
+on tap/MuTap#66's portable random variates: the `MUTAP_SLOW` sweep and all
+70 ramp runs of `karaoke_audible.py` (commit e14aaec), and the gated test's
+readings (#66). The wall-clock times under [Provenance](#provenance) are the
+Intel Mac's.
+
+The portable variates make the *signals* identical on every host: the rooms,
+the near ends and the backing track. The closed loop is chaotic, though, so
+platform arithmetic still moves single rows. A second host, **macOS 15
+x86_64, AppleClang, Release**, measured the headline on the same five seeds
+(tap/MuTap#71):
+
+| Chain (macOS) | S1 audible | S1 runaway (ramp) | S3 audible | S3 runaway (ramp) |
+|---|---|---|---|---|
+| canceller | +14.96 | +21.43 | +11.65 | +21.86 |
+| canceller + 2 Hz shift | +5.50 | +19.65 | +7.25 | +20.32 |
+| canceller + 5 Hz shift | +1.65 | +19.49 | +1.30 | +18.26 |
+| canceller + backing track (aux) | +3.59 | +23.01 | +23.79 ‡ | +24.53 |
+| canceller + 2 Hz + backing track | +19.56 | +20.44 | +22.39 | +23.85 |
+| canceller + 5 Hz + backing track | +19.18 | +19.95 | +22.16 | +22.58 |
+
+‡ Median over four seeds: at seed 42 the criterion found no qualifying event
+before the ramp ran away (at +24.53).
+
+Identical signals give rows up to 3.23 dB apart (S1, 5 Hz, audible: Linux
++4.88, macOS +1.65), and rows that do not converge move further (the 2.7 ms
+gated row's PEM − naive: +28.50 on Linux, +22.25 on macOS). Every direction
+this document claims agrees on both hosts, and every gated claim passes on
+both. A quoted number is only meaningful with its host.
+
 ## Provenance
 
 The gated claims run in about 3 minutes on the Intel Mac (2:46 and 2:56 in
-two runs):
+two runs with the S1 shift row's earlier 10 s probe; 3:13.6 with its 20 s
+probe):
 
 - the shifter's image rejection and group delay;
 - the 2.7 ms regression row;

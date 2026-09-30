@@ -228,13 +228,15 @@ carries the measured numbers; this is the map:
    Landed: the decorrelated loop with an IIR allpass-pair SSB shifter
    (`tests/support/decorrelated_loop.h`), the shared like-for-like ASG
    measurement (`tests/support/karaoke_asg.h`), the gated suite
-   (`test_afc_decorrelation.cpp`, 2:46-2:56 serial) and the `MUTAP_SLOW` sweep, and the
+   (`test_afc_decorrelation.cpp`, 2:46-2:56 serial; 3:13.6 since the S1
+   shift row's probe went to 20 s) and the `MUTAP_SLOW` sweep, and the
    audible-limit tooling (`tools/notebook/karaoke_ramp_dump.cpp`, option
    `MUTAP_BUILD_KARAOKE_DUMP`; `tools/notebook/karaoke_audible.py`).
    **Decided (Tim):** canceller-first. At S1 (10 ms) and S3 (20 ms) the
    default chain is the canceller alone; its audible ASG on the held note in
-   the band-limited cabin is the headline (medians of five seeds: +14.99 at
-   S1, +10.24 at S3; runaway on the same ramp +21.49 / +21.17). The
+   the band-limited cabin is the headline (medians of five seeds on Linux
+   x86-64, GCC 13.3, Release: +14.99 at S1, +10.24 at S3; runaway on the
+   same ramp +21.49 / +21.17). The
    frequency shift is a studied, material-dependent option that phase 1's
    blind listening test on real singing decides: it raises the bisected
    runaway limit at S1 in all five rooms (+4.83 to +8.88 per-seed medians
@@ -243,7 +245,10 @@ carries the measured numbers; this is the map:
    the backing track the shifted chains are audible within about 1 dB of
    runaway. The
    2.7 ms "held note is the wall, the shift rescues it" story is a
-   regression row. Open:
+   regression row. Every number here and in the doc is that Linux host's;
+   on macOS 15 x86_64, AppleClang, Release the same signals give headline
+   rows up to 3.23 dB apart (S1 5 Hz audible +1.65 against +4.88) with every
+   direction agreeing, so quote the host with the number (doc, Hosts). Open:
    - **Aux-only at S1 is audible at +3.59 (median), unexplained.** Four of
      five seeds flag between -0.54 and +4.20, one late (+15.65); at S3
      four of five are audible at runaway and one early (+5.16; median
