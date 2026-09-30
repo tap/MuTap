@@ -23,7 +23,7 @@
 //
 // Swept, not gated (test_afc_decorrelation_sweep.cpp, MUTAP_SLOW=1), to keep
 // this suite near its ~3 minute budget: the aux (backing-track) rows (S1
-// median +15.94 against the canceller's +11.63 at 40 s), PEM vs the naive
+// median +14.53 against the canceller's +11.72 at 40 s), PEM vs the naive
 // core at S1 and S3 (the sweep asserts PEM - naive > 5 dB in all five rooms
 // at both delays), and every room other than the cabin.
 //
@@ -33,26 +33,28 @@
 // then bisect the forward gain to 0.5 dB with the 40 dB runaway rule; ASG
 // against the dry open loop bisected on the same probe;
 // medians over rooms.h's five seed sets (seeds 2, 22, 42, 62, 82). Probe
-// lengths are the shortest whose five-seed median sat within 0.25 dB of
-// the 40 s probe's (test_afc_decorrelation_sweep.cpp, MUTAP_SLOW=1, prints
-// the table; bisection there at 0.1 dB):
+// lengths were chosen as the shortest whose five-seed median sat within
+// 0.25 dB of the 40 s probe's (test_afc_decorrelation_sweep.cpp,
+// MUTAP_SLOW=1, prints the table; bisection there at 0.1 dB); on these
+// rooms the naive 2.7 ms row and the S1 shift row settle by 5 s, and the
+// suite keeps their 10 s probes:
 //
 //   cabin, band-limited, medians     0.8 s    5 s    10 s    20 s    40 s   gated with
-//   held, canceller, 2.7 ms          -0.25  +0.21  +0.29  +0.29  +0.29     5 s
-//   held, + 5 Hz shift, 2.7 ms      +12.67 +13.13 +13.21 +13.21 +13.21     5 s
-//   held, naive + 5 Hz, 2.7 ms       -1.75 -13.06 -15.00 -15.00 -15.00    10 s (floor)
-//   held, canceller, S1             +10.38 +11.47 +11.55 +11.63 +11.63     5 s
-//   held, + 5 Hz shift, S1          +16.88 +18.07 +17.44 +18.05 +17.52    10 s (one probe)
-//   held, + aux feed, S1            +14.69 +15.78 +15.86 +15.94 +15.94    sweep only (5 s)
-//   held, naive + 5 Hz, S1           +4.93  +2.69  +5.93  +6.01  -0.59    not converged: sweep only
-//   held, + 5 Hz shift, S3          +15.02 +17.05 +16.93 +17.00 +16.90    sweep only (5 s)
-//   held, naive + 5 Hz, S3           +5.53  +7.56  +7.79  +7.95  +8.03    sweep only (10 s)
+//   held, canceller, 2.7 ms          -2.10  -1.63  -1.55  -1.55  -1.55     5 s
+//   held, + 5 Hz shift, 2.7 ms      +13.54 +14.01 +14.09 +13.56 +14.09     5 s
+//   held, naive + 5 Hz, 2.7 ms       -0.52 -15.08 -15.00 -15.00 -15.00    10 s (floor)
+//   held, canceller, S1             +10.47 +11.56 +11.64 +11.72 +11.72     5 s
+//   held, + 5 Hz shift, S1          +16.01 +17.10 +17.18 +17.26 +17.17    10 s (one probe)
+//   held, + aux feed, S1            +13.28 +14.38 +14.45 +14.53 +14.53    sweep only (5 s)
+//   held, naive + 5 Hz, S1           +3.96  -0.48  +5.05  -0.32 -15.00    not converged: sweep only
+//   held, + 5 Hz shift, S3          +14.40 +16.52 +16.76 +16.83 +16.90    sweep only (10 s)
+//   held, naive + 5 Hz, S3           +5.97  +8.00  +8.23  +8.21  +8.47    sweep only (10 s)
 //
 // The branch's original 0.8 s probe over-reads the dry open loop by 0.55 /
 // 1.25 / 2.50 dB at 2.7 ms / S1 / S3; like for like, the canceller rows'
-// 0.8 s medians sit -2.50 to +2.88 dB from their 40 s values (the held note
+// 0.8 s medians sit -2.50 to +2.61 dB from their 40 s values (the held note
 // reads low, the speech-envelope material high), the naive core's up to
-// +13.25.
+// +14.48.
 //
 // RUNAWAY, NOT AUDIBLE. These are runaway limits. The ear objects earlier,
 // and with the shifter much earlier: tools/notebook/karaoke_audible.py
@@ -64,10 +66,11 @@
 // ABX test.
 //
 // NOT GATED, recorded (the sweep has them): the shift's direction at S3 is
-// room-dependent - in the cabin it COSTS runaway gain (median per-seed
-// shift - plain -1.41 dB at 40 s, -1.14 at 20 s), while at 20 s studio gains
-// +1.85, rehearsal +0.09, mt5 +1.85, mt9 +6.24 - and the naive core behind
-// the shift at S1 never settles with probe length.
+// room-dependent - in the cabin and the studio it COSTS runaway gain
+// (median per-seed shift - plain: cabin -1.85 dB at 40 s and at 20 s,
+// studio -0.70 at 20 s), while at 20 s rehearsal gains +1.49, mt5 +3.16,
+// mt9 +3.34 - and the naive core behind the shift at S1 never settles with
+// probe length.
 //
 // Host-only by design: tests/CMakeLists.txt builds this file only for the
 // host (like the FAUST suite), and the emulated selections do not name it.
@@ -243,7 +246,7 @@ TEST(AfcDecorrelation, ShifterGroupDelayIsFrequencyDependent) {
 //   naive + 5 Hz     -15.00 (the probe floor) in 4 of 5, -14.61
 //   shift - canceller, per seed: median +15.50 (min +6.50)
 //   PEM - naive behind the shift (chain limits): median +28.50 (min +27.11)
-// The sweep (0.1 dB, 40 s): +0.29 / +13.21 / -15.00. On the raw (unbanded)
+// The sweep (0.1 dB, 40 s): -1.55 / +14.09 / -15.00. On the raw (unbanded)
 // cabin the branch measured +0.6 -> +18.4 dB at seed 2 against max|F|.
 TEST(AfcDecorrelation, LowLatencyRowShiftRescuesTheHeldNote) {
     const auto plain = run(kk::setup{}, at(kk::k_low, 5.0, -6.0, 10.0), "low_plain");
@@ -266,9 +269,9 @@ TEST(AfcDecorrelation, LowLatencyRowShiftRescuesTheHeldNote) {
 // as a median DIRECTION, to keep the suite inside its runtime budget: one
 // 10 s probe per seed set at that seed's canceller limit + 3 dB, which must
 // not run away in at least three of five (measured: stable in 5 of 5). The
-// sweep's bisected medians (0.1 dB, 40 s): canceller +11.63, + 5 Hz +17.52,
-// per-seed shift - canceller +2.20 / +8.35 / +3.87 / +6.42 / +7.03 (seed set
-// 0 is the +2.20).
+// sweep's bisected medians (0.1 dB, 40 s): canceller +11.72, + 5 Hz +17.17,
+// per-seed shift - canceller +5.80 / +3.26 / +5.45 / +3.34 / +7.47 (every
+// seed set over the 3 dB the gate probes).
 TEST(AfcDecorrelation, HeldNoteAtS1RunawayLimits) {
     const auto path  = kk::room("cabin");
     const auto plain = run(kk::setup{}, at(kk::k_s1, 5.0, 4.0, 20.0), "s1_plain");

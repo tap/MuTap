@@ -232,34 +232,37 @@ carries the measured numbers; this is the map:
    `MUTAP_BUILD_KARAOKE_DUMP`; `tools/notebook/karaoke_audible.py`).
    **Decided (Tim):** canceller-first. At S1 (10 ms) and S3 (20 ms) the
    default chain is the canceller alone; its audible ASG on the held note in
-   the band-limited cabin is the headline (medians of five seeds: +16.16 at
-   S1, +10.81 at S3; runaway on the same ramp +20.71 / +21.05). The
+   the band-limited cabin is the headline (medians of five seeds: +14.99 at
+   S1, +10.24 at S3; runaway on the same ramp +21.49 / +21.17). The
    frequency shift is a studied, material-dependent option that phase 1's
    blind listening test on real singing decides: it raises the bisected
-   runaway limit at S1 in all five rooms (+5.01 to +9.05 per-seed medians
-   at 5 Hz) but on the bare held note it LOWERS the audible limit (+6.03 at
-   2 Hz, +4.69 at 5 Hz at S1), a worst case the doc labels as such; with
-   the backing track the shifted chains are audible only at runaway. The
+   runaway limit at S1 in all five rooms (+4.83 to +8.88 per-seed medians
+   at 5 Hz) but on the bare held note it LOWERS the audible limit (+5.35 at
+   2 Hz, +4.88 at 5 Hz at S1), a worst case the doc labels as such; with
+   the backing track the shifted chains are audible within about 1 dB of
+   runaway. The
    2.7 ms "held note is the wall, the shift rescues it" story is a
    regression row. Open:
-   - **Aux-only at S1 is audible at +3.90 (median), unexplained.** Four of
-     five seeds flag between +1.64 and +6.63, one only at runaway (+21.27);
-     at S3 the same feed is audible only at runaway (+24.03), and with a
-     shift added it is at runaway at S1 too. The runaway limit (+23.51)
-     is not the issue; what the criterion flags that early is.
+   - **Aux-only at S1 is audible at +3.59 (median), unexplained.** Four of
+     five seeds flag between -0.54 and +4.20, one late (+15.65); at S3
+     four of five are audible at runaway and one early (+5.16; median
+     +23.45), and with a shift added the chains are within about 1 dB of
+     runaway. The runaway limit (+22.76) is not the issue; what the
+     criterion flags that early is.
    - **Ramp vs bisected runaway differ by protocol.** A slowly ramped,
      continuously adapting canceller holds more than one converged at
-     MSG − 6 and then probed (canceller, S1: ramp +20.71 against bisected
-     +11.63 at 40 s; S3 +21.05 / +18.31). Neither is wrong; the bisection
+     MSG − 6 and then probed (canceller, S1: ramp +21.49 against bisected
+     +11.72 at 40 s; S3 +21.17 / +18.31). Neither is wrong; the bisection
      is what the tests gate, the ramp is what a room measurement sees.
    - **Dechirp-only early events.** The criterion's limit can come from an
-     event only a dechirped pass found: 2 Hz, S1, seed 2 reads −17.46
-     (0.55 s at 5.23 kHz, pass long@−500) where the plain long pass first
-     fires at +6.79 (the driver prints both); the median is +6.03 either way.
+     event only a dechirped pass found: 2 Hz, S1, seed 22 reads −7.02
+     (0.55 s near 4.95 kHz, pass long@−500) where the plain long pass first
+     fires at +9.15 (the driver prints both); here it moves the median
+     (+5.35, against +6.55 from the plain pass).
      Recorded as a note, not a criterion change.
-   - **The S3 shift direction is room-dependent** (the cabin loses −1.41 at
-     40 s; studio / rehearsal / mt5 / mt9 +1.85 / +0.09 / +1.85 / +6.24 at
-     20 s) and is not gated.
+   - **The S3 shift direction is room-dependent** (5 Hz: the cabin loses
+     −1.85 at 40 s and at 20 s, the studio −0.70 at 20 s; rehearsal / mt5 /
+     mt9 +1.49 / +3.16 / +3.34) and is not gated.
    - Not re-landed from the branch's first doc (its numbers came from
      scratch harnesses that are not in the repo): the sung-melody and
      chord materials, the "what did not help" rows (filter length, LP order,

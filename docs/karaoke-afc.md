@@ -39,20 +39,20 @@ Setup:
 
 | Chain | S1 audible | S1 runaway (ramp) | S1 runaway (bisected, 40 s) | S3 audible | S3 runaway (ramp) | S3 runaway (bisected, 40 s) |
 |---|---|---|---|---|---|---|
-| dry (no canceller) | +0.09 | +1.08 | 0 (the reference) | +0.13 | +1.62 | 0 (the reference) |
-| **canceller** | **+16.16** | +20.71 | +11.63 | **+10.81** | +21.05 | +18.31 |
-| canceller + 2 Hz shift † | +6.03 | +19.81 | +16.82 | +6.23 | +19.21 | +16.55 |
-| canceller + 5 Hz shift † | +4.69 | +19.59 | +17.52 | +2.30 | +20.17 | +16.90 |
-| canceller + backing track (aux) | +3.90 | +23.51 | +15.94 | +24.03 | +23.93 | +18.93 |
-| canceller + 2 Hz + backing track | +20.54 | +20.13 | — | +22.56 | +23.38 | — |
-| canceller + 5 Hz + backing track | +19.42 | +20.14 | — | +22.46 | +22.69 | — |
+| dry (no canceller) | +0.18 | +1.08 | 0 (the reference) | +0.21 | +1.62 | 0 (the reference) |
+| **canceller** | **+14.99** | +21.49 | +11.72 | **+10.24** | +21.17 | +18.31 |
+| canceller + 2 Hz shift † | +5.35 | +18.86 | +14.79 | +6.37 | +20.60 | +16.38 |
+| canceller + 5 Hz shift † | +4.88 | +20.18 | +17.17 | +0.81 | +19.45 | +16.90 |
+| canceller + backing track (aux) | +3.59 | +22.76 | +14.53 | +23.45 | +24.65 | +16.82 |
+| canceller + 2 Hz + backing track | +19.55 | +20.48 | — | +22.05 | +23.08 | — |
+| canceller + 5 Hz + backing track | +19.88 | +20.49 | — | +21.21 | +22.41 | — |
 
 Per seed:
 
 | Chain | Delay | Audible, per seed | Runaway (ramp), per seed |
 |---|---|---|---|
-| canceller | S1 | +13.21 +16.04 +16.16 +17.60 +16.63 | +20.71 +20.66 +20.53 +21.33 +21.10 |
-| canceller | S3 | +13.17 +12.85 +4.98 +10.81 +6.22 | +19.24 +21.16 +21.22 +19.87 +21.05 |
+| canceller | S1 | +16.31 +14.99 +15.85 +13.11 +14.42 | +20.53 +21.49 +21.91 +21.21 +22.03 |
+| canceller | S3 | +13.30 +0.20 +10.24 +11.33 +5.36 | +21.17 +21.76 +18.74 +20.19 +23.37 |
 
 † **Worst case for the shift.** The held note is a perfectly periodic
 synthetic note with a 40 dB floor between its harmonics. Partials that
@@ -73,12 +73,12 @@ How to read the columns:
 
 The two runaway columns measure different protocols. A slowly ramped,
 continuously adapting canceller holds more than one converged at MSG − 6 and
-then probed: at S1, +20.71 against +11.63. Treat the difference as a
+then probed: at S1, +21.49 against +11.72. Treat the difference as a
 protocol effect, not an error (see HANDOFF, open issues).
 
-The canceller alone gives up about 4.5 dB (S1) and about 10 dB (S3) between
-audible and runaway. With the shift the gap is 13–18 dB. Add the backing
-track and the shifted chains become audible only at runaway.
+The canceller alone gives up about 6.5 dB (S1) and about 11 dB (S3) between
+audible and runaway. With the shift the gap is 13–19 dB. Add the backing
+track and the shifted chains become audible within about 1 dB of runaway.
 
 ## How it is measured
 
@@ -121,24 +121,24 @@ Medians of the bisected ASG, from the sweep:
 
 | Cabin, held note | 0.8 s | 5 s | 10 s | 20 s | 40 s |
 |---|---|---|---|---|---|
-| canceller, 2.7 ms | −0.25 | +0.21 | +0.29 | +0.29 | +0.29 |
-| + 5 Hz, 2.7 ms | +12.67 | +13.13 | +13.21 | +13.21 | +13.21 |
-| canceller, S1 | +10.38 | +11.47 | +11.55 | +11.63 | +11.63 |
-| + 2 Hz, S1 | +15.65 | +16.75 | +16.83 | +16.90 | +16.82 |
-| + 5 Hz, S1 | +16.88 | +18.07 | +17.44 | +18.05 | +17.52 |
-| + aux, S1 | +14.69 | +15.78 | +15.86 | +15.94 | +15.94 |
-| naive + 5 Hz, S1 | +4.93 | +2.69 | +5.93 | +6.01 | −0.59 |
-| canceller, S3 | +16.51 | +18.19 | +18.43 | +18.14 | +18.31 |
-| + 2 Hz, S3 | +15.55 | +17.58 | +17.02 | +16.30 | +16.55 |
-| + 5 Hz, S3 | +15.02 | +17.05 | +16.93 | +17.00 | +16.90 |
-| + aux, S3 | +16.43 | +18.46 | +18.69 | +18.85 | +18.93 |
-| naive + 5 Hz, S3 | +5.53 | +7.56 | +7.79 | +7.95 | +8.03 |
+| canceller, 2.7 ms | −2.10 | −1.63 | −1.55 | −1.55 | −1.55 |
+| + 5 Hz, 2.7 ms | +13.54 | +14.01 | +14.09 | +13.56 | +14.09 |
+| canceller, S1 | +10.47 | +11.56 | +11.64 | +11.72 | +11.72 |
+| + 2 Hz, S1 | +13.54 | +14.64 | +14.72 | +14.79 | +14.79 |
+| + 5 Hz, S1 | +16.01 | +17.10 | +17.18 | +17.26 | +17.17 |
+| + aux, S1 | +13.28 | +14.38 | +14.45 | +14.53 | +14.53 |
+| naive + 5 Hz, S1 | +3.96 | −0.48 | +5.05 | −0.32 | −15.00 |
+| canceller, S3 | +16.43 | +18.37 | +18.52 | +18.67 | +18.31 |
+| + 2 Hz, S3 | +15.63 | +16.79 | +16.49 | +17.00 | +16.38 |
+| + 5 Hz, S3 | +14.40 | +16.52 | +16.76 | +16.83 | +16.90 |
+| + aux, S3 | +14.32 | +16.35 | +16.58 | +16.74 | +16.82 |
+| naive + 5 Hz, S3 | +5.97 | +8.00 | +8.23 | +8.21 | +8.47 |
 
 What the table shows:
 
 - **The old probe was too short.** The branch's 0.8 s probe over-reads the
   dry open loop by 0.55 dB (2.7 ms), 1.25 dB (S1) and 2.50 dB (S3). Like for
-  like, the canceller rows' 0.8 s medians sit −2.50 to +2.88 dB from their
+  like, the canceller rows' 0.8 s medians sit −2.50 to +2.61 dB from their
   40 s values: the held note reads low, the speech-envelope material reads
   high.
 - **One row never converges.** The naive core behind the shift at S1 does
@@ -152,14 +152,14 @@ This is the product default. Held note, runaway ASG, 20 s probes:
 
 | Room | S1 | S3 |
 |---|---|---|
-| cabin | +11.63 | +18.14 |
-| studio | +10.15 | +17.71 |
-| rehearsal | +11.11 | +17.10 |
-| mt5 | +12.77 | +18.76 |
-| mt9 | +11.72 | +17.08 |
+| cabin | +11.72 | +18.67 |
+| studio | +11.11 | +18.41 |
+| rehearsal | +11.20 | +16.75 |
+| mt5 | +11.02 | +18.13 |
+| mt9 | +12.16 | +17.87 |
 
-On the speech-envelope material the cabin reads +20.24 (S1) and +20.77 (S3)
-at 40 s. The S3 value is still drifting: the 20 s probe read +21.31.
+On the speech-envelope material the cabin reads +20.42 (S1) and +20.51 (S3)
+at 40 s. The S3 value is still drifting: the 20 s probe read +21.57.
 
 ## The frequency shift: an option, not the default
 
@@ -184,34 +184,35 @@ and a rotation, in `decorrelated_loop.h`.
 
 | Room | S1, 5 Hz | S1, 2 Hz | S3, 5 Hz | S3, 2 Hz |
 |---|---|---|---|---|
-| cabin | +6.68 | +5.10 | **−1.14** | **−1.93** |
-| studio | +6.33 | +5.98 | +1.85 | +2.02 |
-| rehearsal | +5.45 | +3.96 | +0.09 | +1.23 |
-| mt5 | +5.01 | +5.98 | +1.85 | +1.41 |
-| mt9 | +9.05 | +6.42 | +6.24 | +5.10 |
+| cabin | +5.80 | +3.43 | **−1.85** | **−2.02** |
+| studio | +5.62 | +5.98 | **−0.70** | +1.41 |
+| rehearsal | +4.83 | +4.31 | +1.49 | **−0.26** |
+| mt5 | +8.88 | +5.80 | +3.16 | +3.43 |
+| mt9 | +8.35 | +6.59 | +3.34 | +3.25 |
 
 - At S1 the shift raises the runaway limit in every room.
-- At S3 the direction depends on the room. The cabin loses (−1.41 at 40 s),
-  rehearsal is about flat at 5 Hz, and the others gain. The S3 direction is
-  recorded, not gated.
+- At S3 the direction depends on the room. The cabin loses at both shifts
+  (−1.85 at 5 Hz, at 40 s as at 20 s), the studio at 5 Hz and rehearsal at
+  2 Hz; mt5 and mt9 gain. The S3 direction is recorded, not gated.
 
 **Audible, worst case.** On the bare held note the shift *lowers* the
-audible limit, well below the canceller alone: from +16.16 to +6.03 (2 Hz)
-and +4.69 (5 Hz) at S1, and from +10.81 to +6.23 and +2.30 at S3. The
+audible limit, well below the canceller alone: from +14.99 to +5.35 (2 Hz)
+and +4.88 (5 Hz) at S1, and from +10.24 to +6.37 and +0.81 at S3. The
 criterion flags the recirculating partials first. This is the worst case
 described under the headline table.
 
 One run carries an early event that is probably a detector artifact
-(2 Hz, S1, seed 2):
+(2 Hz, S1, seed 22):
 
-- The criterion's −17.46 comes from events that only the dechirped passes
-  found: 0.55 s at 5.23 kHz in the run's `.howl.json`.
-- The plain long pass first fires at +6.79.
-- The median is +6.03 either way.
+- The criterion's −7.02 comes from an event that only a dechirped pass
+  found: 0.55 s near 4.95 kHz (pass long@−500) in the run's `.howl.json`.
+- The plain long pass first fires at +9.15.
+- It moves the median: +5.35 as the criterion counts it, +6.55 from the
+  plain pass's first events.
 
 **Recovery with the backing track.** With a white backing track at the
-singer's level, the shifted chains are audible only at runaway: +20.54 and
-+19.42 at S1, +22.56 and +22.46 at S3 (2 and 5 Hz).
+singer's level, the shifted chains are audible within about 1 dB of
+runaway: +19.55 and +19.88 at S1, +22.05 and +21.21 at S3 (2 and 5 Hz).
 
 The shift is **not free perceptually**. Partials move by equal Hz, not by
 equal ratio, so a sung voice goes slightly inharmonic and detunes against an
@@ -224,15 +225,17 @@ A backing track is uncorrelated with the singer, so it excites the
 identification for free. That works only when the canceller's reference is
 tapped after the track is mixed into the speaker feed.
 
-- **Runaway, cabin, 40 s.** The track raises the limit from +11.63 to +15.94
-  (S1) and from +18.31 to +18.93 (S3).
-- **Other rooms, 20 s.** S1: studio +13.57, rehearsal +11.99, mt5 +14.36,
-  mt9 +14.09. S3: studio +15.95, rehearsal +14.73, mt5 +17.18, mt9 +17.26.
-  At S3 that is below the canceller alone in studio, rehearsal and mt5.
-- **Audible, cabin.** S3 is audible only at runaway (+24.03). S1 splits:
-  four seeds are audible early (+1.64 to +6.63) and one only at runaway
-  (+21.27), for a median of +3.90. Nothing explains that yet (HANDOFF, open
-  issues).
+- **Runaway, cabin, 40 s.** The track raises the limit from +11.72 to +14.53
+  at S1, and lowers it at S3, from +18.31 to +16.82.
+- **Other rooms, 20 s.** S1: studio +13.57, rehearsal +12.08, mt5 +15.15,
+  mt9 +14.53, above the canceller alone in every room. S3: studio +16.83,
+  rehearsal +14.81, mt5 +16.90, mt9 +15.41, below the canceller alone in
+  every room.
+- **Audible, cabin.** Both delays split. S1: four seeds are audible early
+  (−0.54 to +4.20) and one late (+15.65), for a median of +3.59. S3: four
+  seeds are audible within a few tenths of a dB of runaway (+22.38 to
+  +25.78) and one early (+5.16), for a median of +23.45. Nothing explains
+  the early seeds yet (HANDOFF, open issues).
 
 ## Delay modulation
 
@@ -241,13 +244,13 @@ artifact. Held note, 20 s probes, runaway ASG:
 
 | Room | S1 | S3 |
 |---|---|---|
-| cabin | +12.33 | +17.35 |
-| studio | +11.90 | +18.94 |
-| rehearsal | +12.87 | +17.80 |
-| mt5 | +12.33 | +18.32 |
-| mt9 | +13.65 | +20.77 |
+| cabin | +13.83 | +16.74 |
+| studio | +13.22 | +18.23 |
+| rehearsal | +13.22 | +17.89 |
+| mt5 | +13.39 | +18.93 |
+| mt9 | +12.95 | +20.07 |
 
-At S1 that is −0.44 to +1.93 dB over the canceller alone, comparing room
+At S1 that is +0.79 to +2.37 dB over the canceller alone, comparing room
 medians, and below the 5 Hz shift in every room. Its audible limit has not
 been measured.
 
@@ -259,15 +262,15 @@ per-seed median of the chain limits:
 
 | Room | S1 naive ASG | S1 PEM − naive | S3 naive ASG | S3 PEM − naive |
 |---|---|---|---|---|
-| cabin | −0.59 | +18.63 | +8.03 | +9.05 |
-| studio | −5.68 | +22.24 | +2.14 | +17.49 |
-| rehearsal | −15.00 | +30.94 | +7.60 | +10.72 |
-| mt5 | −15.00 | +32.78 | +6.71 | +13.71 |
-| mt9 | −15.00 | +33.49 | +7.24 | +15.73 |
+| cabin | −15.00 | +28.56 | +8.47 | +8.09 |
+| studio | −13.51 | +29.97 | +6.27 | +12.39 |
+| rehearsal | −15.00 | +31.46 | +5.49 | +11.95 |
+| mt5 | −15.00 | +35.16 | +7.06 | +14.59 |
+| mt9 | −6.04 | +26.19 | +6.88 | +14.24 |
 
 - −15.00 is the probe floor.
 - At S3 the naive core no longer runs away at the floor. PEM still leads by
-  at least 9.05 dB everywhere.
+  at least 8.09 dB everywhere.
 - Decorrelation shrinks the bias term, and prewhitening removes what is left.
 
 ## Low-latency regression row (2.7 ms)
@@ -278,19 +281,19 @@ useful gain, and a 5 Hz shift rescues it. Cabin, 40 s probes:
 
 | Chain | Runaway ASG |
 |---|---|
-| canceller | +0.29 |
-| + 2 Hz | +10.66 |
-| + 5 Hz | +13.21 |
-| + aux | +16.90 |
+| canceller | −1.55 |
+| + 2 Hz | +10.75 |
+| + 5 Hz | +14.09 |
+| + aux | +16.99 |
 | naive + 5 Hz | −15.00, the floor |
 
-The gated test reads canceller +0.00, 5 Hz +13.00 and PEM − naive +27.50
+The gated test reads canceller −1.50, 5 Hz +13.50 and PEM − naive +28.50
 (5 s probes, 0.5 dB bisection).
 
-On the raw (unbanded) cabin at 20 s the same row reads canceller −1.30 and
-5 Hz +17.16. The branch's single-seed +0.6 → +18.4 came from that unbanded
+On the raw (unbanded) cabin at 20 s the same row reads canceller +1.25 and
+5 Hz +16.28. The branch's single-seed +0.6 → +18.4 came from that unbanded
 path, measured against max|F| with 0.8 s probes. Band-limiting moves the
-raw S1 and S3 numbers too: canceller +12.06 and +18.21, 5 Hz +19.79 and
+raw S1 and S3 numbers too: canceller +12.50 and +18.48, 5 Hz +19.71 and
 +21.20.
 
 ## Reverb in the loop: deferred
@@ -337,6 +340,12 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DMUTAP_BUILD_KARAOKE_DU
 cmake --build build
 build/tests/mutap_tests --gtest_filter='AfcDecorrelation.*'
 ```
+
+Every number above was re-measured on Linux x86-64 (GCC 13.3, Release) when
+the tests' random fixtures moved to `tests/support/portable_random.h` (one
+scenario on every host); the first measurement, on the Mac, ran the other
+standard library's rooms and signals. There the sweep's three tests took
+98, 57 and 8 minutes on 4 threads.
 
 The sweep (every bisected table above) takes 1:16 wall-clock on 11 threads
 of the 12-thread Intel Mac:
