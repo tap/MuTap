@@ -249,3 +249,29 @@ MuTap implements published algorithms; algorithms and mathematical formulas
 are not copyrightable, and no code is taken from these sources. The key papers
 (PEM-AFROW, FDAF-PEM-AFROW, the acoustic feedback control survey) are listed in
 `HANDOFF.md` and cited in source comments where implemented.
+
+### Hilbert allpass-pair coefficients — `include/mutap/frequency_shifter.h`
+The eight coefficients of `tap::mu::allpass_hilbert` (`hilbert_detail::k_coefficients`,
+also in `tests/support/decorrelated_loop.h`'s history and
+`tools/fixtures/test_howl_criterion.py`) are Olli Niemitalo's published 4+4
+IIR allpass-pair 90-degree phase-difference ("Hilbert transformer") design,
+which he published on his website (yehar.com). No code is taken from that
+source: the filter structure (2nd-order allpass sections in z^-2) is the
+standard one, and the implementation is MuTap's own, under MIT.
+
+**Provenance, as far as this repository records it.** The numbers entered
+the tree in `tools/fixtures/test_howl_criterion.py` (tap/MuTap#57, `0b25002`;
+before that PR's squash they were read from the anti-howl PoC phase 0
+review's untracked `dl_iir.h`), then `tests/support/decorrelated_loop.h`
+(tap/MuTap#65, `b56c7a4`), and now the library. Neither those commits, their
+comments, nor the review file name the page they were copied from or state
+any licence or terms of use.
+
+**Source and licence.** The page is Olli Niemitalo, "Hilbert transform",
+https://yehar.com/blog/?p=368 (posted 2003-07-03, updated 2020-05-11; checked
+2026-09-29), which lists exactly these eight coefficients as its equations 2
+and 3 and refers to a 2019 Signal Processing Stack Exchange post for the
+design procedure. **The page states no licence or terms of use.** Treat the
+status of these eight numbers as unstated rather than as permissive. (They
+are the outputs of a numerical design procedure; whether such numbers are
+protectable at all is a legal question this notice does not answer.)

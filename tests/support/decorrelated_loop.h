@@ -38,8 +38,9 @@
 // it is part of what the shifter costs a product.
 //
 // THE SHIFTER (iir_ssb_shifter, below) is a single-sideband frequency shift
-// x cos(wt) - H{x} sin(wt) with the analytic pair from an IIR allpass-pair
-// Hilbert transformer (Olli Niemitalo's 4+4 design). Image rejection of a
+// x cos(wt) - H{x} sin(wt) with the analytic pair from the library's IIR
+// allpass-pair Hilbert transformer (tap::mu::allpass_hilbert, Olli
+// Niemitalo's 4+4 design, in mutap/frequency_shifter.h). Image rejection of a
 // +5 Hz shift, measured by AfcDecorrelation.ShifterIsSingleSideband: 44.3 dB
 // at 30 Hz, 55.7 at 100 Hz, 44.8 at 300 Hz, 49.0 at 1 kHz, 46.8 at 5 kHz.
 // It replaced the branch's 65-tap Hamming-windowed Hilbert FIR, which was
@@ -49,7 +50,6 @@
 
 #pragma once
 
-#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -59,6 +59,7 @@
 #include <vector>
 
 #include "closed_loop.h"
+#include "mutap/frequency_shifter.h"
 
 namespace mutap_test {
 
@@ -70,48 +71,32 @@ namespace mutap_test {
         delay_modulation ///< delay wobbled +-`depth`/2 samples at `rate_hz`
     };
 
-    /// Single-sideband frequency shifter: the analytic pair from Olli
-    /// Niemitalo's 4+4 IIR allpass-pair Hilbert transformer (two chains of
-    /// four 2nd-order allpasses in z^-2; the quadrature chain is delayed one
-    /// sample), rotated by the caller's phase: out = re cos(theta) - im
-    /// sin(theta). A positive phase ramp shifts every partial UP. Causal, with
-    /// the frequency-dependent group delay the file comment gives. Double
-    /// precision, test-side only (the library's shifter is a separate item).
+    /// Single-sideband frequency shifter: the analytic pair from the
+    /// library's allpass_hilbert (mutap/frequency_shifter.h: Olli
+    /// Niemitalo's 4+4 IIR allpass pair), rotated by the caller's phase:
+    /// out = re cos(theta) - im sin(theta). A positive phase ramp shifts
+    /// every partial UP. Causal, with the frequency-dependent group delay
+    /// the file comment gives.
+    ///
+    /// Why not tap::mu::frequency_shifter itself: the loop evaluates the
+    /// rotation EXACTLY, cos and sin of the absolute-clock phase every
+    /// sample, as the double golden model it is; the library's shifter runs
+    /// a renormalized recursive oscillator instead (cheap and stable in
+    /// float, but not bit-identical to the exact ramp), and every karaoke
+    /// number measured on this loop was measured on the exact ramp. The
+    /// Hilbert arithmetic is the library's, bit for bit.
     class iir_ssb_shifter {
       public:
         /// Advance one sample: x in, the shifted sample out.
         double process(double x, double theta) {
-            const double re = chain(0, x);
-            const double im = m_im_delay;
-            m_im_delay      = chain(1, x);
+            double re = 0.0;
+            double im = 0.0;
+            m_pair.process(x, re, im);
             return re * std::cos(theta) - im * std::sin(theta);
         }
 
       private:
-        /// Chain 0 gives the in-phase output, chain 1 (then one sample of
-        /// delay) the quadrature one. Each section: y = c^2 (x + y[n-2]) - x[n-2].
-        static constexpr std::array<std::array<double, 4>, 2> k_allpass = {{
-            {0.4021921162426, 0.8561710882420, 0.9722909545651, 0.9952884791278},
-            {0.6923878, 0.9360654322959, 0.9882295226860, 0.9987488452737},
-        }};
-
-        double chain(size_t c, double x) {
-            for (size_t s = 0; s < 4; ++s) {
-                const double c2 = k_allpass[c][s] * k_allpass[c][s];
-                const double y  = c2 * (x + m_out[c][s][1]) - m_in[c][s][1];
-                m_in[c][s][1]   = m_in[c][s][0];
-                m_in[c][s][0]   = x;
-                m_out[c][s][1]  = m_out[c][s][0];
-                m_out[c][s][0]  = y;
-                x               = y;
-            }
-            return x;
-        }
-
-        /// States [chain][section][x or y at n-1, n-2].
-        std::array<std::array<std::array<double, 2>, 4>, 2> m_in{};
-        std::array<std::array<std::array<double, 2>, 4>, 2> m_out{};
-        double                                              m_im_delay = 0.0;
+        tap::mu::allpass_hilbert<double> m_pair;
     };
 
     /// Loop with a decorrelator and an auxiliary speaker feed. Same contract

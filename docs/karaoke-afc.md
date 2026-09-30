@@ -168,7 +168,11 @@ partial by the same number of Hz. That decorrelates the loudspeaker signal
 from the singer.
 
 **The shifter.** Olli Niemitalo's 4+4 IIR allpass-pair Hilbert transformer
-and a rotation, in `decorrelated_loop.h`.
+and a rotation, in `decorrelated_loop.h`. The Hilbert pair is the library's
+(`tap::mu::allpass_hilbert`, `include/mutap/frequency_shifter.h`); the
+rotation is the exact per-sample phase ramp. The library's shippable shifter,
+`tap::mu::frequency_shifter`, runs the same pair with a renormalized
+recursive oscillator; its measured numbers are in that header.
 
 - Image rejection of a +5 Hz shift: 44.3 dB at 30 Hz, 55.7 at 100 Hz, 44.8
   at 300 Hz, 49.0 at 1 kHz, 46.8 at 5 kHz.

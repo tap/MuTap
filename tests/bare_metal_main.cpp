@@ -9,9 +9,13 @@
 // pem_afc_test, kalman_loop_test, burst_test; the acoustic claims are
 // their host-only *_host_test / double counterparts, band-limited medians
 // over five seed sets; see tests/support/rooms.h), the float-tracks-double
-// oracle check, and the learned suppressor's float profile with its own
+// oracle check, the learned suppressor's float profile with its own
 // oracle check (the wake-word plan's M2: the learned path had never run on
-// target before).
+// target before), and the forward-path frequency shifter's float profile
+// with its float-tracks-double check (the anti-howl PoC's decorrelator; its
+// 10-minute oscillator drift test, FrequencyShifterDrift, stays on the
+// host, and FloatTracksDouble fails on target too if the oscillator's
+// renormalization breaks: 1.396e-02 max difference with it disabled).
 //
 // Excluded: the double-typed adaptive suites and the double closed-loop
 // scenarios — minutes-to-hours of soft-float virtual audio validating
@@ -42,16 +46,19 @@ int main() {
         "AdaptationControlConfigValidation.*:"
         "kalman_loop_test/0.*:pem_afc_test/0.*:burst_test/0.*:aec_test/0.*:"
         "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:"
-        "FftEngineContract.*:PortableRandom.*";
+        "FftEngineContract.*:PortableRandom.*:"
+        "frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:"
+        "FrequencyShifterRtContract.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is 63 tests (the FFT suites left with the FFT; FftEngineContract, the
-    // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump, and
-    // PortableRandom, the fixtures' variates, when they replaced <random>'s);
-    // 30 leaves headroom for legitimate removals without masking a typo.
+    // is 70 tests (the FFT suites left with the FFT; FftEngineContract, the
+    // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump;
+    // PortableRandom, the fixtures' variates, when they replaced <random>'s;
+    // the frequency shifter's 7 with the shifter); 30 leaves headroom for
+    // legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {
         std::printf("only %d tests selected (expected >= 30): filter is broken\n", selected);

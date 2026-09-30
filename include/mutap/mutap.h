@@ -20,6 +20,7 @@
 #include "mutap/fd_kalman.h"
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
+#include "mutap/frequency_shifter.h"
 #include "mutap/lpc.h"
 #include "mutap/pem_afc.h"
 #include "mutap/postfilter.h"
