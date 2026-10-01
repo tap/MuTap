@@ -357,7 +357,7 @@ per-process offset from CI) and is confirmed by the PR's next ratchet run.
 | hexagon | suppressor_16k | 255,177,206 | 245,231,120 | −3.90 % |
 | hexagon | suppressor_48k | 251,494,761 | 241,548,685 | −3.95 % |
 
-**2026-10-01 — DspTap 2137d86 (`<windows.h>` macro hygiene, tap/DspTap#47): no re-record.**
+**2026-10-01 — DspTap 2137d86 (`<windows.h>` macro hygiene, tap/DspTap#47), tap/MuTap#79: no re-record.**
 The pin renames srdif's `small` locals to `small_tables` (rpcndr.h defines
 `small` as `char`, which broke MuTap-Max's externals on MSVC) and adds a
 DspTap test; no other line under DspTap's `include/` moves. Measured locally,
