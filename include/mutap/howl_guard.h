@@ -136,7 +136,8 @@
 //     ~0 dB), so restart_a_db (-1) never fires on silence; LOST ducks in the
 //     gap and the re-arm opens again before the singer returns; 0 howl.
 //   * Two mics, mic 1's path x4 at 10 s: the first TRIP ducks mic 1 alone in
-//     7 of 8 runs, both in 1, the wrong mic alone in 0; 0 fallbacks, 0
+//     7 of 8 runs, both in 1, the wrong mic alone in 0 (1 of 8 on macOS
+//     arm64 CI, 1 of 20 in the sweep); 0 fallbacks, 0
 //     cascades.
 //   * Audible cost at the limit - 6 (0 / 2 / 5 Hz shift, 30 s): 0 ducks in
 //     24 runs; the loudest residual block +19.56 dB against the +30 dB
