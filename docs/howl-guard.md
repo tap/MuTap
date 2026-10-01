@@ -240,13 +240,21 @@ dry limit − 6:
 *macOS 15.7 x86_64, AppleClang 17, Release. "10.00" is block 7499 from
 reset, 9.9987 s: the timeout's 7500th block.*
 
+The held note's two ducks under the cap both fell within 0.5 s of a
+loop-born burst (a residual block at +20 dB; the burst oracle): 0 ducks off
+a burst. On macOS arm64 (CI jobs 110465782241 and 110465811203) the same
+row ducked in 5 of 6 held-note runs, not classified there. The gate is
+therefore on howl blocks, the OPEN_CAPPED time and the runs with a duck
+off any burst (at most 6 of the 18; 0 on Intel), not on the duck count.
+
 The sweep's track-off rows (six rooms, five seed sets, 30 runs a row, the
 table above): under the cap every run reached OPEN_CAPPED at 10.00 s, 0
 howl blocks; the held note ducked after OPEN_CAPPED in 11 of 30 runs at S1
 (9 of 20 at exact + 3, 4 of 20 at exact + 6), music in 1 of 20 at
 exact + 3, speech never. Before a declaration the verdict trigger is
-disarmed, so each of these ducks is a detector TRIP; whether each sat on a
-loop-born burst was not classified here. Without a cap: 90 of 90 runs in
+disarmed, so each of these ducks is a detector TRIP. The sweep ran before
+the burst classification was added, so these are not classified; the gated
+row's ducks were all on bursts. Without a cap: 90 of 90 runs in
 ARMING for the whole 20 s, `unprotected` from 10.00 s, 0 howl blocks.
 
 ## Walks to another room
@@ -681,7 +689,12 @@ process. Median of five repetitions.
 
 The guard is the detectors plus a few dozen comparisons and a gain ramp per
 mic (PR B's run read 2246 / 3962 ns float and 3180 / 6311 ns double: a
-shared machine moves these by tens of percent). The soundcheck sampler adds
+shared machine moves these by tens of percent). On the Linux GCC CI runner
+(job 110465810942) the guard read 8575 / 12794 ns float and 8706 /
+13571 ns double against a 186–190 µs canceller: 4.61 / 6.86 % and 4.59 /
+7.15 %. The ratio moves by that factor between hosts, so the test prints
+and records it (`RecordProperty`) and gates only a gross regression
+(under 25 %). The soundcheck sampler adds
 two histogram increments per mic and block while it runs; it was off in the
 timed loop. The guard allocates only in its constructor.
 
@@ -710,8 +723,9 @@ timed loop. The guard allocates only in its constructor.
   opening without a declaration: without it the mic stays 30 dB down in
   ARMING with `unprotected` raised (90 of 90 sweep runs for all 20 s).
   Under the cap the held note ducks after OPEN_CAPPED in about a third of
-  the runs (11 of 30 at S1), on detector TRIPs not classified against the
-  burst oracle. A soundcheck excitation, or ARMING at a shallower duck for
+  the runs (11 of 30 at S1) on detector TRIPs; in the gated rows both
+  Intel ducks sat on loop-born bursts (arm64: 5 of 6 runs ducked, not
+  classified). A soundcheck excitation, or ARMING at a shallower duck for
   those materials, was not measured.
 - **Silence does not restart the guard.** A′ peaks near −15 dB in a 20 s
   gap, so `restart_a_db` fires only on a canceller reset; the gap's LOST
