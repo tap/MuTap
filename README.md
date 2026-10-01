@@ -293,6 +293,11 @@ algorithmically complete. What exists today:
   [`tools/ml/README.md`](tools/ml/README.md) and the executed notebooks
   [`notebooks/ml_aec_comparison.ipynb`](notebooks/ml_aec_comparison.ipynb) /
   [`notebooks/aec_head_to_head.ipynb`](notebooks/aec_head_to_head.ipynb).
+- **The anti-howl safety layer** — `tap::mu::howl_guard`
+  ([`include/mutap/howl_guard.h`](include/mutap/howl_guard.h)), per-mic
+  arming, duck, re-arm and back-off over the canceller's verdict and a
+  `howl_detector` on each residual, attached to `afc_chain` with
+  `set_guard()`; measured live in [`docs/howl-guard.md`](docs/howl-guard.md).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance

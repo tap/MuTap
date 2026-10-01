@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "mutap/fd_kalman.h"
+#include "mutap/howl_guard.h"
 #include "mutap/lpc.h"
 #include "mutap/pem_afc.h"
 
@@ -68,7 +69,8 @@ namespace tap::mu {
     /// The anti-howl PoC's chain (the PoC plan's §2.1), canceller-first:
     ///
     ///   mic_1..M -> canceller_m (reference u = the speaker feed, delayed)
-    ///            -> voice bus = sum_m e_m
+    ///            -> [guard: per-mic gain g_m]          (optional; set_guard)
+    ///            -> voice bus = sum_m g_m e_m
     ///            -> decorrelator -> reverb -> safety   (optional; null = bypass)
     ///            -> output delay line (spends what is left of the budget)
     ///            -> + aux (the backing track, summed after the chain)
@@ -78,9 +80,10 @@ namespace tap::mu {
     /// loudspeaker each mic's loop is a single path from the speaker feed, so
     /// M mics cost M cancellers summed into the bus (§2.5; whether two mics
     /// hold is the two-mic experiment's question, not this class's). The
-    /// three stages are off by default — the canceller-first decision (Rev
-    /// 4.1): the shift and the reverb are studied options, and the safety
-    /// layer waits on the release-policy experiment. Stage order is fixed.
+    /// three stages and the guard are off by default — the canceller-first
+    /// decision (Rev 4.1): the shift and the reverb are studied options; the
+    /// safety layer is howl_guard (set_guard(), and its bus stage in the
+    /// safety slot). Stage order is fixed.
     ///
     /// THE REFERENCE. The canceller input u is what the DAC plays: the
     /// speaker output (bus through the stages and the delay line, plus aux),
@@ -199,11 +202,57 @@ namespace tap::mu {
             }
         }
 
-        /// Clears the cancellers and both delay lines. The stages are the
-        /// caller's and are not touched.
+        /// Attach (or, with nullptr, detach) the safety layer's per-mic
+        /// guard (howl_guard.h). Call between blocks, on the audio thread.
+        /// Every block the chain cancels every mic, hands each residual e_k
+        /// and its canceller's uncertainty_ratio() and
+        /// shadow_residual_ratio() to the guard, runs one guard tick, and
+        /// sums the guarded residuals into the bus; error_block() stays the
+        /// canceller's own residual (the guard's input, before its gain).
+        /// Attach the guard's post-reverb stage with
+        /// set_safety(guard->bus_stage()).
+        ///
+        /// Requires a canceller with both statistics (a compile error
+        /// otherwise) and its shadow comparator built: returns false, leaving
+        /// the chain without a guard, when any canceller's shadow_enabled()
+        /// is false (D would read 0 dB for good and the guard could never
+        /// leave ARMING), or when the guard's microphones() or block_size()
+        /// differs from the chain's. nullptr detaches and returns true.
+        bool set_guard(howl_guard<Sample>* guard) noexcept {
+            static_assert(k_has_statistics,
+                          "afc_chain::set_guard: the canceller needs uncertainty_ratio(), shadow_residual_ratio() "
+                          "and shadow_enabled() (pem_afc on the Kalman core)");
+            if (guard == nullptr) {
+                m_guard = nullptr;
+                return true;
+            }
+            if (guard->microphones() != microphones() || guard->block_size() != block_size()) {
+                return false;
+            }
+            if constexpr (k_has_statistics) {
+                for (const auto& c : m_cancellers) {
+                    if (!c.shadow_enabled()) {
+                        return false;
+                    }
+                }
+            }
+            m_guard = guard;
+            return true;
+        }
+        /// The attached guard, or nullptr.
+        howl_guard<Sample>* guard() const noexcept { return m_guard; }
+
+        /// Clears the cancellers and both delay lines, and resets an
+        /// attached guard to ARMING: the one stage the chain resets, because
+        /// a cleared canceller behind an open guard is the full-gain cold
+        /// start ARMING exists to prevent. The decorrelator, reverb and
+        /// safety stages are the caller's and are not touched.
         void reset() noexcept {
             for (auto& c : m_cancellers) {
                 c.reset();
+            }
+            if (m_guard != nullptr) {
+                m_guard->reset();
             }
             fill_zero(m_u);
             fill_zero(m_e);
@@ -333,14 +382,16 @@ namespace tap::mu {
             }
             Sample* bus = m_bus_a.data();
             Sample* alt = m_bus_b.data();
-            for (size_t i = 0; i < b; ++i) {
-                bus[i] = m_e[i];
-            }
-            for (size_t k = 1; k < m; ++k) {
-                const Sample* e = m_e.data() + k * b;
-                for (size_t i = 0; i < b; ++i) {
-                    bus[i] += e[i];
+            if constexpr (k_has_statistics) {
+                if (m_guard != nullptr) {
+                    guarded_sum(bus);
                 }
+                else {
+                    plain_sum(bus);
+                }
+            }
+            else {
+                plain_sum(bus);
             }
 
             // The stages, in order, ping-ponging so no stage sees in == out.
@@ -369,6 +420,45 @@ namespace tap::mu {
             }
             ring_write(m_ref_ring, m_ref_pos, out, b);
             m_ref_pos = advance(m_ref_pos, b, m_ref_ring.size());
+        }
+
+        /// Whether the canceller exposes the convergence statistics the guard
+        /// reads.
+        static constexpr bool k_has_statistics = requires(const Canceller& c) {
+            c.uncertainty_ratio();
+            c.shadow_residual_ratio();
+            c.shadow_enabled();
+        };
+
+        /// bus = the sum of the error blocks (the first copied, so one mic
+        /// passes bit-exactly).
+        void plain_sum(Sample* bus) const noexcept {
+            const size_t b = block_size();
+            for (size_t i = 0; i < b; ++i) {
+                bus[i] = m_e[i];
+            }
+            for (size_t k = 1; k < m_cancellers.size(); ++k) {
+                const Sample* e = m_e.data() + k * b;
+                for (size_t i = 0; i < b; ++i) {
+                    bus[i] += e[i];
+                }
+            }
+        }
+
+        /// One guard tick over every mic, then bus = the sum of the guarded
+        /// error blocks.
+        void guarded_sum(Sample* bus) noexcept {
+            const size_t b = block_size();
+            const size_t m = m_cancellers.size();
+            for (size_t k = 0; k < m; ++k) {
+                m_guard->analyze(k, m_e.data() + k * b, m_cancellers[k].uncertainty_ratio(),
+                                 m_cancellers[k].shadow_residual_ratio());
+            }
+            m_guard->update();
+            m_guard->apply(0, m_e.data(), bus);
+            for (size_t k = 1; k < m; ++k) {
+                m_guard->accumulate(k, m_e.data() + k * b, bus);
+            }
         }
 
         /// Run `stage` from `bus` into `alt` and swap them, or do nothing
@@ -440,6 +530,7 @@ namespace tap::mu {
         stage_ref              m_decorrelator;
         stage_ref              m_reverb;
         stage_ref              m_safety;
+        howl_guard<Sample>*    m_guard = nullptr;
     };
 
 } // namespace tap::mu
