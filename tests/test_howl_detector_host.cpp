@@ -379,13 +379,26 @@ namespace {
 // The residual of a stable loop at the canceller's limit - 6 dB, 60 s after
 // 2 s of convergence: the voiced singer, and the entrance (3 s of silence,
 // 4 s of voice) over a backing track at the singer's level, in the cabin at
-// S1. Measured: 0 trips on both; integrated rise at most 12.54 / 16.29 dB
-// (X = 20), prominence at most 21.99 / 25.87 dB. faust-icc: 30 trips on the
-// voiced residual. A single closed-loop trajectory is chaotic across
-// platforms (HANDOFF working note 2), so the gate is on trips the burst
-// oracle does not explain (none within 0.5 s of a block at +20 dB), which
-// is what the guard's audible cost counts; the MUTAP_SLOW sweep has the
-// 78-run table, where the shifted loops do trip (see the header).
+// S1. A single closed-loop trajectory is chaotic across hosts (HANDOFF
+// working note 2), so no trip COUNT is gated here. Measured:
+//
+//   host                                 voiced                entrance over aux 0
+//                                   trips/clean  max X  dBre1   trips/clean  max X  dBre1
+//   Intel Mac (x86_64, AppleClang 17)   0/0      12.54  18.70      0/0      16.29   6.23
+//   CI macOS arm64 (runs 36811033918,   1/1      20.87  18.70      0/0       5.23   4.99
+//     36811042551)
+//
+// (faust-icc on the voiced row: 30 trips Intel, 31 arm64.) The gates:
+//   * the ceiling never fires (the claim that matters: a stable loop's
+//     residual stays 11+ dB under it, max +18.70 dB on both hosts) and the
+//     row does not howl;
+//   * trips the burst oracle does not explain ("clean": none within 0.5 s
+//     of a block at +20 dB) stay at a rate of at most 60 per 10 minutes per
+//     row, i.e. 6 in the row's 60 s. The MUTAP_SLOW sweep's 76 stable rows
+//     (Intel) had 12 clean trips in 4560 s, the worst row 5 in 60 s (cabin,
+//     2 Hz, voiced: 50 per 10 minutes); 60 is that worst row plus a fifth.
+//     These two plain-loop rows measured 0 (Intel) and 1 (arm64, voiced)
+//     clean trips.
 TEST(HowlDetectorHost, StableLoopResidualDoesNotTrip) {
     std::vector<stable_case> cases;
     cases.push_back({"cabin", 0.0, {material::voiced, false, std::nan("")}, "cabin, S1, 0 Hz: voiced"});
@@ -394,8 +407,13 @@ TEST(HowlDetectorHost, StableLoopResidualDoesNotTrip) {
     print_false_header();
     for (const auto& r : rows) {
         print_false(r);
+        const double per_10_min = (r.seconds > 0.0) ? static_cast<double>(r.clean) * 600.0 / r.seconds : 0.0;
+        std::printf("%s: %zu clean trips in %.0f s = %.1f per 10 minutes (gate 60); ceiling trips %zu (gate 0)\n",
+                    r.label.c_str(), r.clean, r.seconds, per_10_min, r.ceiling);
+        RecordProperty(r.label + ": clean trips per 10 min", std::to_string(per_10_min));
         EXPECT_EQ(r.howled, 0U) << r.label;
-        EXPECT_EQ(r.clean, 0U) << r.label << ": measured 0 trips";
+        EXPECT_EQ(r.ceiling, 0U) << r.label << ": measured 0 on both hosts (max +18.70 dB re the near end)";
+        EXPECT_LE(per_10_min, 60.0) << r.label << ": measured 0 (Intel) / 10.0 (arm64 CI, voiced); sweep worst row 50";
     }
 }
 
