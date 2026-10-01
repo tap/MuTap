@@ -385,8 +385,9 @@ carries the measured numbers; this is the map:
    x86_64, double, every run from reset): 0 howl blocks with the guard in
    every single-mic gated row, including the canceller's limit + 6 dB where
    the unguarded twins howled (575 and 1203 blocks), and 1 block in the
-   two-mic forced-howl row; attribution never ducked the wrong mic alone
-   there (gated; 1 of 20 in the sweep); cold starts with the
+   two-mic forced-howl row; attribution ducked the wrong mic alone in 0 of
+   8 gated runs on the Intel Mac, 1 of 8 on macOS arm64 CI and 1 of 20 in
+   the sweep (gated as at most 2 of 8); cold starts with the
    backing track declare in a median 1.77–2.07 s; without it none declares
    and every run leaves ARMING through the cap; 0 ducks on stable material
    at the limit − 6; cost 0.60 / 0.88 % of a canceller per mic (float /
