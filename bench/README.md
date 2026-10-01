@@ -41,6 +41,15 @@ rescue trigger or guard ever fires inside the timed loop. Items
 processed are samples: Google Benchmark's `items_per_second / fs` is
 the x-realtime figure.
 
+A fifth, separate entry (`bench_howl_detector.cpp`) times the safety
+layer's per-mic `howl_detector` at its defaults (32 resonators, block 64
+at 48 kHz) on unit white noise: one iteration is one block, the per-mic
+cost. Measured on the Intel Mac (i9-8950HK, AppleClang 17, Release,
+medians of 5, load average 4.11 — a shared machine, so pessimistic):
+**3039 ns per block in double, 1786 ns in float32**, against the
+324621.6 / 324455.2 ns that `pem_afc.h` quotes for one canceller's
+`process_block` at the same block size on the same CPU: 0.94 % / 0.55 %.
+
 ## Scalar baselines (reference container, 2.8 GHz x86, GCC Release: -O3 -DNDEBUG, medians of 5, idle machine)
 
 | layer | 48 kHz f64 | 48 kHz f32 | 16 kHz f64 | 16 kHz f32 |

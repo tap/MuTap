@@ -41,6 +41,7 @@ add_executable(mutap_tests
     test_fdaf.cpp
     test_fd_kalman.cpp
     test_frequency_shifter.cpp
+    test_howl_detector.cpp
     test_convergence_stats.cpp
     test_lpc.cpp
     test_pem_afc.cpp
@@ -80,6 +81,9 @@ if(NOT MUTAP_BARE_METAL AND NOT CMAKE_CROSSCOMPILING)
     # The two-mic go/no-go loop (the anti-howl PoC's D11): host-only for the
     # same reasons; its smoke test runs seed sets on std::thread.
     target_sources(mutap_tests PRIVATE test_two_mic.cpp test_two_mic_sweep.cpp)
+    # The howl detector's acoustic claims (tests/support/howl_runs.h): host-only for
+    # the same reasons, and they drive the vendored faust-icc detector beside it.
+    target_sources(mutap_tests PRIVATE test_howl_detector_host.cpp)
     target_include_directories(mutap_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party/faust)
 endif()
 
@@ -106,13 +110,14 @@ else()
     # float32 typed suites, the double Kalman core, the LP/conditioning
     # suites, the float closed-loop canaries (one seed each; the claims are
     # the host-only *_host_test suites, see tests/support/rooms.h), the
-    # validation/contract tests and the frequency shifter's float suite (not
-    # its 10-minute drift test). (The FFT suites left with the FFT: they run
-    # in DspTap's own CI.)
+    # validation/contract tests, the frequency shifter's float suite (not
+    # its 10-minute drift test) and the howl detector's float suite with its
+    # canary (its acoustic claims are test_howl_detector_host.cpp, host-only).
+    # (The FFT suites left with the FFT: they run in DspTap's own CI.)
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*")
+            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*:howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)
