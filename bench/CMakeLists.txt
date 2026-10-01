@@ -10,7 +10,7 @@ FetchContent_Declare(
     GIT_TAG c58e6d0710581e3a08d65c349664128a8d9a2461) # v1.9.1
 FetchContent_MakeAvailable(googlebenchmark)
 
-add_executable(mutap_bench bench_aec.cpp)
+add_executable(mutap_bench bench_aec.cpp bench_howl_detector.cpp)
 target_link_libraries(mutap_bench PRIVATE
     MuTap::MuTap
     mutap_warnings

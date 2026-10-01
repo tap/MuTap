@@ -15,7 +15,11 @@
 // with its float-tracks-double check (the anti-howl PoC's decorrelator; its
 // 10-minute oscillator drift test, FrequencyShifterDrift, stays on the
 // host, and FloatTracksDouble fails on target too if the oscillator's
-// renormalization breaks: 1.396e-02 max difference with it disabled).
+// renormalization breaks: 1.396e-02 max difference with it disabled), and
+// the safety layer's howl detector in float with its canary (a loop-born
+// howl, one seed, the float detector tripping within 2 blocks of the
+// double one; its acoustic claims are host-only,
+// test_howl_detector_host.cpp).
 //
 // Excluded: the double-typed adaptive suites and the double closed-loop
 // scenarios — minutes-to-hours of soft-float virtual audio validating
@@ -48,16 +52,18 @@ int main() {
         "nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:"
         "FftEngineContract.*:PortableRandom.*:"
         "frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:"
-        "FrequencyShifterRtContract.*";
+        "FrequencyShifterRtContract.*:"
+        "howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is 70 tests (the FFT suites left with the FFT; FftEngineContract, the
+    // is 82 tests (the FFT suites left with the FFT; FftEngineContract, the
     // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump;
     // PortableRandom, the fixtures' variates, when they replaced <random>'s;
-    // the frequency shifter's 7 with the shifter); 30 leaves headroom for
+    // the frequency shifter's 7 with the shifter; the howl detector's 12
+    // with the detector); 30 leaves headroom for
     // legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {
