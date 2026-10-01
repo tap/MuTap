@@ -355,7 +355,11 @@ speaker): a howl that one mic causes. Gated: seeds 1 and 21, 20 s.
 *macOS 15.7 x86_64, AppleClang 17, Release.*
 
 - Attribution picked the forced mic alone in 7 of 8 runs, and both mics in
-  the other; it never ducked the wrong mic alone. The duck-all fallback never
+  the other; it never ducked the wrong mic alone here. On a second host
+  (macOS arm64, AppleClang, CI run 36828198214) the same rows read 7 of 8
+  forced mic alone and 1 of 8 wrong mic alone (cabin, no aux), with 3 howl
+  blocks, the longest one block: the gate is a count with margin (at most
+  2 of 8 wrong, at most 24 howl blocks, no howl run of 0.1 s), not a zero. The duck-all fallback never
   fired, and mic 0's verdict never dropped after mic 1 was ducked.
 
 The sweep's five seed sets:

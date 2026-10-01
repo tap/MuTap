@@ -29,6 +29,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "guard_loop.h"
@@ -350,22 +351,30 @@ namespace mutap_test::guard {
         return -1;
     }
 
+    /// [from, to) clamped to [0, v.size()] as iterators. The [from, to)
+    /// helpers below take an open-ended `to` (SIZE_MAX by default); walking
+    /// iterators bounded by the vector's own end, not an index loop against
+    /// min(to, size), keeps GCC 13's -Waggressive-loop-optimizations from
+    /// proving an out-of-range iteration (it bounds size() only by the
+    /// pointer difference / sizeof(T), 2^62 for a float).
+    template <typename T>
+    std::pair<typename std::vector<T>::const_iterator, typename std::vector<T>::const_iterator>
+    clamped_range(const std::vector<T>& v, size_t from, size_t to) {
+        const size_t end   = std::min(to, v.size());
+        const size_t begin = std::min(from, end);
+        return {v.begin() + static_cast<std::ptrdiff_t>(begin), v.begin() + static_cast<std::ptrdiff_t>(end)};
+    }
+
     /// Blocks in state `st` over [from, to).
     inline size_t blocks_in(const run_trace& t, tap::mu::guard_state st, size_t from = 0, size_t to = ~size_t{0}) {
-        size_t n = 0;
-        for (size_t i = from; i < std::min(to, t.size()); ++i) {
-            n += t.state[i] == st ? 1U : 0U;
-        }
-        return n;
+        const auto [b, e] = clamped_range(t.state, from, to);
+        return static_cast<size_t>(std::count(b, e, st));
     }
 
     /// Blocks at the 40 dB rule over [from, to).
     inline size_t howl_blocks(const run_trace& t, size_t from = 0, size_t to = ~size_t{0}) {
-        size_t n = 0;
-        for (size_t i = from; i < std::min(to, t.size()); ++i) {
-            n += t.e_rms[i] >= 100.0F ? 1U : 0U;
-        }
-        return n;
+        const auto [b, e] = clamped_range(t.e_rms, from, to);
+        return static_cast<size_t>(std::count_if(b, e, [](float r) { return r >= 100.0F; }));
     }
 
     /// Seconds the frozen-estimate margin was below 0 dB over [from, to)
@@ -383,20 +392,23 @@ namespace mutap_test::guard {
 
     /// Longest run of consecutive blocks at the 40 dB rule, seconds.
     inline double longest_howl_s(const run_trace& t, size_t from = 0) {
-        size_t best = 0;
-        size_t cur  = 0;
-        for (size_t i = from; i < t.size(); ++i) {
-            cur  = t.e_rms[i] >= 100.0F ? cur + 1 : 0;
+        const auto [b, e] = clamped_range(t.e_rms, from, t.e_rms.size());
+        size_t best       = 0;
+        size_t cur        = 0;
+        for (auto it = b; it != e; ++it) {
+            cur  = *it >= 100.0F ? cur + 1 : 0;
             best = std::max(best, cur);
         }
         return static_cast<double>(best) * block_s();
     }
 
-    /// Entries into state `st` over [from, to).
+    /// Entries into state `st` over [from, to): blocks in `st` whose
+    /// predecessor is not.
     inline size_t entries(const run_trace& t, tap::mu::guard_state st, size_t from = 0, size_t to = ~size_t{0}) {
-        size_t n = 0;
-        for (size_t i = std::max<size_t>(from, 1); i < std::min(to, t.size()); ++i) {
-            n += (t.state[i] == st && t.state[i - 1] != st) ? 1U : 0U;
+        const auto [b, e] = clamped_range(t.state, std::max<size_t>(from, 1), to);
+        size_t n          = 0;
+        for (auto it = b; it != e; ++it) {
+            n += (*it == st && *(it - 1) != st) ? 1U : 0U;
         }
         return n;
     }
