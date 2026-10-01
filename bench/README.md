@@ -357,6 +357,15 @@ per-process offset from CI) and is confirmed by the PR's next ratchet run.
 | hexagon | suppressor_16k | 255,177,206 | 245,231,120 | −3.90 % |
 | hexagon | suppressor_48k | 251,494,761 | 241,548,685 | −3.95 % |
 
+**2026-10-01 — DspTap 2137d86 (`<windows.h>` macro hygiene, tap/DspTap#47): no re-record.**
+The pin renames srdif's `small` locals to `small_tables` (rpcndr.h defines
+`small` as `char`, which broke MuTap-Max's externals on MSVC) and adds a
+DspTap test; no other line under DspTap's `include/` moves. Measured locally,
+the PR head against the committed baselines (recorded at `d9c1e33`) on the
+committed toolchain/QEMU pair: every m55 and m33 row is identical count for
+count (0 instructions on all 20 rows), so nothing is re-recorded; hexagon,
+which has no count-exact local rig, is confirmed by the PR's ratchet run.
+
 ## FFT backend (Arm Helium)
 
 The **m55** baselines record the CMSIS-DSP Helium FFT, which is the default on
