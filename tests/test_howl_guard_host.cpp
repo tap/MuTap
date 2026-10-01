@@ -1063,19 +1063,40 @@ TEST(HowlGuardHost, TwoMicsAttributeASingleMicHowl) {
     for (const auto& r : rows) {
         r.print();
     }
-    // Measured: every run tripped after the force (2 of 2 per row); the
-    // first TRIP ducked mic 1 (the forced one) alone in 7 of 8, both in 1
-    // (cabin, no aux), mic 0 alone in 0; 0 fallbacks; 0 cascades (mic 0
-    // ducked by LOST); 1 howl block in total (mt5+mt9).
-    size_t tripped = 0;
-    size_t mic1    = 0;
+    // Measured, two hosts (the loop is chaotic: single runs move between
+    // platforms, so the gates are counts with margin, not zeros):
+    //   macOS x86_64 (Intel): every run tripped after the force; the first
+    //     TRIP ducked mic 1 (the forced one) alone in 7 of 8, both in 1, mic 0
+    //     alone in 0 of 8; 0 fallbacks; 0 cascades; 1 howl block in total,
+    //     the longest howl one block. The MUTAP_SLOW sweep (20 runs): mic 0
+    //     alone in 1 of 20, 3 howl blocks.
+    //   macOS arm64 (CI run 36828198214): mic 1 alone 7 of 8, mic 0 alone
+    //     1 of 8 (cabin, no aux); 0 fallbacks; 3 howl blocks, the longest one
+    //     block.
+    // The claim that matters is that the forced howl is stopped: the
+    // longest run of howl blocks stays a block or two (gate 0.1 s, 75
+    // blocks) and the total stays small (gate 24 over 8 runs). The wrong mic
+    // alone is gated at a margin over the sweep's rate (1 of 20): <= 2 of 8.
+    size_t tripped   = 0;
+    size_t mic1      = 0;
+    size_t wrong     = 0;
+    size_t howl      = 0;
+    double longest_s = 0.0;
     for (const auto& r : rows) {
         EXPECT_EQ(r.tripped, r.runs) << r.label;
-        EXPECT_EQ(r.mic0_only, 0U) << r.label;
         tripped += r.tripped;
         mic1 += r.mic1_only;
+        wrong += r.mic0_only;
+        howl += r.howl;
+        longest_s = std::max(longest_s, max_of(r.longest_s));
     }
-    EXPECT_GT(2 * mic1, tripped) << "attribution picks the forced mic alone in most runs (measured 7 of 8)";
+    std::printf("two mics: forced mic alone %zu, wrong mic alone %zu of %zu; howl blocks %zu, longest %.4f s\n", mic1,
+                wrong, tripped, howl, longest_s);
+    EXPECT_LE(wrong, 2U) << "measured 0 of 8 (Intel), 1 of 8 (arm64); sweep 1 of 20";
+    EXPECT_GT(2 * mic1, tripped)
+        << "attribution picks the forced mic alone in most runs (measured 7 of 8 on both hosts)";
+    EXPECT_LE(howl, 24U) << "measured 1 (Intel), 3 (arm64)";
+    EXPECT_LT(longest_s, 0.1) << "measured one block on both hosts";
 }
 
 TEST(HowlGuardHost, AudibleCostOnStableMaterial) {
