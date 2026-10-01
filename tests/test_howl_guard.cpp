@@ -97,6 +97,14 @@ namespace {
         }
         /// One tick on a single-mic guard.
         void tick1(sig kind, bool ok) { tick({kind}, {ok}); }
+        /// One quiet tick on a single-mic guard with D and A' given in dB.
+        void tick_db(double d_db, double a_db) {
+            fill(0, sig::quiet);
+            g.analyze(0, m_x.data(), static_cast<Sample>(std::pow(10.0, a_db / 10.0)),
+                      static_cast<Sample>(std::pow(10.0, d_db / 10.0)));
+            g.update();
+            ++ticks;
+        }
         /// n ticks of the same input on a single-mic guard; returns the
         /// first tick (counted from this call) at which the state became
         /// `until`, or -1.
@@ -251,7 +259,9 @@ namespace {
     // F -> 2F: the verdict goes not-ok and stays there. LOST ducks once,
     // trip_hold_s after the ok -> not-ok edge; the timer re-arm releases
     // rearm_timeout_s after the duck; then, with the verdict still not ok,
-    // nothing pumps for a minute. One ok tick re-arms LOST.
+    // nothing pumps for a minute. After the re-arm LOST arms only once the
+    // verdict has been ok for release_hold_s: ok for one tick short of it,
+    // then lost, does not duck; ok held, then lost, does.
     TYPED_TEST(howl_guard_test, VerdictLostDucksOnceAndTheRearmDoesNotPump) {
         driver<TypeParam> d(guard_config<TypeParam>());
         open_it(d, true);
@@ -263,8 +273,17 @@ namespace {
         EXPECT_EQ(d.run1(750 * 60, sig::quiet, false, guard_state::ducked), -1);
         EXPECT_EQ(d.g.ducks(0), 1U);
         d.tick1(sig::quiet, true);
+        EXPECT_EQ(d.run1(750 * 10, sig::quiet, false, guard_state::ducked), -1);
+        d.run1(k_release - 1, sig::quiet, true);
+        EXPECT_EQ(d.run1(750 * 10, sig::quiet, false, guard_state::ducked), -1);
+        EXPECT_EQ(d.g.ducks(0), 1U);
+        d.run1(k_release, sig::quiet, true);
         EXPECT_EQ(d.run1(k_trip + 5, sig::quiet, false, guard_state::ducked), k_trip - 1);
         EXPECT_EQ(d.g.ducks(0), 2U);
+        // A walk release (ok held while ducked) arms LOST as before.
+        ASSERT_EQ(d.run1(k_release + 5, sig::quiet, true, guard_state::releasing), k_release - 1);
+        EXPECT_EQ(d.run1(k_trip + 5, sig::quiet, false, guard_state::ducked), k_trip - 1);
+        EXPECT_EQ(d.g.ducks(0), 3U);
     }
 
     // Strikes: a trip within probation of entering OPEN lowers the restore
@@ -529,6 +548,126 @@ namespace {
         EXPECT_EQ(d.g.state(0), guard_state::arming);
     }
 
+    // The cap is mandatory for opening without a declaration: without one,
+    // ARMING's timeout raises `unprotected` and the mic stays ARMING at the
+    // arming gain for good (a minute here); a mic latched before any
+    // declaration (its floor was the cap) re-arms when the cap is removed.
+    TYPED_TEST(howl_guard_test, WithoutACapNothingOpensWithoutADeclaration) {
+        {
+            driver<TypeParam> d(guard_config<TypeParam>());
+            EXPECT_EQ(d.run1(750 * 60, sig::quiet, false, guard_state::open_capped), -1);
+            EXPECT_EQ(d.g.state(0), guard_state::arming);
+            EXPECT_TRUE(d.g.unprotected(0));
+            EXPECT_EQ(d.g.gain_db(0), TypeParam(-30));
+            EXPECT_NEAR(d.g.time_in_state_s(0), 60.0, 1e-9);
+        }
+        auto c          = guard_config<TypeParam>();
+        c.policy.cap_db = -12.0;
+        driver<TypeParam> d(c);
+        ASSERT_EQ(d.run1(k_timeout + 5, sig::quiet, false, guard_state::open_capped), k_timeout - 1);
+        // three trips, each within probation of (re-)entering OPEN_CAPPED,
+        // released by the timer (the verdict never ok): the third latches
+        for (int k = 1; k <= 3; ++k) {
+            d.run1(k_ramp_up + 2, sig::quiet, false);
+            d.tick1(sig::loud, false);
+            ASSERT_EQ(d.g.state(0), guard_state::ducked) << k;
+            ASSERT_EQ(d.g.strikes(0), static_cast<size_t>(k));
+            const guard_state arrive = (k == 3) ? guard_state::latched : guard_state::open_capped;
+            ASSERT_GE(d.run1((k_rearm << k) + k_ramp_up + 10, sig::quiet, false, arrive), 0) << k;
+        }
+        EXPECT_TRUE(d.g.latched(0));
+        EXPECT_FALSE(d.g.declared(0));
+        d.run1(k_ramp_up + 2, sig::quiet, false);
+        EXPECT_EQ(d.g.gain_db(0), TypeParam(-12));
+        d.g.set_cap_db(std::nullopt);
+        EXPECT_EQ(d.g.state(0), guard_state::arming);
+        EXPECT_FALSE(d.g.latched(0));
+        d.run1(10, sig::quiet, false);
+        EXPECT_EQ(d.g.gain_db(0), TypeParam(-30));
+    }
+
+    // The soundcheck sampler: calibrate_s of blocks into 0.1 dB histograms
+    // (later blocks are not sampled), the median / 95th percentile / max as
+    // bin centres, suggested thresholds = median + the policy's margins;
+    // applied, the mic runs on them (set_policy() leaves them, reset()
+    // keeps them, clear_calibration() restores the policy's), and the
+    // verdict trigger needs an ok tick under them first.
+    TYPED_TEST(howl_guard_test, CalibrationSamplesSuggestsAndApplies) {
+        auto c                   = guard_config<TypeParam>();
+        c.policy.calibrate_s     = 1.0; // 750 ticks
+        c.policy.cal_d_margin_db = 2.0;
+        c.policy.cal_a_margin_db = 3.0;
+        driver<TypeParam> d(c);
+        open_it(d, true);
+        d.g.calibrate_begin();
+        EXPECT_TRUE(d.g.calibrating());
+        // 600 ticks at D -8.04 / A' -30.04 dB, 150 at -2.04 / -20.04 (bin
+        // centres -8.05 / -2.05 and -30.05 / -20.05), then 150 more that
+        // the window no longer takes
+        for (int k = 0; k < 600; ++k) {
+            d.tick_db(-8.04, -30.04);
+        }
+        EXPECT_TRUE(d.g.calibrating());
+        for (int k = 0; k < 150; ++k) {
+            d.tick_db(-2.04, -20.04);
+        }
+        EXPECT_FALSE(d.g.calibrating());
+        for (int k = 0; k < 150; ++k) {
+            d.tick_db(-50.0, -90.0);
+        }
+        EXPECT_EQ(d.g.state(0), guard_state::open);
+        const auto cal = d.g.calibrate_end(false);
+        ASSERT_EQ(cal.size(), 1U);
+        EXPECT_EQ(cal[0].blocks, 750U);
+        EXPECT_NEAR(cal[0].d_median_db, -8.05, 1e-9);
+        EXPECT_NEAR(cal[0].d_p95_db, -2.05, 1e-9);
+        EXPECT_NEAR(cal[0].d_max_db, -2.05, 1e-9);
+        EXPECT_NEAR(cal[0].a_median_db, -30.05, 1e-9);
+        EXPECT_NEAR(cal[0].a_p95_db, -20.05, 1e-9);
+        EXPECT_NEAR(cal[0].d_db, -6.05, 1e-9);
+        EXPECT_NEAR(cal[0].a_db, -27.05, 1e-9);
+        EXPECT_FALSE(cal[0].applied);
+        EXPECT_EQ(d.g.threshold_d_db(0), static_cast<TypeParam>(-1.235));
+        // applied: D -5 dB is now not-ok, but LOST needs an ok tick first
+        d.g.calibrate_end(true);
+        EXPECT_TRUE(d.g.calibration(0).applied);
+        EXPECT_NEAR(static_cast<double>(d.g.threshold_d_db(0)), -6.05, 1e-5);
+        EXPECT_NEAR(static_cast<double>(d.g.threshold_a_db(0)), -27.05, 1e-5);
+        for (int k = 0; k < 2 * k_trip; ++k) {
+            d.tick_db(-5.0, -30.0);
+        }
+        EXPECT_FALSE(d.g.verdict_ok(0));
+        EXPECT_EQ(d.g.state(0), guard_state::open);
+        d.tick_db(-7.0, -30.0);
+        EXPECT_TRUE(d.g.verdict_ok(0));
+        for (long k = 0; k < k_trip; ++k) {
+            d.tick_db(-5.0, -30.0);
+        }
+        EXPECT_EQ(d.g.state(0), guard_state::ducked);
+        // the policy does not overwrite them; reset() keeps them
+        guard_policy p = d.g.policy();
+        p.d_db         = -3.0;
+        d.g.set_policy(p);
+        EXPECT_NEAR(static_cast<double>(d.g.threshold_d_db(0)), -6.05, 1e-5);
+        d.g.reset();
+        EXPECT_NEAR(static_cast<double>(d.g.threshold_d_db(0)), -6.05, 1e-5);
+        d.g.clear_calibration();
+        EXPECT_EQ(d.g.threshold_d_db(0), TypeParam(-3));
+        EXPECT_EQ(d.g.threshold_a_db(0), static_cast<TypeParam>(-23.842));
+        // nothing sampled: nothing to suggest or apply
+        d.g.calibrate_begin();
+        const auto none = d.g.calibrate_end(true);
+        EXPECT_EQ(none[0].blocks, 0U);
+        EXPECT_FALSE(none[0].applied);
+        EXPECT_EQ(d.g.threshold_d_db(0), TypeParam(-3));
+        // out-of-range values land in the end bins
+        d.g.calibrate_begin();
+        d.tick_db(-200.0, 50.0);
+        const auto ends = d.g.calibrate_end(false);
+        EXPECT_NEAR(ends[0].d_median_db, -59.95, 1e-9);
+        EXPECT_NEAR(ends[0].a_median_db, 19.95, 1e-9);
+    }
+
     // ------------------------------------------------- afc_chain's hook
 
     template <typename Sample>
@@ -670,6 +809,11 @@ namespace {
         static_assert(noexcept(std::declval<gf&>().set_policy(guard_policy{})));
         static_assert(noexcept(std::declval<gf&>().set_cap_db(std::nullopt)));
         static_assert(noexcept(std::declval<gf&>().bus_stage()));
+        static_assert(noexcept(std::declval<gf&>().calibrate_begin()));
+        static_assert(noexcept(std::declval<gf&>().calibrate_end(true)));
+        static_assert(noexcept(std::declval<gf&>().set_thresholds(0, 0.0, 0.0)));
+        static_assert(noexcept(std::declval<gf&>().clear_calibration()));
+        static_assert(noexcept(std::declval<const gf&>().calibration(0)));
         static_assert(noexcept(std::declval<const gf&>().state(0)));
         static_assert(noexcept(std::declval<const gf&>().unprotected(0)));
         static_assert(noexcept(std::declval<gd&>().update()));

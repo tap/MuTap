@@ -297,7 +297,8 @@ algorithmically complete. What exists today:
   ([`include/mutap/howl_guard.h`](include/mutap/howl_guard.h)), per-mic
   arming, duck, re-arm and back-off over the canceller's verdict and a
   `howl_detector` on each residual, attached to `afc_chain` with
-  `set_guard()`; measured live in [`docs/howl-guard.md`](docs/howl-guard.md).
+  `set_guard()`, with a soundcheck sampler that sets each mic's verdict
+  thresholds; measured live in [`docs/howl-guard.md`](docs/howl-guard.md).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
