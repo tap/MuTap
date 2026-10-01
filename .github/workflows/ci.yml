@@ -190,16 +190,44 @@ jobs:
         with:
           submodules: recursive
 
-      # A stalled Ubuntu mirror once ate a leg's whole 45-minute budget twice in a
-      # row while fetching the 463 MB libstdc++-arm-none-eabi-newlib package
-      # (tap/MuTap#67). Fail the fetch fast and retry it instead.
-      - name: Install toolchain and QEMU
+      # Ubuntu's gcc-arm-none-eabi pulls the 463 MB libstdc++-arm-none-eabi-newlib
+      # package from the runner's Azure mirror, which stalled past a 15-minute
+      # step limit three times on 2026-10-01 (and ate two 45-minute legs on
+      # tap/MuTap#67 before that). The toolchain is Arm's own 13.2.Rel1 release
+      # instead — the same upstream version Ubuntu noble packages (15:13.2.rel1-2)
+      # — cached between runs and verified against Arm's published sha256.
+      # Only qemu-system-arm still comes from apt.
+      - name: Restore the Arm GNU toolchain
+        id: arm-toolchain
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ${{ runner.temp }}/arm-gnu-toolchain
+          key: arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi
+
+      - name: Download the Arm GNU toolchain
+        if: steps.arm-toolchain.outputs.cache-hit != 'true'
         timeout-minutes: 15
-        run: >
-          sudo apt-get update -q &&
-          sudo apt-get install -y -q
-          -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60
-          gcc-arm-none-eabi qemu-system-arm
+        env:
+          ARM_GNU: arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi
+          ARM_URL: https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 30 -o "$ARM_GNU.tar.xz" "$ARM_URL/$ARM_GNU.tar.xz"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 30 -o "$ARM_GNU.tar.xz.sha256asc" "$ARM_URL/$ARM_GNU.tar.xz.sha256asc"
+          sha256sum -c "$ARM_GNU.tar.xz.sha256asc"
+          mkdir -p arm-gnu-toolchain
+          tar -xJf "$ARM_GNU.tar.xz" -C arm-gnu-toolchain --strip-components=1
+          rm "$ARM_GNU.tar.xz" "$ARM_GNU.tar.xz.sha256asc"
+
+      - name: Put the toolchain on PATH and install QEMU
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          echo "$RUNNER_TEMP/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/arm-gnu-toolchain/bin/arm-none-eabi-g++" --version | head -1
+          sudo apt-get update -q
+          sudo apt-get install -y -q -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 qemu-system-arm
 
       - name: Configure
         run: >
@@ -307,16 +335,44 @@ jobs:
         with:
           submodules: recursive
 
-      # A stalled Ubuntu mirror once ate a leg's whole 45-minute budget twice in a
-      # row while fetching the 463 MB libstdc++-arm-none-eabi-newlib package
-      # (tap/MuTap#67). Fail the fetch fast and retry it instead.
-      - name: Install toolchain and QEMU
+      # Ubuntu's gcc-arm-none-eabi pulls the 463 MB libstdc++-arm-none-eabi-newlib
+      # package from the runner's Azure mirror, which stalled past a 15-minute
+      # step limit three times on 2026-10-01 (and ate two 45-minute legs on
+      # tap/MuTap#67 before that). The toolchain is Arm's own 13.2.Rel1 release
+      # instead — the same upstream version Ubuntu noble packages (15:13.2.rel1-2)
+      # — cached between runs and verified against Arm's published sha256.
+      # Only qemu-system-arm still comes from apt.
+      - name: Restore the Arm GNU toolchain
+        id: arm-toolchain
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ${{ runner.temp }}/arm-gnu-toolchain
+          key: arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi
+
+      - name: Download the Arm GNU toolchain
+        if: steps.arm-toolchain.outputs.cache-hit != 'true'
         timeout-minutes: 15
-        run: >
-          sudo apt-get update -q &&
-          sudo apt-get install -y -q
-          -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60
-          gcc-arm-none-eabi qemu-system-arm
+        env:
+          ARM_GNU: arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi
+          ARM_URL: https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 30 -o "$ARM_GNU.tar.xz" "$ARM_URL/$ARM_GNU.tar.xz"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 30 -o "$ARM_GNU.tar.xz.sha256asc" "$ARM_URL/$ARM_GNU.tar.xz.sha256asc"
+          sha256sum -c "$ARM_GNU.tar.xz.sha256asc"
+          mkdir -p arm-gnu-toolchain
+          tar -xJf "$ARM_GNU.tar.xz" -C arm-gnu-toolchain --strip-components=1
+          rm "$ARM_GNU.tar.xz" "$ARM_GNU.tar.xz.sha256asc"
+
+      - name: Put the toolchain on PATH and install QEMU
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          echo "$RUNNER_TEMP/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/arm-gnu-toolchain/bin/arm-none-eabi-g++" --version | head -1
+          sudo apt-get update -q
+          sudo apt-get install -y -q -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 qemu-system-arm
 
       - name: Configure
         run: >
