@@ -371,6 +371,50 @@ carries the measured numbers; this is the map:
      but is not defined inside `tap::mu::inline TAP_DSP_FFT_ABI` and does
      not pass its FFT size through `fft_detail::checked_fft_size` (working
      note 6 (a) and (b)); pin it in `test_fft_engine_contract.cpp`.
+12. **The safety layer (2026-09-30; [`docs/howl-guard.md`](docs/howl-guard.md)).**
+   PR A (tap/MuTap#77) adds `howl_detector`; PR B adds
+   `include/mutap/howl_guard.h` (`tap::mu::howl_guard`: per-mic ARMING /
+   OPEN / OPEN_CAPPED / DUCKED / RELEASING / LATCHED over D ∧ A′ and the
+   detector, strikes and back-off, attribution, a post-reverb bus stage),
+   `afc_chain::set_guard()` (refuses a canceller without the shadow;
+   `reset()` re-arms the guard; bit-identical without one), the live loop
+   `tests/support/guard_loop.h` / `guard_runs.h`, the float state-machine
+   suite in both emulated selections and the host claims
+   (`test_howl_guard_host.cpp`, 13 gated rows, 596.71 s on 4 threads of
+   the Intel Mac; `HowlGuardSweep.*` behind `MUTAP_SLOW`). Measured (macOS
+   x86_64, double, every run from reset): 0 howl blocks with the guard in
+   every single-mic gated row, including the canceller's limit + 6 dB where
+   the unguarded twins howled (575 and 1203 blocks), and 1 block in the
+   two-mic forced-howl row; attribution never ducked the wrong mic alone
+   there (gated; 1 of 20 in the sweep); cold starts with the
+   backing track declare in a median 1.77–2.07 s; without it none declares
+   and every run leaves ARMING through the cap; 0 ducks on stable material
+   at the limit − 6; cost 0.60 / 0.88 % of a canceller per mic (float /
+   double). The `MUTAP_SLOW` sweep (4656.5 s on 3 threads): 0 howl blocks in
+   620 guarded cold starts; 0 ducks off a loop-born burst in 180 audible-cost
+   runs. Open, with the numbers in the doc:
+   - **F → 2F still cycles duck / open.** The timer re-arm and the edge
+     rule work as specified, but the verdict reads ok again after the
+     re-arm, which re-arms LOST: 16 LOST-ducks after a re-arm in 6 of 8
+     gated runs, 47 in 20 of 30 sweep runs (0 howl blocks). A policy
+     question: a LOST in probation as a strike, or a re-arm that needs ok
+     held.
+   - **The verdict thresholds are one loop's calibration.** At the
+     canceller's limit − 6 D's pre-walk median is −8.46 dB, the verdict is
+     lost for at most 0.22 s after a walk, and no walk ducked (0 of 30 in
+     the sweep); at exact_msg_db − 6 (the release experiment's point) 6 of
+     30 did, releasing a median 1.60 s (minimum 1.38) after the
+     misalignment oracle, 0 early.
+   - **A′ does not return to ~0 dB in silence**: in a 20 s gap it peaks
+     at −15.21 / −15.30 dB (medians, cabin / mt5; maximum −14.96), so
+     `restart_a_db` (−1, a field this PR added) fires only on a
+     canceller reset; LOST ducks in a song gap and the timer re-arm opens
+     again before the singer returns.
+   - **The release experiment's +6 dB rehearsal → hall howl does not
+     reproduce in this loop** (0 blocks unguarded); the stress rows run at
+     the canceller's limit + 6 instead.
+   - The latch never engaged in a gated row; it is covered by the state
+     machine suite only.
 
 ## The next effort (Rev 4): AEC objects + echo chapter
 
