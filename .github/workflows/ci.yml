@@ -585,11 +585,41 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install toolchains and QEMU
-        run: >
-          sudo apt-get update -q &&
-          sudo apt-get install -y -q gcc-arm-none-eabi qemu-system-arm
-          libglib2.0-dev pkg-config ninja-build meson flex bison
+      # The Arm toolchain comes from Arm's tarball, cached, for the reason the
+      # Cortex legs give above (the 463 MB apt package stalls on the mirror);
+      # the baselines were seeded from gcc-arm-none-eabi 13.2.rel1, the same
+      # upstream release, and the ratchet's +/-3 % tolerance is the check.
+      - name: Restore the Arm GNU toolchain
+        id: arm-toolchain
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5
+        with:
+          path: ${{ runner.temp }}/arm-gnu-toolchain
+          key: arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi
+
+      - name: Download the Arm GNU toolchain
+        if: steps.arm-toolchain.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        env:
+          ARM_GNU: arm-gnu-toolchain-13.2.rel1-x86_64-arm-none-eabi
+          ARM_URL: https://developer.arm.com/-/media/Files/downloads/gnu/13.2.rel1/binrel
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 30 -o "$ARM_GNU.tar.xz" "$ARM_URL/$ARM_GNU.tar.xz"
+          curl -sSfL --retry 5 --retry-all-errors --connect-timeout 30 -o "$ARM_GNU.tar.xz.sha256asc" "$ARM_URL/$ARM_GNU.tar.xz.sha256asc"
+          sha256sum -c "$ARM_GNU.tar.xz.sha256asc"
+          mkdir -p arm-gnu-toolchain
+          tar -xJf "$ARM_GNU.tar.xz" -C arm-gnu-toolchain --strip-components=1
+          rm "$ARM_GNU.tar.xz" "$ARM_GNU.tar.xz.sha256asc"
+
+      - name: Put the toolchain on PATH and install QEMU and the plugin build deps
+        timeout-minutes: 20
+        run: |
+          set -euo pipefail
+          echo "$RUNNER_TEMP/arm-gnu-toolchain/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/arm-gnu-toolchain/bin/arm-none-eabi-g++" --version | head -1
+          sudo apt-get update -q
+          sudo apt-get install -y -q -o Acquire::Retries=5 -o Acquire::http::Timeout=60 -o Acquire::https::Timeout=60 qemu-system-arm libglib2.0-dev pkg-config ninja-build meson flex bison
 
       - name: Build counting plugin
         run: |
