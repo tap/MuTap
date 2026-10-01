@@ -1,6 +1,6 @@
 # The safety layer: a per-mic howl guard
 
-*Measured September 2026 in simulation: six rooms from both generator
+*Measured September–October 2026 in simulation: six rooms from both generator
 families, band-limited through a loudspeaker model, every run live from a
 cold start. Host: macOS 15.7 x86_64 (i9-8950HK), AppleClang 17, Release, on
 a shared machine ([Hosts](#hosts)). Nothing here has been heard in a real
@@ -15,39 +15,48 @@ ratio, and A′, the identification progress) and a `howl_detector` on the
 canceller's residual, and it sets that mic's gain:
 
 - **ARMING** from reset: 30 dB down until the verdict (D < −1.235 dB and
-  A′ < −23.842 dB) has held for 1.5 s with the detector quiet. After 10 s
-  without a declaration it raises `unprotected`, and, when the host has set
-  a cap (the dry limit − 6 dB), it opens to the cap instead.
+  A′ < −23.842 dB by default; per mic from the soundcheck once calibrated)
+  has held for 1.5 s with the detector quiet. After 10 s without a
+  declaration it raises `unprotected`. When the host has set a cap (the
+  dry limit − 6 dB), it opens to the cap instead. **The cap is mandatory
+  for opening without a declaration**: without one the mic stays in ARMING,
+  30 dB down, for as long as the verdict does not declare.
 - **OPEN** at full gain, less 3 dB per strike.
 - **DUCKED** 20 dB down on a detector trip (the level catch always; the
   growth path only while the verdict is not ok) or on the verdict lost
   (ok → not-ok held 0.3 s). It releases when the verdict has held ok for
   1.5 s with the detector quiet, or on a timer (5 s × 2^strikes) when the
-  verdict cannot recover, and the verdict trigger then stays disarmed until
-  the verdict has read ok once.
+  verdict cannot recover. After a timer re-arm the verdict trigger stays
+  disarmed until the verdict has held ok for 1.5 s (the release hold), not
+  merely read ok once.
 - **RELEASING** ramps back over 200 ms; **LATCHED** is the end state after
   three strikes.
 
 Two mics are attributed by the detectors' band level at the shared howl
 frequency, with a duck-all fallback. A bus stage in `afc_chain`'s safety
-slot repeats the duck after the reverb. The header lists every transition.
+slot repeats the duck after the reverb. A soundcheck sampler
+(`calibrate_begin()` / `calibrate_end()`) sets each mic's verdict
+thresholds from the medians of D and A′ over the protocol's 30 s
+track-through, plus a margin. The header lists every transition.
 
 ## Headline
 
 | Claim (the 40 dB rule is the howl oracle) | Gated rows (cabin, mt5) | `MUTAP_SLOW` sweep (six rooms, five seed sets) |
 |---|---|---|
-| Guarded cold starts that reached the 40 dB rule | 0 of 108 | 0 of 620 |
+| Guarded cold starts that reached the 40 dB rule | 0 of 126 | 0 of 690 |
 | … at the canceller's limit + 6, unguarded twins | 575 blocks, 3 of 6 runs | — |
 | Declaration with the backing track, median | 1.77 to 2.07 s | 1.76 to 2.11 s |
-| Declaration without it | 0 runs: all leave ARMING through the cap | 0 runs; without a cap, ARMING for all 20 s |
+| Declaration without it | 0 runs: with the cap all reach OPEN_CAPPED at 10.00 s; without it all 18 stay in ARMING | 0 runs: 180 of 180 through the cap; without it 90 of 90 in ARMING for all 20 s |
 | Walk at exact − 6: release − misalignment-oracle reconvergence, median [min] | 1.59 s [1.38], 0 early of 3 | 1.60 s [1.38], 0 early of 6 |
-| Walk at the limit − 6: ducks / howl blocks | 0 of 12 / 0 | 0 of 30 / 0 |
+| Walk at the limit − 6, factory thresholds: ducks / howl blocks | 0 of 12 / 0 | 0 of 30 / 0 |
+| Walk at the limit − 6, soundcheck thresholds: ducked; release − reconvergence, median [min]; early; howl blocks | 12 of 12; 1.74 s [1.63]; 0; 0 | 30 of 30; 1.74 s [1.63]; 0; 0 |
+| Stable material at the limit − 6, soundcheck thresholds: runs with a duck | 0 of 8 | 0 of 180 |
 | Walk at the limit + 6 (rehearsal → hall): howl blocks guarded / unguarded | 0 / 1203 | — |
-| F → 2F: howl blocks; LOST-ducks after the timer re-arm | 0; 16 in 6 of 8 runs | 0; 47 in 20 of 30 runs |
+| F → 2F: howl blocks; LOST-ducks after the timer re-arm (PR B → now) | 0; 16 in 6 of 8 runs → 0 in 8 | 0; 47 in 20 of 30 runs → 1 in 1 of 30 |
 | Two mics, one forced: first TRIP on the wrong mic alone; howl blocks | 0 of 8; 1 | 1 of 20; 3 |
 | Stable material at the limit − 6: ducks off a loop-born burst | 0 in 24 runs | 0 in 180 runs |
 | Dattorro in the loop: voice 0.5 s after a trip, with / without the bus stage | −66.53 / −47.13 dB | — |
-| Cost per block, one mic, float / double | 0.60 / 0.88 % of a canceller | — |
+| Cost per block, one mic, float / double | 0.57 / 0.84 % of a canceller | — |
 
 *macOS 15.7 x86_64, AppleClang 17, Release, double; S1 (10 ms) unless a
 section says otherwise.*
@@ -56,10 +65,16 @@ section says otherwise.*
   rows where the unguarded loop howled. With two mics and one forced into a
   howl, a few blocks reached it (1 gated, 3 in the sweep, all mt5+mt9).
 - **It is not free of audible cost where the verdict is weak.** Without a
-  backing track no run declares from ARMING, so those runs sit at the cap.
-  A louder coupling (F → 2F) makes the guard cycle between ducked and open.
-- **At the operating point the verdict does not see a walk.** No walk
-  ducked and none howled: the canceller re-identifies on its own there.
+  backing track no run declares from ARMING, so those runs sit at the cap,
+  and without a cap they stay 30 dB down. Under a louder coupling (F → 2F)
+  the timer re-arm no longer pumps, but a guard that releases on the walk
+  path (cabin) still cycles between ducked and open.
+- **The factory thresholds do not see a walk at the operating point; the
+  soundcheck's do.** With the thresholds set from 30 s of the song (median
+  + 4 dB for D, + 3 dB for A′), every walk ducked and released after the
+  canceller had re-identified, and stable material ducked in none of 180
+  runs. With the factory thresholds no walk ducked and none howled: the
+  canceller re-identifies on its own there.
 
 ## How it is measured
 
@@ -186,15 +201,53 @@ five seed sets at S1, cabin and mt5 at S3, with the shifts, and at exact + 3 /
 | each material, 5 Hz | 10 a row | +aux rows 10 of 10 | 1.77 to 2.07 (medians) | non-aux rows 10 of 10 | 0 | — | — |
 | each material, exact + 3 | 20 a row | +aux rows 20 of 20 | 1.77 to 2.11 (medians) | non-aux rows 20 of 20 | 0 | — | voiced+aux 0 of 20, speech 0 of 20 |
 | each material, exact + 6 | 20 a row | +aux rows 20 of 20 | 1.78 to 2.11 (medians) | non-aux rows 20 of 20 | 0 | — | voiced+aux 0 of 20, speech 0 of 20 |
-| voiced, S1, no cap | 10 | 0 | — | 0 (in ARMING for all 20 s) | 0 | 19.16 [19.45] | — |
-| music, S1, no cap | 10 | 0 | — | 0 (in ARMING for all 20 s) | 0 | 16.34 [16.80] | — |
+| voiced, S1, no cap | 30 | 0 | — | 0 (in ARMING for all 20 s) | 0 | 18.99 [19.45] | — |
+| music, S1, no cap | 30 | 0 | — | 0 (in ARMING for all 20 s) | 0 | 16.45 [17.08] | — |
+| speech, S1, no cap | 30 | 0 | — | 0 (in ARMING for all 20 s) | 0 | 0.00 [0.00] | — |
 
-*macOS 15.7 x86_64, AppleClang 17, Release; 1979.5 s on 3 threads.*
+*macOS 15.7 x86_64, AppleClang 17, Release; 1890 s on 4 threads. This
+PR's run; every row that PR B also ran reads the same to the last digit
+(PR B's no-cap rows were cabin and mt5 only, 10 runs each).*
 
-**0 howl blocks in 620 guarded cold starts.** Every run with the backing
+**0 howl blocks in 690 guarded cold starts.** Every run with the backing
 track declared, every run without it left ARMING only through the cap, and
-without a cap the held note and the music stayed in ARMING for the whole
-20 s.
+without a cap the held note, the music and the speech stayed in ARMING for
+the whole 20 s.
+
+### Without a backing track: the cap is mandatory
+
+The verdict never declares on voice alone here, so a track-off run opens
+only through the arming timeout, and only if the host has set the cap.
+Without a cap the guard keeps the mic in ARMING, 30 dB down, raises
+`unprotected` at the timeout and stays there for as long as the verdict
+does not declare; nothing else opens a mic that has not declared, and
+removing the cap re-arms every undeclared mic (a latched one too, whose
+floor was the cap). The protocol therefore measures the cap at the
+soundcheck and the track-off rows run under it. Gated rows
+(`ColdStartWithoutBackingTrack`, `ColdStartWithoutACapStaysArmed`): cabin
+and mt5, seeds 1, 21, 41, 20 s from reset at the limit − 6, the cap at the
+dry limit − 6:
+
+| Row | Cap | Runs | Declared | Reached OPEN_CAPPED | Time to OPEN_CAPPED, median [max] (s) | `unprotected` from, median (s) | Time in ARMING, median (s) | Ducks after OPEN_CAPPED (runs) | Howl blocks |
+|---|---|---|---|---|---|---|---|---|---|
+| held note (voiced) | dry limit − 6 | 6 | 0 | 6 | 10.00 [10.00] | 10.00 | 10.00 | 2 (2) | 0 |
+| music | dry limit − 6 | 6 | 0 | 6 | 10.00 [10.00] | 10.00 | 10.00 | 0 (0) | 0 |
+| speech | dry limit − 6 | 6 | 0 | 6 | 10.00 [10.00] | 10.00 | 10.00 | 0 (0) | 0 |
+| held note (voiced) | none | 6 | 0 | 0 | — | 10.00 | 20.00 (all of it) | 0 | 0 |
+| music | none | 6 | 0 | 0 | — | 10.00 | 20.00 (all of it) | 0 | 0 |
+| speech | none | 6 | 0 | 0 | — | 10.00 | 20.00 (all of it) | 0 | 0 |
+
+*macOS 15.7 x86_64, AppleClang 17, Release. "10.00" is block 7499 from
+reset, 9.9987 s: the timeout's 7500th block.*
+
+The sweep's track-off rows (six rooms, five seed sets, 30 runs a row, the
+table above): under the cap every run reached OPEN_CAPPED at 10.00 s, 0
+howl blocks; the held note ducked after OPEN_CAPPED in 11 of 30 runs at S1
+(9 of 20 at exact + 3, 4 of 20 at exact + 6), music in 1 of 20 at
+exact + 3, speech never. Before a declaration the verdict trigger is
+disarmed, so each of these ducks is a detector TRIP; whether each sat on a
+loop-born burst was not classified here. Without a cap: 90 of 90 runs in
+ARMING for the whole 20 s, `unprotected` from 10.00 s, 0 howl blocks.
 
 ## Walks to another room
 
@@ -239,6 +292,159 @@ Every release came after the misalignment oracle had reconverged (6 of 6,
 the earliest 1.38 s after it). The verdict sees one walk in five at the
 experiment's point, and none at the canceller's limit − 6.
 
+### With the soundcheck's thresholds
+
+The factory thresholds (−1.235 / −23.842 dB) are the release experiment's
+calibration; in this loop D sits near −8 dB, so at the operating point they
+never see a walk. With the soundcheck calibration applied
+([below](#the-soundcheck-calibration)), the same six walks at the limit − 6:
+
+| Thresholds | Walks | Ducked after the walk | By LOST | Duck after the walk, median (s) | Ducks between the soundcheck and the walk | Releases | Release − reconvergence, median [min] (s) | Early | Howl blocks |
+|---|---|---|---|---|---|---|---|---|---|
+| Factory, sweep (re-run here) | 30 | 0 | — | — | — | 0 | — | — | 0 |
+| Soundcheck, gated (seeds 1, 21) | 12 | 12 | 11 | 0.31 | 0 | 12 | 1.74 [1.63] | 0 | 0 |
+| Soundcheck, sweep (five seed sets) | 30 | 30 | 29 | 0.31 | 0 | 30 | 1.74 [1.63] | 0 | 0 |
+
+*macOS 15.7 x86_64, AppleClang 17, Release. Soundcheck over the first 30 s
+from reset, the walk at 40 s, 55 s runs; the one duck not by LOST in
+each row was a detector TRIP (mt5 → mt105).*
+
+Every walk ducked 0.30–0.31 s after the change (the trip hold), and every
+release came after the misalignment oracle had reconverged, the earliest
+1.63 s after it. Per walk in the sweep, release − reconvergence median
+[min]: studio → rehearsal 1.74 [1.71], rehearsal → hall 3.71 [1.70],
+hall → cabin 1.75 [1.72], cabin → studio 1.88 [1.81], mt5 → mt105 1.68
+[1.67], mt9 → mt109 1.67 [1.63].
+
+## The soundcheck calibration
+
+`calibrate_begin()` starts a sampler that takes each mic's D and A′ once per
+block for `calibrate_s` (30 s, the protocol's track-through).
+`calibrate_end(apply)` returns, per mic, the medians, 95th percentiles and
+maxima, and suggests `d_db` = D's median + `cal_d_margin_db` and `a_db` =
+A′'s median + `cal_a_margin_db`. With `apply` each mic runs on its own
+thresholds; `set_thresholds()` restores a stored soundcheck and
+`clear_calibration()` returns to the policy's.
+
+The sampler is a fixed histogram per mic and statistic: 0.1 dB bins, D over
+[−60, +20) dB and A′ over [−100, +20) dB, 2000 counts (8 KB) per mic,
+allocated by the constructor. It costs O(1) per block, is exact to the bin
+width for any quantile, reads the same on every platform and needs no
+random source. A reservoir would need a random source and an O(n)
+selection at the end; a streaming quantile (P²) has no error bound on the
+bimodal window a cold start produces. Applied thresholds re-arm the verdict
+trigger (it needs an ok block under them first) and survive `reset()`, like
+the cap.
+
+**How the margins were measured** (`HowlGuardSweep.CalibrationMargins`).
+Each run starts from reset at the canceller's limit − 6 with the backing
+track, samples the first 30 s and continues with one of two endings. The
+stable runs play 30 s more of the same song: the 180 audible-cost runs (six
+rooms × five seed sets × voiced+aux and speech+aux × 0 / 2 / 5 Hz). The
+walk runs walk at 40 s (the six walks × five seed sets). The live guard
+keeps the factory thresholds. Beside it, 72 shadow guards, one per margin
+pair, take the same residual and statistics every block and apply their
+own soundcheck at 30 s. Until a shadow's gain first differs from the live
+guard's, the loop it would have closed is the live loop, so its first duck
+is exact. The live guard never ducked in these runs, so every count below
+is exact (0 inexact in 210 runs × 72 shadows).
+
+Stable runs with a duck after the soundcheck, of 180:
+
+| D margin \ A′ margin | + 0 dB | + 1 to + 10 dB, or A′ off |
+|---|---|---|
+| + 0 dB | 174 | 140 |
+| + 0.5 dB | 135 | 36 |
+| + 1 dB | 131 | 11 |
+| + 1.5 dB | 131 | 7 |
+| + 2 dB | 131 | 3 |
+| + 3 dB | 131 | **0** |
+| **+ 4 dB (default)** | 131 | **0** |
+| + 6 dB | 131 | 0 |
+| D off | 131 | 0 |
+
+Walks seen (a duck within 5 s of the change and none between the soundcheck
+and the walk), of 30; in brackets, the runs that ducked before the walk:
+
+| D margin \ A′ margin | + 0 | + 1 | + 2 | + 3 (default) | + 4 to + 10, or off |
+|---|---|---|---|---|---|
+| + 0 dB | 0 [30] | 2 [28] | 2 [28] | 2 [28] | 2 [28] |
+| + 0.5 dB | 0 [30] | 13 [17] | 13 [17] | 13 [17] | 13 [17] |
+| + 1 dB | 0 [30] | 21 [9] | 21 [9] | 21 [9] | 21 [9] |
+| + 1.5 dB | 0 [30] | 24 [6] | 24 [6] | 24 [6] | 24 [6] |
+| + 2 dB | 0 [30] | 28 [2] | 28 [2] | 28 [2] | 28 [2] |
+| + 3 dB | 0 [30] | 30 [0] | 30 [0] | 30 [0] | 30 [0] |
+| **+ 4 dB (default)** | 0 [30] | 30 [0] | 30 [0] | **30 [0]** | 30 [0] |
+| + 6 dB | 0 [30] | 28 [0] | 18 [0] | 16 [0] | 16 [0] |
+| D off | 0 [30] | 23 [0] | 1 [0] | 1 [0] | 1 [0] |
+
+*macOS 15.7 x86_64, AppleClang 17, Release; 2079.35 s on 4 threads.
+Detection latency, median: 0.30 s at D + 0.5 to + 3, 0.31 s at D + 4.*
+
+- **A′ at its median is not a threshold.** Half the blocks sit above it, so
+  every pair with A′ + 0 ducked in at least 131 of 180 stable runs. From
+  A′ + 1 dB up, A′ caused no stable duck (the D-off row).
+- **D needs + 3 dB** for 0 ducks over the 180 runs (+ 2 dB: 3 runs ducked;
+  + 1.5: 7). The default takes **+ 4 dB**: one step of headroom over the
+  smallest clean margin, and 2 dB over the last one that ducked. A′ takes
+  **+ 3 dB** (a factor of 2 on the ratio), 2 dB over its smallest clean
+  margin. At D + 3 and + 4, walk detection is 30 of 30 for every A′ margin
+  of 1 dB or more.
+- **D carries the walk.** With D off, A′ + 1 sees 23 of 30 walks and
+  A′ + 2 only 1. With D + 6 the count falls to 16–28 of 30.
+
+**What the soundcheck reads**: the sampler's medians at the limit − 6, the
+median over five seed sets, in dB:
+
+| Room | voiced+aux D (0 / 2 / 5 Hz) | voiced+aux A′ (0 / 2 / 5 Hz) | speech+aux D (0 / 2 / 5 Hz) | speech+aux A′ (0 / 2 / 5 Hz) |
+|---|---|---|---|---|
+| cabin | −7.75 / −6.45 / −6.55 | −27.75 / −30.45 / −30.45 | −7.15 / −7.15 / −7.15 | −29.55 / −29.55 / −29.55 |
+| mt5 | −7.65 / −6.85 / −6.85 | −27.15 / −29.35 / −29.45 | −8.35 / −8.45 / −8.45 | −29.15 / −29.15 / −29.15 |
+| studio | −8.45 / −7.65 / −8.35 | −26.25 / −29.05 / −29.25 | −7.85 / −7.85 / −7.85 | −28.15 / −28.05 / −28.15 |
+| rehearsal | −9.45 / −11.35 / −12.05 | −26.05 / −27.95 / −28.15 | −7.25 / −7.25 / −7.25 | −26.15 / −26.15 / −26.15 |
+| hall | −8.45 / −6.75 / −6.85 | −26.65 / −29.15 / −29.25 | −8.95 / −8.95 / −8.95 | −28.95 / −28.95 / −28.95 |
+| mt9 | −8.85 / −7.05 / −7.05 | −26.55 / −28.65 / −28.95 | −8.85 / −8.85 / −8.85 | −28.35 / −28.35 / −28.35 |
+
+*macOS 15.7 x86_64, AppleClang 17, Release.*
+
+Over the 210 runs D's median lands between −12.15 and −6.25 dB, 5 to 11 dB
+under the factory −1.235, and A′'s between −30.55 and −25.85 dB, 2 to 7 dB
+under −23.842. The 95th percentiles sit 0.5–3.3 dB over D's median and
+0.3–3.5 dB over A′'s (medians per group). A′'s excursions above its 3 dB
+margin are shorter than the trip hold here: none ducked. The 30 s window
+includes the cold start, about 2 s of it before the declaration, and the
+median is what that window reads.
+
+What the soundcheck prints (`SoundcheckCalibrationOnStableMaterial`, one
+line per run; two of its eight):
+
+```
+  cabin voiced+aux seed 1            soundcheck 22500 blocks: D median   -8.15 dB (p95   -5.55, max   +0.15); A' median  -27.75 dB (p95  -27.15, max   -0.05) -> d_db   -4.15, a_db  -24.75 (applied)
+  mt5 speech+aux seed 1              soundcheck 22500 blocks: D median   -8.35 dB (p95   -7.35, max   +0.45); A' median  -29.15 dB (p95  -25.45, max   -0.05) -> d_db   -4.35, a_db  -26.15 (applied)
+```
+
+The maxima (+0.15 dB, −0.05 dB) are the cold start's first blocks.
+
+**Applied** (`HowlGuardSweep.CalibrationApplied`): the live guard on its
+soundcheck thresholds at the default margins, the same 180 + 30 runs.
+
+| Row | Runs | Ducks after the soundcheck (runs) | Howl blocks | `d_db` applied, median [min, max] | `a_db` applied, median [min, max] |
+|---|---|---|---|---|---|
+| voiced+aux, 0 Hz | 30 | 0 (0) | 0 | −4.45 [−5.55, −3.55] | −23.65 [−24.85, −22.85] |
+| voiced+aux, 2 Hz | 30 | 0 (0) | 0 | −2.95 [−7.45, −2.25] | −26.05 [−27.55, −24.85] |
+| voiced+aux, 5 Hz | 30 | 0 (0) | 0 | −3.05 [−8.15, −2.35] | −26.25 [−27.55, −25.05] |
+| speech+aux, 0 Hz | 30 | 0 (0) | 0 | −3.85 [−5.05, −3.05] | −25.35 [−26.55, −23.15] |
+| speech+aux, 2 Hz | 30 | 0 (0) | 0 | −3.85 [−5.05, −3.05] | −25.35 [−26.55, −23.15] |
+| speech+aux, 5 Hz | 30 | 0 (0) | 0 | −3.85 [−5.05, −3.05] | −25.35 [−26.55, −23.15] |
+| the six walks, between the soundcheck and the walk | 30 | 0 (0) | 0 | medians −5.45 to −3.65 per walk, range [−5.55, −3.35] | medians −24.75 to −23.05 per walk, range [−24.85, −22.95] |
+
+*macOS 15.7 x86_64, AppleClang 17, Release; 1227 s on 4 threads. The walk
+runs after the change are in [Walks](#with-the-soundchecks-thresholds).*
+
+**0 ducks in 180 stable runs and 30 of 30 walks seen**, each released after
+the oracle. The gated rows (cabin and mt5, seeds 1 and 21): 0 ducks in 8
+stable runs, 12 of 12 walks.
+
 ## Above the limits
 
 The release experiment's late howl, seconds after a rehearsal → hall walk at
@@ -278,45 +484,59 @@ F → 2F (S2b) doubles every path at 10 s: the louder coupling the verdict
 reads as mismatch for good. Gated: cabin, mt5, studio, hall, seeds 1 and 21,
 voiced + aux at the limit − 6, 30 s.
 
-| Room | Runs ducked | Duck after the change, median (s) | Runs re-armed | Re-arm after the duck, median (s) | LOST-ducks after the re-arm (runs) | Howl blocks | Time ducked or releasing after the change, median |
-|---|---|---|---|---|---|---|---|
-| cabin | 2 of 2 | 4.65 | 0 | — | 0 (0) | 0 | 0.56 |
-| mt5 | 2 of 2 | 0.39 | 2 | 10.01 | 4 (2) | 0 | 0.96 |
-| studio | 2 of 2 | 0.37 | 2 | 5.00 | 6 (2) | 0 | 0.94 |
-| hall | 2 of 2 | 0.38 | 2 | 5.00 | 6 (2) | 0 | 0.93 |
+**The re-arm hold.** In PR B a timer re-arm disarmed the verdict trigger
+(LOST) until the verdict read ok once. Under F → 2F the verdict does read ok
+for a while at the re-armed gain, so LOST re-armed on the first ok block and
+fired again at full gain: the guard cycled between ducked and open. Now,
+after a timer re-arm, LOST arms only once the verdict has been continuously
+ok for `release_hold_s` (1.5 s, the same hold as a release). Before and
+after, same rows, same host:
 
-*macOS 15.7 x86_64, AppleClang 17, Release.*
-
-- Every run ducked (LOST), the timer re-arm came at rearm_timeout_s (5.00 s,
-  10.01 s after a strike), and nothing howled.
-- **The edge rule does not stop the duck / open cycle.** The rule disarms
-  LOST after a timer re-arm until the verdict reads ok once, and the verdict
-  does read ok again once the re-armed gain is up: 16 LOST-ducks came after
-  a re-arm, in 6 of 8 runs. In mt5, studio and hall the guard spends a median
-  0.93 to 0.96 of the time after the change ducked or releasing. Cabin never
-  re-armed and still ducked 7 times: there the verdict held ok for 1.5 s
-  while ducked (the walk path) and was lost again at full gain.
-- This is safe (0 howl blocks) but audible. Two candidate policy changes,
-  neither measured: count a LOST within probation as a strike (the back-off
-  then lowers the level and doubles the hold), or re-arm only into a release
-  that needs ok held.
-
-The sweep's six rooms over five seed sets:
-
-| Room | Runs ducked | Duck after the change, median (s) | Runs re-armed | Re-arm after the duck, median (s) | LOST-ducks after the re-arm (runs) | TRIP-ducks | Howl blocks | Time ducked or releasing, median |
+| Room | Runs ducked | Duck after the change, median (s) | Runs re-armed | Re-arm after the duck, median (s) | LOST-ducks after the first re-arm (runs), before → after | All LOST-ducks after the change, before → after | Howl blocks after the change / after the re-arm | Time ducked or releasing after the change, median, before → after |
 |---|---|---|---|---|---|---|---|---|
-| cabin | 5 of 5 | 2.53 | 1 | 16.73 | 1 (1) | 0 | 0 | 0.55 |
-| mt5 | 5 of 5 | 0.38 | 5 | 5.00 | 8 (4) | 4 | 0 | 0.96 |
-| studio | 5 of 5 | 0.37 | 5 | 5.00 | 14 (5) | 0 | 0 | 0.94 |
-| rehearsal | 5 of 5 | 0.37 | 5 | 5.00 | 0 (0) | 0 | 0 | 0.26 |
-| hall | 5 of 5 | 0.38 | 5 | 5.00 | 15 (5) | 0 | 0 | 0.93 |
-| mt9 | 5 of 5 | 0.37 | 5 | 5.00 | 9 (5) | 3 | 0 | 0.95 |
+| cabin | 2 of 2 | 4.65 | 0 | — | 0 (0) → 0 (0) | 7 → 7 | 0 / 0 | 0.56 → 0.56 |
+| mt5 | 2 of 2 | 0.39 | 2 | 10.01 | 4 (2) → 0 (0) | 5 → 1 | 0 / 0 | 0.96 → 0.51 |
+| studio | 2 of 2 | 0.37 | 2 | 5.00 | 6 (2) → 0 (0) | 8 → 2 | 0 / 0 | 0.94 → 0.26 |
+| hall | 2 of 2 | 0.38 | 2 | 5.00 | 6 (2) → 0 (0) | 8 → 2 | 0 / 0 | 0.93 → 0.26 |
+| pooled | 8 of 8 | — | 6 of 8 | 5.00 [5.00, 10.01] | **16 (6) → 0 (0)** | 28 → 12 | 0 / 0 | — |
 
-*macOS 15.7 x86_64, AppleClang 17, Release.*
+*macOS 15.7 x86_64, AppleClang 17, Release. "Before" is this PR's test
+harness run on PR B's guard (55a62fd); the duck and re-arm columns are
+identical before and after.*
 
-0 howl blocks in 30 runs; 47 LOST-ducks after a re-arm, in 20 of 30 runs.
-Rehearsal is the one room where the re-armed loop stayed open (0.26 of the
-time ducked).
+- **The pump after a re-arm is gone in these rows**: 0 LOST-ducks after the
+  first re-arm in 8 runs, against 16 in 6 of 8. The timer re-arm itself is
+  unchanged (5.00 s; 10.01 s after a strike), and nothing howled before or
+  after it.
+- **Cabin still cycles, by another route.** Its verdict holds ok for 1.5 s
+  while ducked, so it releases on the walk path (no timer re-arm), and the
+  verdict is lost again at full gain: 7 LOST-ducks in 2 runs, before and
+  after. The re-arm hold does not touch that path; a LOST within probation
+  counted as a strike (the design note's alternative) would, and was not
+  measured.
+- The gate is a rate with margin (at most 4 LOST-ducks after a re-arm over
+  the 8 runs, a quarter of the old 2.0 a run), not a zero: the loop is
+  chaotic and the rows also run on macOS arm64 and Linux in CI.
+
+The sweep's six rooms over five seed sets (`HowlGuardSweep.LouderCoupling`):
+
+| Room | Runs ducked | Duck after the change, median (s) | Runs re-armed | Re-arm after the duck, median (s) | LOST-ducks after the first re-arm (runs), before → after | All LOST-ducks, before → after | TRIP-ducks | Howl blocks | Time ducked or releasing, median, before → after |
+|---|---|---|---|---|---|---|---|---|---|
+| cabin | 5 of 5 | 2.53 | 1 | 16.73 | 1 (1) → 1 (1) | 18 → 18 | 0 | 0 | 0.55 → 0.55 |
+| mt5 | 5 of 5 | 0.38 | 5 | 5.00 | 8 (4) → 0 (0) | 11 → 3 | 4 | 0 | 0.96 → 0.51 |
+| studio | 5 of 5 | 0.37 | 5 | 5.00 | 14 (5) → 0 (0) | 19 → 5 | 0 | 0 | 0.94 → 0.26 |
+| rehearsal | 5 of 5 | 0.37 | 5 | 5.00 | 0 (0) → 0 (0) | 5 → 5 | 0 | 0 | 0.26 → 0.26 |
+| hall | 5 of 5 | 0.38 | 5 | 5.00 | 15 (5) → 0 (0) | 20 → 5 | 0 | 0 | 0.93 → 0.26 |
+| mt9 | 5 of 5 | 0.37 | 5 | 5.00 | 9 (5) → 0 (0) | 14 → 5 | 3 | 0 | 0.95 → 0.77 |
+| pooled | 30 of 30 | — | 26 of 30 | 5.00 [5.00, 16.73] | **47 (20) → 1 (1)** | 87 → 41 | 7 | 0 | — |
+
+*macOS 15.7 x86_64, AppleClang 17, Release; 4 threads, 88.5 s before and
+84.3 s after.*
+
+0 howl blocks in 30 runs, before and after, and none after a re-arm. The one
+LOST-duck left after a re-arm is cabin's (its single re-arm, at 16.73 s,
+then the walk-path cycle). The TRIP-ducks (the detector, mt5 and mt9) are
+unchanged.
 
 ## A gap between songs
 
@@ -454,31 +674,45 @@ process. Median of five repetitions.
 
 | Mics | Float32 (ns / block) | Of one canceller | Double (ns / block) | Of one canceller |
 |---|---|---|---|---|
-| 1 | 2246 | 0.60 % | 3180 | 0.88 % |
-| 2 | 3962 | 1.02 % | 6311 | 1.59 % |
+| 1 | 2180 | 0.57 % | 3292 | 0.84 % |
+| 2 | 4983 | 1.09 % | 7826 | 1.73 % |
 
 *macOS 15.7 x86_64 (i9-8950HK), AppleClang 17, Release, a shared machine.*
 
 The guard is the detectors plus a few dozen comparisons and a gain ramp per
-mic. It allocates only in its constructor.
+mic (PR B's run read 2246 / 3962 ns float and 3180 / 6311 ns double: a
+shared machine moves these by tens of percent). The soundcheck sampler adds
+two histogram increments per mic and block while it runs; it was off in the
+timed loop. The guard allocates only in its constructor.
 
 ## What did not separate, and what was not measured
 
-- **F → 2F cycles duck / open.** The edge rule works as specified, but the
-  verdict itself reads ok at the ducked gain, so LOST re-arms and fires
-  again at full gain ([A louder coupling](#a-louder-coupling-f--2f)). Safe,
-  audible, and a policy decision for the next revision.
-- **The verdict's thresholds are one loop's calibration.** At the
-  canceller's limit − 6 D sits far below −1.235 dB, and a walk's excursion
-  is shorter than the trip hold, so no walk ducked
-  ([Walks](#walks-to-another-room)). No walk howled either: the canceller
-  re-identified at that gain on its own. Whether a deployment needs a
-  per-room D threshold (the design note's soundcheck readout) is open.
+- **F → 2F still cycles where the guard releases on the walk path.** The
+  re-arm hold removed the pump after a timer re-arm (16 in 6 of 8 gated
+  runs → 0; 47 in 20 of 30 sweep runs → 1), but in cabin the verdict holds
+  ok for 1.5 s while ducked, the walk path releases, and the verdict is
+  lost again at full gain (7 LOST-ducks after the change in 2 gated runs, 18 in 5 sweep
+  runs, unchanged; [A louder coupling](#a-louder-coupling-f--2f)). Safe
+  (0 howl blocks) and audible. Counting a LOST within probation as a strike
+  would reach it; that was not measured.
+- **The soundcheck calibration is one window of one song.** The margins
+  (D + 4, A′ + 3 dB) were measured on the song the soundcheck sampled, in
+  this loop (aligned reference, white backing track at −12 dB). A
+  soundcheck on one song and a show on another, a soundcheck at a
+  different gain than the show, a soundcheck without the backing track
+  (the verdict there never declares, and the sampler reads whatever D and
+  A′ do in ARMING), and the factory thresholds on the release
+  experiment's loop with the soundcheck margins were not measured. The
+  30 s window includes the cold start (about 2 s before the declaration).
 - **Nothing declares without a backing track.** Held notes, music and
   speech alone never declared in 20 s from ARMING; every such run relies on
-  the arming timeout and the host's cap. Without a cap they stay ducked
-  30 dB with `unprotected` raised. A soundcheck excitation, or ARMING at a
-  shallower duck for those materials, was not measured.
+  the arming timeout and the host's cap, which is therefore mandatory for
+  opening without a declaration: without it the mic stays 30 dB down in
+  ARMING with `unprotected` raised (90 of 90 sweep runs for all 20 s).
+  Under the cap the held note ducks after OPEN_CAPPED in about a third of
+  the runs (11 of 30 at S1), on detector TRIPs not classified against the
+  burst oracle. A soundcheck excitation, or ARMING at a shallower duck for
+  those materials, was not measured.
 - **Silence does not restart the guard.** A′ peaks near −15 dB in a 20 s
   gap, so `restart_a_db` fires only on a canceller reset; the gap's LOST
   duck and timer re-arm leave the guard OPEN at full gain when the singer
@@ -564,8 +798,10 @@ Every number in this document was measured on **macOS 15.7.9 x86_64
 (i9-8950HK), AppleClang 17.0.0, Release**, double precision, on a machine
 shared with other jobs. The loop is chaotic: platform arithmetic moves
 single runs, which is why the gated rows assert medians, directions and
-counts with margin, never one trajectory. No second host has run these
-tests. Quote the host with the number.
+counts with margin, never one trajectory. CI also runs the gated rows on
+macOS arm64 and Linux; only pass / fail is recorded from there (the
+two-mic row's arm64 counts are quoted where they differ). Quote the host
+with the number.
 
 ## Provenance
 
@@ -585,45 +821,52 @@ The gated live rows run by default with the rest of the suite:
 build/tests/mutap_tests --gtest_filter='HowlGuardHost.*'
 ```
 
-Wall times in one full `ctest --test-dir build` run (each row on 4
-threads; 364 of 364 tests passed, 18 of them skipped: the `MUTAP_SLOW`
-sweeps and `PortableRandom.MatchesLibstdcxxBitForBit`):
+Wall times in one run of the gated rows (`--gtest_filter='HowlGuardHost.*'`,
+each row on 4 threads; this PR's code; the full `ctest --test-dir build`
+run is in the PR description):
 
 | Test | Seconds |
 |---|---|
-| `HowlGuardHost.ColdStartWithBackingTrack` | 55.01 |
-| `HowlGuardHost.ColdStartWithoutBackingTrack` | 54.29 |
-| `HowlGuardHost.ColdStartAboveTheDryLimit` | 84.02 |
-| `HowlGuardHost.ColdStartAboveTheCancellerLimit` | 53.84 |
-| `HowlGuardHost.ColdStartShiftedAndAtS3` | 72.96 |
-| `HowlGuardHost.WalkReleasesAfterTheMisalignmentOracle` | 68.75 |
-| `HowlGuardHost.LateHowlAfterAWalkIsCaught` | 41.62 |
-| `HowlGuardHost.LouderCouplingRearms` | 20.99 |
-| `HowlGuardHost.SongGapDoesNotRestart` | 26.74 |
-| `HowlGuardHost.TwoMicsAttributeASingleMicHowl` | 28.88 |
-| `HowlGuardHost.AudibleCostOnStableMaterial` | 62.33 |
-| `HowlGuardHost.BusStageCutsTheReverbRing` | 9.07 |
-| `HowlGuardHost.CostPerBlock` | 18.21 |
-| total | 596.71 |
+| `HowlGuardHost.ColdStartWithBackingTrack` | 51.02 |
+| `HowlGuardHost.ColdStartWithoutBackingTrack` | 53.16 |
+| `HowlGuardHost.ColdStartWithoutACapStaysArmed` | 47.69 |
+| `HowlGuardHost.ColdStartAboveTheDryLimit` | 87.97 |
+| `HowlGuardHost.ColdStartAboveTheCancellerLimit` | 51.80 |
+| `HowlGuardHost.ColdStartShiftedAndAtS3` | 70.60 |
+| `HowlGuardHost.WalkReleasesAfterTheMisalignmentOracle` | 71.75 |
+| `HowlGuardHost.LateHowlAfterAWalkIsCaught` | 45.58 |
+| `HowlGuardHost.LouderCouplingRearms` | 21.32 |
+| `HowlGuardHost.SongGapDoesNotRestart` | 27.02 |
+| `HowlGuardHost.TwoMicsAttributeASingleMicHowl` | 30.30 |
+| `HowlGuardHost.AudibleCostOnStableMaterial` | 63.94 |
+| `HowlGuardHost.SoundcheckCalibrationOnStableMaterial` | 45.45 |
+| `HowlGuardHost.SoundcheckCalibrationSeesAWalk` | 81.11 |
+| `HowlGuardHost.BusStageCutsTheReverbRing` | 8.94 |
+| `HowlGuardHost.CostPerBlock` | 19.71 |
+| total | 777.37 |
 
-The cost table above is from an earlier run of the same gated rows on the
-same machine (`CostPerBlock` re-measures on every run and gates the ratio
-with margin).
+Every gated table that PR B also printed reads the same in this run, to
+the last printed digit, except `LouderCouplingRearms` (the re-arm hold)
+and `CostPerBlock` (timing).
 
-The sweep is behind `MUTAP_SLOW=1`; it prints and asserts nothing. It was
-run on 3 threads (`MUTAP_SLOW_THREADS=3`) beside other work:
+The sweep is behind `MUTAP_SLOW=1`; it prints and asserts nothing:
 
 ```sh
-MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 build/tests/mutap_tests --gtest_filter='HowlGuardSweep.*'
+MUTAP_SLOW=1 MUTAP_SLOW_THREADS=4 build/tests/mutap_tests --gtest_filter='HowlGuardSweep.*'
 ```
 
-| Test | Wall time (3 threads) |
-|---|---|
-| `HowlGuardSweep.OperatingPoints` | 1583.2 s |
-| `HowlGuardSweep.ColdStart` | 1979.5 s |
-| `HowlGuardSweep.WalksAndLouderCoupling` | 426.3 s |
-| `HowlGuardSweep.TwoMicsAndAudibleCost` | 667.5 s |
-| total | 4656.5 s |
+| Test | Wall time | Run |
+|---|---|---|
+| `HowlGuardSweep.OperatingPoints` | 1583.2 s (3 threads) | PR B, not re-run (the guard is not in it) |
+| `HowlGuardSweep.ColdStart` | 1890 s (4 threads) | this PR |
+| `HowlGuardSweep.Walks` | 245 s (4 threads) | this PR |
+| `HowlGuardSweep.LouderCoupling` | 88 s (4 threads) | this PR |
+| `HowlGuardSweep.TwoMicsAndAudibleCost` | 567 s (4 threads) | this PR |
+| `HowlGuardSweep.CalibrationMargins` | 2079.35 s (4 threads) | this PR |
+| `HowlGuardSweep.CalibrationApplied` | 1227 s (4 threads) | this PR |
+
+`Walks`, `ColdStart` and `TwoMicsAndAudibleCost` re-ran and match PR B's
+tables to the last digit where both exist.
 
 The operating points are deterministic: `HowlGuardSweep.OperatingPoints`
 reprints the gated rows' `k_ops` table to the last digit on this host.

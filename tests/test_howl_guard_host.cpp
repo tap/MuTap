@@ -18,9 +18,11 @@
 //
 // The gated rows (HowlGuardHost.*) run seeds 1, 21, 41 (or 1, 21) on cabin
 // and mt5 (both generator families); each takes under 90 s on 4 threads
-// (596.71 s for all 13 in a full ctest run on the Intel Mac).
-// HowlGuardSweep.* (MUTAP_SLOW=1) re-measures the operating points and runs
-// the long grids (six rooms, five seed sets) that docs/howl-guard.md quotes. Every threshold below is a
+// (777.37 s for all 16 in one run on the Intel Mac). HowlGuardSweep.*
+// (MUTAP_SLOW=1) re-measures the operating points and runs the long grids
+// (six rooms, five seed sets) that docs/howl-guard.md quotes, including the
+// soundcheck margin grid (CalibrationMargins: shadow guards, see
+// gd::run_spec::shadows). Every threshold below is a
 // measured number with margin, the measurement in the comment beside it;
 // chaotic rows are gated as directions and medians, never single runs.
 //
@@ -196,6 +198,10 @@ namespace {
         std::vector<double> t_open;        ///< declared runs: first OPEN, s
         size_t              never  = 0;    ///< never left ARMING
         size_t              capped = 0;    ///< reached OPEN_CAPPED
+        std::vector<double> t_capped;      ///< ... first OPEN_CAPPED, s
+        std::vector<double> t_unprot;      ///< first block with unprotected() raised, s
+        size_t              ducks     = 0; ///< DUCKED entries
+        size_t              duck_runs = 0;
         std::vector<double> arming_s;      ///< time in ARMING, s
         size_t              howl      = 0; ///< blocks at the 40 dB rule
         size_t              howl_runs = 0;
@@ -215,7 +221,17 @@ namespace {
             if (gd::blocks_in(t, guard_state::arming) == t.size()) {
                 ++never;
             }
-            capped += gd::first_state(t, guard_state::open_capped) >= 0 ? 1U : 0U;
+            const long cap = gd::first_state(t, guard_state::open_capped);
+            if (cap >= 0) {
+                ++capped;
+                t_capped.push_back(secs(cap));
+            }
+            if (t.unprot_from >= 0) {
+                t_unprot.push_back(secs(t.unprot_from));
+            }
+            const size_t d = gd::entries(t, guard_state::ducked);
+            ducks += d;
+            duck_runs += d > 0 ? 1U : 0U;
             arming_s.push_back(secs(static_cast<long>(gd::blocks_in(t, guard_state::arming))));
             const size_t h = gd::howl_blocks(t);
             howl += h;
@@ -233,15 +249,18 @@ namespace {
         }
         void print() const {
             std::printf(
-                "  %-26s %4zu | %3zu %6.2f %6.2f | %3zu %3zu | %6.2f | %5zu %3zu | %6.2f %6.2f | %5zu %3zu/%zu\n",
-                label.c_str(), runs, t_open.size(), med(t_open), max_of(t_open), never, capped, med(arming_s), howl,
-                howl_runs, med(unstable_s), max_of(unstable_s), ungrd_howl, ungrd_howl_runs, ungrd_runs);
+                "  %-26s %4zu | %3zu %6.2f %6.2f | %3zu %3zu %6.2f %6.2f | %6.2f %6.2f | %3zu %3zu | %5zu %3zu | "
+                "%6.2f %6.2f | %5zu %3zu/%zu\n",
+                label.c_str(), runs, t_open.size(), med(t_open), max_of(t_open), never, capped, med(t_capped),
+                max_of(t_capped), med(t_unprot), med(arming_s), ducks, duck_runs, howl, howl_runs, med(unstable_s),
+                max_of(unstable_s), ungrd_howl, ungrd_howl_runs, ungrd_runs);
         }
     };
 
     void print_cold_header() {
-        std::printf("  %-26s %4s | %3s %6s %6s | %3s %3s | %6s | %5s %3s | %6s %6s | %5s %s\n", "row", "runs", "dec",
-                    "open", "max", "nvr", "cap", "arm s", "howl", "run", "unst", "max", "ungd", "runs");
+        std::printf("  %-26s %4s | %3s %6s %6s | %3s %3s %6s %6s | %6s %6s | %3s %3s | %5s %3s | %6s %6s | %5s %s\n",
+                    "row", "runs", "dec", "open", "max", "nvr", "cap", "capd", "max", "unprot", "arm s", "dck", "run",
+                    "howl", "run", "unst", "max", "ungd", "runs");
     }
 
     struct cold_spec {
@@ -456,13 +475,15 @@ namespace {
         size_t              ducked = 0;
         std::vector<double> duck_s; ///< first duck - change
         size_t              rearmed = 0;
-        std::vector<double> rearm_s;        ///< first re-arm - first duck
-        size_t              pumps      = 0; ///< LOST-ducks after the first re-arm
-        size_t              pump_runs  = 0;
-        size_t              lost_ducks = 0; ///< LOST-ducks after the change
-        size_t              trip_ducks = 0; ///< TRIP-ducks after the change
-        size_t              howl_after = 0; ///< howl blocks after the change
-        std::vector<double> ducked_frac;    ///< share of the post-change time ducked or releasing
+        std::vector<double> rearm_s;         ///< first re-arm - first duck
+        size_t              pumps       = 0; ///< LOST-ducks after the first re-arm
+        size_t              pump_runs   = 0;
+        size_t              lost_ducks  = 0; ///< LOST-ducks after the change
+        size_t              trip_ducks  = 0; ///< TRIP-ducks after the change
+        size_t              howl_after  = 0; ///< howl blocks after the change
+        size_t              rehowl      = 0; ///< howl blocks after the first re-arm (re-howls)
+        size_t              rehowl_runs = 0;
+        std::vector<double> ducked_frac; ///< share of the post-change time ducked or releasing
         std::mutex          mu;
 
         void add(const gd::run_trace& t) {
@@ -500,18 +521,55 @@ namespace {
                 }
             }
             howl_after += gd::howl_blocks(t, c);
+            if (first_rearm >= 0) {
+                const size_t h = gd::howl_blocks(t, static_cast<size_t>(first_rearm));
+                rehowl += h;
+                rehowl_runs += h > 0 ? 1U : 0U;
+            }
             ducked_frac.push_back(static_cast<double>(ducked_blocks) / static_cast<double>(t.size() - c));
         }
         void print() const {
-            std::printf("  %-22s %3zu | %3zu %5.2f | %3zu %5.2f | %4zu %3zu | %3zu %3zu | %5zu | %5.2f\n",
+            std::printf("  %-22s %3zu | %3zu %5.2f | %3zu %5.2f | %4zu %3zu | %3zu %3zu | %5zu %4zu %3zu | %5.2f\n",
                         label.c_str(), runs, ducked, med(duck_s), rearmed, med(rearm_s), pumps, pump_runs, lost_ducks,
-                        trip_ducks, howl_after, med(ducked_frac));
+                        trip_ducks, howl_after, rehowl, rehowl_runs, med(ducked_frac));
         }
     };
 
     void print_rearm_header() {
-        std::printf("  %-22s %3s | %3s %5s | %3s %5s | %4s %3s | %3s %3s | %5s | %5s\n", "row", "n", "dck", "duck",
-                    "rea", "rearm", "pump", "run", "lst", "trp", "howl", "dfrac");
+        std::printf("  %-22s %3s | %3s %5s | %3s %5s | %4s %3s | %3s %3s | %5s %4s %3s | %5s\n", "row", "n", "dck",
+                    "duck", "rea", "rearm", "pump", "run", "lst", "trp", "howl", "rhwl", "run", "dfrac");
+    }
+
+    /// The pooled pump numbers over rearm rows.
+    struct rearm_totals {
+        size_t              runs        = 0;
+        size_t              rearmed     = 0;
+        size_t              pumps       = 0;
+        size_t              pump_runs   = 0;
+        size_t              howl_after  = 0;
+        size_t              rehowl      = 0;
+        size_t              rehowl_runs = 0;
+        std::vector<double> rearm_s;
+    };
+
+    rearm_totals rearm_total(const std::vector<rearm_stats>& rows) {
+        rearm_totals t;
+        for (const auto& r : rows) {
+            t.runs += r.runs;
+            t.rearmed += r.rearmed;
+            t.pumps += r.pumps;
+            t.pump_runs += r.pump_runs;
+            t.howl_after += r.howl_after;
+            t.rehowl += r.rehowl;
+            t.rehowl_runs += r.rehowl_runs;
+            t.rearm_s.insert(t.rearm_s.end(), r.rearm_s.begin(), r.rearm_s.end());
+        }
+        std::printf("  pooled: %zu runs, %zu re-armed (re-arm after the duck, median %.2f s, min %.2f, max %.2f); "
+                    "LOST-ducks after the first re-arm %zu in %zu runs; howl blocks after the change %zu, after the "
+                    "first re-arm %zu in %zu runs\n",
+                    t.runs, t.rearmed, med(t.rearm_s), min_of(t.rearm_s), max_of(t.rearm_s), t.pumps, t.pump_runs,
+                    t.howl_after, t.rehowl, t.rehowl_runs);
+        return t;
     }
 
     // ---------------------------------------------------- two mics
@@ -771,6 +829,206 @@ namespace {
 
 } // namespace
 
+namespace {
+
+    // ---------------------------------------------------- soundcheck calibration
+
+    constexpr double k_cal_s      = 30.0; ///< the protocol's soundcheck
+    constexpr double k_cal_walk_s = 40.0; ///< the walk, 10 s after the soundcheck
+    constexpr double k_cal_win_s  = 5.0;  ///< a duck this soon after the walk detected it
+
+    /// The release experiment's six walks (S2a).
+    const std::vector<std::pair<std::string, std::string>> k_walks = {{"studio", "rehearsal"}, {"rehearsal", "hall"},
+                                                                      {"hall", "cabin"},       {"cabin", "studio"},
+                                                                      {"mt5", "mt105"},        {"mt9", "mt109"}};
+
+    /// The shadow guards' margin grid (dB over the soundcheck medians; 120:
+    /// that statistic never makes the verdict not ok).
+    const std::vector<double> k_cal_d_margins = {0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 120.0};
+    const std::vector<double> k_cal_a_margins = {0.0, 1.0, 2.0, 3.0, 4.0, 6.0, 10.0, 120.0};
+
+    std::vector<std::pair<double, double>> margin_grid() {
+        std::vector<std::pair<double, double>> g;
+        for (const double d : k_cal_d_margins) {
+            for (const double a : k_cal_a_margins) {
+                g.emplace_back(d, a);
+            }
+        }
+        return g;
+    }
+
+    /// What the soundcheck would print for one mic.
+    void print_soundcheck(const char* label, const tap::mu::guard_calibration& c) {
+        std::printf("  %-34s soundcheck %5zu blocks: D median %+7.2f dB (p95 %+7.2f, max %+7.2f); A' median %+7.2f dB "
+                    "(p95 %+7.2f, max %+7.2f) -> d_db %+7.2f, a_db %+7.2f%s\n",
+                    label, c.blocks, c.d_median_db, c.d_p95_db, c.d_max_db, c.a_median_db, c.a_p95_db, c.a_max_db,
+                    c.d_db, c.a_db, c.applied ? " (applied)" : "");
+    }
+
+    /// One margin pair's record over the sweep's shadow guards.
+    struct cal_cell {
+        double              d_margin         = 0.0;
+        double              a_margin         = 0.0;
+        size_t              stable_runs      = 0;
+        size_t              stable_duck_runs = 0; ///< a duck after the soundcheck
+        size_t              stable_inexact   = 0; ///< ... where the live loop had diverged first
+        size_t              walk_runs        = 0;
+        size_t              walk_pre         = 0; ///< ducked after the soundcheck, before the walk
+        size_t              walk_detected    = 0; ///< first duck within k_cal_win_s after the walk
+        size_t              walk_inexact     = 0;
+        std::vector<double> walk_latency_s;
+    };
+
+    /// The soundcheck readouts and the margin grid over a sweep.
+    struct cal_stats {
+        std::vector<cal_cell>                                           cells;
+        std::vector<std::pair<std::string, tap::mu::guard_calibration>> soundchecks; ///< (group, readout)
+        std::mutex                                                      mu;
+
+        explicit cal_stats(const std::vector<std::pair<double, double>>& grid) {
+            for (const auto& [d, a] : grid) {
+                cal_cell c;
+                c.d_margin = d;
+                c.a_margin = a;
+                cells.push_back(c);
+            }
+        }
+        void add(const std::string& group, const gd::run_trace& t, bool walk) {
+            std::lock_guard<std::mutex> lock(mu);
+            soundchecks.emplace_back(group, t.cal);
+            for (size_t k = 0; k < t.shadow.size(); ++k) {
+                const gd::shadow_result& r = t.shadow[k];
+                cal_cell&                c = cells[k];
+                if (!walk) {
+                    ++c.stable_runs;
+                    c.stable_duck_runs += r.first_duck >= 0 ? 1U : 0U;
+                    c.stable_inexact += r.exact ? 0U : 1U;
+                    continue;
+                }
+                ++c.walk_runs;
+                c.walk_inexact += r.exact ? 0U : 1U;
+                if (r.first_duck < 0) {
+                    continue;
+                }
+                if (r.first_duck < t.change) {
+                    ++c.walk_pre;
+                }
+                else if (r.first_duck < t.change + static_cast<long>(gd::blocks_of(k_cal_win_s))) {
+                    ++c.walk_detected;
+                    c.walk_latency_s.push_back(secs(r.first_duck - t.change));
+                }
+            }
+        }
+        void print_soundchecks() const {
+            std::printf("  soundcheck readouts per group (medians over runs [min, max])\n");
+            std::printf("  %-22s %3s | %20s | %7s | %20s | %7s\n", "group", "n", "D median", "D p95", "A' median",
+                        "A' p95");
+            std::vector<std::string> groups;
+            for (const auto& [g, c] : soundchecks) {
+                if (std::find(groups.begin(), groups.end(), g) == groups.end()) {
+                    groups.push_back(g);
+                }
+            }
+            for (const auto& g : groups) {
+                std::vector<double> dm;
+                std::vector<double> dp;
+                std::vector<double> am;
+                std::vector<double> ap;
+                for (const auto& [gg, c] : soundchecks) {
+                    if (gg == g) {
+                        dm.push_back(c.d_median_db);
+                        dp.push_back(c.d_p95_db);
+                        am.push_back(c.a_median_db);
+                        ap.push_back(c.a_p95_db);
+                    }
+                }
+                std::printf("  %-22s %3zu | %+6.2f [%+6.2f %+6.2f] | %+7.2f | %+6.2f [%+6.2f %+6.2f] | %+7.2f\n",
+                            g.c_str(), dm.size(), med(dm), min_of(dm), max_of(dm), med(dp), med(am), min_of(am),
+                            max_of(am), med(ap));
+            }
+        }
+        void print_grid() const {
+            std::printf("  margin grid (shadow guards): D margin, A' margin | stable runs with a duck (inexact) | "
+                        "walks: ducked before the walk, detected within %.0f s (inexact), latency median\n",
+                        k_cal_win_s);
+            for (const auto& c : cells) {
+                std::printf("  %+6.1f %+6.1f | %3zu of %3zu (%zu) | %3zu %3zu of %3zu (%zu) %5.2f\n", c.d_margin,
+                            c.a_margin, c.stable_duck_runs, c.stable_runs, c.stable_inexact, c.walk_pre,
+                            c.walk_detected, c.walk_runs, c.walk_inexact, med(c.walk_latency_s));
+            }
+        }
+    };
+
+    /// A soundcheck run: from reset, the soundcheck over the first k_cal_s,
+    /// stable material (or a walk at k_cal_walk_s) after it.
+    gd::run_spec soundcheck_spec(const std::string& room, const gd::material_spec& m, unsigned seed, double shift_hz,
+                                 const std::string& walk_to) {
+        gd::run_spec s;
+        s.room        = room;
+        s.mat         = m;
+        s.seed        = seed;
+        s.gain_db     = operating_gain(room, m, gd::k_s1);
+        s.cap_db      = cap_for(exact_db(room, gd::k_s1), s.gain_db);
+        s.shift_hz    = shift_hz;
+        s.calibrate_s = k_cal_s;
+        s.oracle      = false;
+        s.seconds     = 2.0 * k_cal_s;
+        if (!walk_to.empty()) {
+            s.room2      = walk_to;
+            s.t_change_s = k_cal_walk_s;
+            s.seconds    = k_cal_walk_s + 15.0;
+        }
+        return s;
+    }
+
+    /// The live guard's record after its soundcheck was applied.
+    struct cal_live_stats {
+        std::string         label;
+        size_t              runs      = 0;
+        size_t              ducks     = 0; ///< DUCKED entries after the soundcheck (before a walk)
+        size_t              duck_runs = 0;
+        size_t              on_burst  = 0; ///< ... within 0.5 s of a block at +20 dB
+        size_t              howl      = 0; ///< howl blocks after the soundcheck
+        std::vector<double> d_thr;         ///< the applied thresholds, dB
+        std::vector<double> a_thr;
+        std::mutex          mu;
+
+        void add(const gd::run_trace& t) {
+            std::lock_guard<std::mutex> lock(mu);
+            ++runs;
+            const auto   from = static_cast<size_t>(t.cal_block + 1);
+            const size_t to   = t.change >= 0 ? static_cast<size_t>(t.change) : t.size();
+            const auto   b    = gd::bursts(t);
+            size_t       d    = 0;
+            // iterators clamped to the trace (GCC-safe; guard_runs.h)
+            const auto [sb, se] = gd::clamped_range(t.state, std::max<size_t>(from, 1), to);
+            auto bi             = b.begin() + (sb - t.state.begin());
+            for (auto it = sb; it != se; ++it, ++bi) {
+                if (*it == guard_state::ducked && *(it - 1) != guard_state::ducked) {
+                    ++d;
+                    on_burst += *bi != 0 ? 1U : 0U;
+                }
+            }
+            ducks += d;
+            duck_runs += d > 0 ? 1U : 0U;
+            howl += gd::howl_blocks(t, from);
+            d_thr.push_back(t.cal.d_db);
+            a_thr.push_back(t.cal.a_db);
+        }
+        void print() const {
+            std::printf("  %-26s %3zu | %3zu %3zu %3zu | %4zu | %+7.2f [%+7.2f %+7.2f] | %+7.2f [%+7.2f %+7.2f]\n",
+                        label.c_str(), runs, ducks, duck_runs, on_burst, howl, med(d_thr), min_of(d_thr), max_of(d_thr),
+                        med(a_thr), min_of(a_thr), max_of(a_thr));
+        }
+    };
+
+    void print_cal_live_header() {
+        std::printf("  %-26s %3s | %3s %3s %3s | %4s | %25s | %25s\n", "row", "n", "dck", "run", "brs", "howl",
+                    "d_db applied [min max]", "a_db applied [min max]");
+    }
+
+} // namespace
+
 // ============================================================ gated rows
 
 TEST(HowlGuardHost, ColdStartWithBackingTrack) {
@@ -806,16 +1064,54 @@ TEST(HowlGuardHost, ColdStartWithoutBackingTrack) {
     for (const auto& r : rows) {
         r.print();
     }
-    // Measured: 0 howl blocks in every row; no run declared in 20 s (the
-    // canceller at the arming gain sees no excitation without the backing
-    // track); every run left ARMING through the cap at arming_timeout_s
-    // (6 of 6 OPEN_CAPPED per row). The unguarded speech twins: 1 run of 6
-    // reached the 40 dB rule (1 block).
+    // Measured (the cap = the dry limit - 6 dB): 0 howl blocks in every row;
+    // no run declared in 20 s (the canceller at the arming gain sees no
+    // excitation without the backing track); every run left ARMING through
+    // the cap (6 of 6 OPEN_CAPPED per row) at 10.00 s, median and max, with
+    // `unprotected` raised from 10.00 s; 2 ducks after OPEN_CAPPED in 2 of
+    // the 6 held-note runs, 0 in music and speech. The unguarded speech
+    // twins: 1 run of 6 reached the 40 dB rule (1 block).
     for (const auto& r : rows) {
         EXPECT_EQ(r.howl, 0U) << r.label;
         EXPECT_EQ(r.never, 0U) << r.label;
         EXPECT_EQ(r.capped, r.runs) << r.label;
+        // OPEN_CAPPED needs the timeout (10 s) and quiet: the 7500th block,
+        // index 7499 (9.9987 s)
+        EXPECT_GE(min_of(r.t_capped), 10.0 - 1.5 * gd::block_s()) << r.label;
+        EXPECT_LT(med(r.t_capped), 11.0) << r.label;
+        EXPECT_LE(r.duck_runs, 4U) << r.label << ": measured at most 2 of 6";
     }
+}
+
+TEST(HowlGuardHost, ColdStartWithoutACapStaysArmed) {
+    // The cap is mandatory for opening without a declaration: the same
+    // track-off rows with no cap set.
+    cold_spec c;
+    c.rooms = {"cabin", "mt5"};
+    c.mats  = {k_h, k_m, k_sp};
+    c.seeds = k_seeds3;
+    c.cap   = false;
+    print_cold_header();
+    const auto rows = cold_rows(c);
+    for (const auto& r : rows) {
+        r.print();
+    }
+    // Measured: 0 howl blocks; every run (6 of 6 per row) stayed in ARMING
+    // for the whole 20 s, 30 dB down, with `unprotected` raised at 10.00 s.
+    // Structural: no run reaches OPEN_CAPPED, and a run that does not
+    // declare never leaves ARMING. Whether a track-off run declares is the
+    // canceller's (chaotic) business, so the count is gated with margin.
+    size_t never = 0;
+    size_t runs  = 0;
+    for (const auto& r : rows) {
+        EXPECT_EQ(r.howl, 0U) << r.label;
+        EXPECT_EQ(r.never + r.t_open.size(), r.runs) << r.label;
+        EXPECT_EQ(r.capped, 0U) << r.label;
+        EXPECT_NEAR(med(r.t_unprot), 10.0, 0.01) << r.label;
+        never += r.never;
+        runs += r.runs;
+    }
+    EXPECT_GE(never + 3, runs) << "measured: all 18 runs stayed in ARMING";
 }
 
 TEST(HowlGuardHost, ColdStartAboveTheDryLimit) {
@@ -986,18 +1282,25 @@ TEST(HowlGuardHost, LouderCouplingRearms) {
     for (const auto& r : rows) {
         r.print();
     }
-    // Measured: every run ducked after F -> 2F (2 of 2 per room; LOST 0.37
-    // to 0.39 s after the change, cabin 4.65 s); the timer re-arm at 5.00 s
-    // (10.01 s after a strike); 0 howl blocks after the change; the post-
-    // change time ducked or releasing, median 0.56 / 0.96 / 0.94 / 0.93.
-    // The edge rule does NOT stop the duck / open cycle: the verdict reads
-    // ok again after the re-arm, which re-arms LOST: 16 LOST-ducks after a
-    // re-arm in 6 of 8 runs (docs/howl-guard.md). Printed, not gated.
+    const rearm_totals tot = rearm_total(rows);
+    // Measured (macOS x86_64): every run ducked after F -> 2F (2 of 2 per
+    // room; LOST 0.37 to 0.39 s after the change, cabin 4.65 s); the timer
+    // re-arm at 5.00 s (10.01 s after a strike) in 6 of 8 runs; 0 howl
+    // blocks after the change, 0 after the re-arm.
+    // The pump: LOST-ducks after the first re-arm, 0 in 8 runs with LOST
+    // armed only once ok has been held release_hold_s after a re-arm
+    // (16 in 6 of 8 when one ok tick armed it; the MUTAP_SLOW sweep: 1 in
+    // 30 runs, against 47 in 20 of 30). Gated as a rate with margin, at most
+    // 4 over the 8 runs (0.5 a run, a quarter of the old 2.0): a chaotic loop
+    // moves single runs between hosts. Cabin never re-arms (the verdict is
+    // held ok while ducked and released on the walk path) and still cycles
+    // there: 7 LOST-ducks in 2 runs, unchanged; printed, not gated.
     for (const auto& r : rows) {
         EXPECT_EQ(r.ducked, r.runs) << r.label;
         EXPECT_EQ(r.howl_after, 0U) << r.label;
-        EXPECT_GT(med(r.ducked_frac), 0.5) << r.label;
     }
+    EXPECT_GE(tot.rearmed, 4U) << "measured 6 of 8 re-armed";
+    EXPECT_LE(tot.pumps, 4U) << "LOST-ducks after a re-arm: measured 0 in 8 runs (16 before the held-ok rule)";
 }
 
 TEST(HowlGuardHost, SongGapDoesNotRestart) {
@@ -1141,6 +1444,124 @@ TEST(HowlGuardHost, AudibleCostOnStableMaterial) {
     }
 }
 
+TEST(HowlGuardHost, SoundcheckCalibrationOnStableMaterial) {
+    // The soundcheck from reset (30 s), its thresholds applied (the policy's
+    // default margins), then 30 s more of the same song. Shadow guards over
+    // the margin grid ride along; the one with the live guard's margins must
+    // track the live guard exactly (the sweep's method).
+    const tap::mu::guard_policy        def;
+    std::vector<cal_live_stats>        rows(2);
+    std::vector<std::function<void()>> jobs;
+    std::mutex                         print_mu;
+    std::vector<std::string>           prints;
+    std::atomic<long>                  twin_diverged{-1};
+    // A slice of the sweep's grid (D margin at A' + 3), and the live margins.
+    std::vector<std::pair<double, double>> grid = {{0.0, 3.0}, {1.0, 3.0}, {2.0, 3.0}, {3.0, 3.0}};
+    grid.emplace_back(def.cal_d_margin_db, def.cal_a_margin_db);
+    const size_t twin = grid.size() - 1;
+    cal_stats    st(grid);
+    size_t       k = 0;
+    for (const auto& m : {k_v, k_sp_aux}) {
+        rows[k].label = gd::material_name(m);
+        for (const char* room : {"cabin", "mt5"}) {
+            for (const unsigned seed : {1U, 21U}) {
+                auto s      = soundcheck_spec(room, m, seed, 0.0, "");
+                s.cal_apply = true;
+                s.shadows   = grid;
+                jobs.emplace_back([s, room, seed, twin, &st, &rows, k, &print_mu, &prints, &twin_diverged] {
+                    const auto t = gd::live_run(s);
+                    rows[k].add(t);
+                    st.add(std::string(room) + " " + gd::material_name(s.mat), t, false);
+                    if (t.shadow[twin].diverged >= 0) {
+                        twin_diverged = t.shadow[twin].diverged;
+                    }
+                    char label[64];
+                    std::snprintf(label, sizeof(label), "%s %s seed %u", room, gd::material_name(s.mat).c_str(), seed);
+                    std::lock_guard<std::mutex> lock(print_mu);
+                    prints.emplace_back(label);
+                    print_soundcheck(label, t.cal);
+                });
+            }
+        }
+        ++k;
+    }
+    run_parallel(jobs);
+    print_cal_live_header();
+    for (const auto& r : rows) {
+        r.print();
+    }
+    st.print_grid();
+    // Measured (cabin, mt5; seeds 1, 21; the default margins D + 4 dB,
+    // A' + 3 dB): the soundcheck read D's median at -7.05 to -8.35 dB and
+    // A''s at -27.15 to -29.55 dB, so d_db landed at -3.05 to -4.35 and
+    // a_db at -24.15 to -26.55; 0 ducks after the soundcheck in 8 runs, 0
+    // howl blocks. The shadows at A' + 3: D + 0 ducked in 7 of 8, + 1 in 1
+    // of 8, + 2 / + 3 / + 4 in 0 (the sweep: + 2 in 3 of 180, + 3 and + 4 in
+    // 0 of 180). Gated with margin: at most 2 of 8 runs with a duck.
+    size_t duck_runs = 0;
+    for (const auto& r : rows) {
+        EXPECT_EQ(r.howl, 0U) << r.label;
+        duck_runs += r.duck_runs;
+        // the thresholds moved off the factory calibration, by the margin
+        EXPECT_LT(max_of(r.d_thr), -1.235) << r.label;
+    }
+    EXPECT_LE(duck_runs, 2U) << "measured 0 of 8";
+    EXPECT_EQ(twin_diverged.load(), -1L) << "the shadow with the live margins must track the live guard";
+}
+
+TEST(HowlGuardHost, SoundcheckCalibrationSeesAWalk) {
+    // The soundcheck from reset (30 s) at the canceller's limit - 6, applied
+    // (the policy's default margins); the walk at 40 s. The factory
+    // thresholds saw none of these walks (PR B: 0 of 12 gated, 0 of 30 in
+    // the sweep).
+    std::vector<walk_stats>            rows(k_walks.size());
+    std::vector<cal_live_stats>        pre(k_walks.size());
+    std::vector<std::function<void()>> jobs;
+    for (size_t r = 0; r < k_walks.size(); ++r) {
+        rows[r].label = k_walks[r].first + " -> " + k_walks[r].second;
+        pre[r].label  = rows[r].label;
+        for (const unsigned seed : {1U, 21U}) {
+            auto s      = soundcheck_spec(k_walks[r].first, k_v, seed, 0.0, k_walks[r].second);
+            s.cal_apply = true;
+            s.oracle    = true;
+            jobs.emplace_back([s, &w = rows[r], &p = pre[r]] {
+                const auto t = gd::live_run(s);
+                w.add(t);
+                p.add(t);
+            });
+        }
+    }
+    run_parallel(jobs);
+    print_cal_live_header();
+    for (const auto& r : pre) {
+        r.print();
+    }
+    print_walk_header();
+    walk_stats pool;
+    pool.label = "pooled";
+    for (const auto& r : rows) {
+        r.print();
+        pool.merge(r);
+    }
+    pool.print();
+    // Measured: 0 ducks between the soundcheck and the walk; 12 of 12 walks
+    // ducked (11 on LOST, 0.31 s after the walk, one on a detector TRIP),
+    // against 0 of 12 on the factory thresholds; 12 releases, 0 before the
+    // misalignment oracle reconverged, release - reconvergence median
+    // 1.74 s, minimum 1.63 s; 0 howl blocks. Gated as directions with
+    // margin: most walks seen, the release median well after the oracle.
+    size_t pre_ducks = 0;
+    for (const auto& r : pre) {
+        pre_ducks += r.duck_runs;
+    }
+    EXPECT_LE(pre_ducks, 2U) << "measured 0 of 12";
+    EXPECT_GE(pool.ducked, 8U) << "measured 12 of 12 (factory thresholds: 0 of 12)";
+    ASSERT_GE(pool.delta_s.size(), 4U);
+    EXPECT_GT(med(pool.delta_s), 0.5) << "measured 1.74 s";
+    EXPECT_LE(pool.early_all, 2U) << "measured 0 of 12";
+    EXPECT_EQ(pool.howl_post, 0U);
+}
+
 TEST(HowlGuardHost, BusStageCutsTheReverbRing) {
     double       voice_at[2][6] = {};
     const double offsets[6]     = {0.05, 0.1, 0.25, 0.5, 1.0, 1.5};
@@ -1198,9 +1619,10 @@ TEST(HowlGuardHost, CostPerBlock) {
         std::printf("guard, %zu mic(s): float %.0f ns per block (%.2f %% of one canceller's %.0f ns), "
                     "double %.0f ns (%.2f %% of %.0f ns)\n",
                     mics, gf, 100.0 * gf / af, af, gdb, 100.0 * gdb / ad, ad);
-        // Measured (1 / 2 mics): float 2246 / 3962 ns, 0.60 / 1.02 % of a
-        // canceller block; double 3180 / 6311 ns, 0.88 / 1.59 %. Timing on a
-        // shared machine: the bound has 3x margin over the 2-mic double row.
+        // Measured (1 / 2 mics): float 2180 / 4983 ns, 0.57 / 1.09 % of a
+        // canceller block; double 3292 / 7826 ns, 0.84 / 1.73 % (PR B's run:
+        // 2246 / 3962 and 3180 / 6311 ns). Timing on a shared machine: the
+        // bound (7 % for 2 mics) has 4x margin over the 2-mic double row.
         EXPECT_LT(gf / af, 0.05 * static_cast<double>(mics) / 2.0 + 0.02);
         EXPECT_LT(gdb / ad, 0.05 * static_cast<double>(mics) / 2.0 + 0.02);
         RecordProperty("guard_ns_float_m" + std::to_string(mics), std::to_string(gf));
@@ -1361,8 +1783,8 @@ TEST(HowlGuardSweep, ColdStart) {
     }
     {
         cold_spec c;
-        c.rooms = {"cabin", "mt5"};
-        c.mats  = {k_h, k_m};
+        c.rooms = rooms6;
+        c.mats  = {k_h, k_m, k_sp};
         c.seeds = k_seeds5;
         c.cap   = false;
         std::printf("  (no cap)\n");
@@ -1372,7 +1794,7 @@ TEST(HowlGuardSweep, ColdStart) {
     }
 }
 
-TEST(HowlGuardSweep, WalksAndLouderCoupling) {
+TEST(HowlGuardSweep, Walks) {
     if (!slow_enabled()) {
         GTEST_SKIP() << "set MUTAP_SLOW=1 for the guard sweep";
     }
@@ -1395,6 +1817,12 @@ TEST(HowlGuardSweep, WalksAndLouderCoupling) {
     for (size_t i = 0; i < hot.size(); ++i) {
         hot[i].print();
         ug[i].print();
+    }
+}
+
+TEST(HowlGuardSweep, LouderCoupling) {
+    if (!slow_enabled()) {
+        GTEST_SKIP() << "set MUTAP_SLOW=1 for the guard sweep";
     }
     std::vector<rearm_stats>           rows(6);
     const char*                        rooms[] = {"cabin", "mt5", "studio", "rehearsal", "hall", "mt9"};
@@ -1420,6 +1848,7 @@ TEST(HowlGuardSweep, WalksAndLouderCoupling) {
     for (const auto& r : rows) {
         r.print();
     }
+    rearm_total(rows);
 }
 
 TEST(HowlGuardSweep, TwoMicsAndAudibleCost) {
@@ -1482,4 +1911,96 @@ TEST(HowlGuardSweep, TwoMicsAndAudibleCost) {
     for (const auto& r : rows) {
         r.print();
     }
+}
+
+TEST(HowlGuardSweep, CalibrationMargins) {
+    if (!slow_enabled()) {
+        GTEST_SKIP() << "set MUTAP_SLOW=1 for the guard sweep";
+    }
+    // Shadow guards over the margin grid; the live guard keeps the factory
+    // thresholds, so every shadow's first duck is exact unless the live
+    // loop diverged first (counted as inexact).
+    const auto                         grid = margin_grid();
+    cal_stats                          st(grid);
+    std::vector<std::function<void()>> jobs;
+    for (const char* room : {"cabin", "mt5", "studio", "rehearsal", "hall", "mt9"}) {
+        for (const auto& m : {k_v, k_sp_aux}) {
+            for (const double hz : {0.0, 2.0, 5.0}) {
+                for (const unsigned seed : k_seeds5) {
+                    auto s    = soundcheck_spec(room, m, seed, hz, "");
+                    s.shadows = grid;
+                    const std::string group =
+                        std::string(room) + " " + gd::material_name(m) + " " + std::to_string(static_cast<int>(hz));
+                    jobs.emplace_back([s, group, &st] { st.add(group, gd::live_run(s), false); });
+                }
+            }
+        }
+    }
+    for (const auto& [from, to] : k_walks) {
+        for (const unsigned seed : k_seeds5) {
+            auto s                  = soundcheck_spec(from, k_v, seed, 0.0, to);
+            s.shadows               = grid;
+            const std::string group = from + " to " + to;
+            jobs.emplace_back([s, group, &st] { st.add(group, gd::live_run(s), true); });
+        }
+    }
+    run_parallel(jobs);
+    st.print_soundchecks();
+    st.print_grid();
+}
+
+TEST(HowlGuardSweep, CalibrationApplied) {
+    if (!slow_enabled()) {
+        GTEST_SKIP() << "set MUTAP_SLOW=1 for the guard sweep";
+    }
+    // The live guard on its soundcheck thresholds (the policy's default
+    // margins) over CalibrationMargins' grid.
+    std::vector<cal_live_stats>        stable(6);
+    std::vector<walk_stats>            walks(k_walks.size());
+    std::vector<cal_live_stats>        pre(k_walks.size());
+    std::vector<std::function<void()>> jobs;
+    size_t                             k = 0;
+    for (const auto& m : {k_v, k_sp_aux}) {
+        for (const double hz : {0.0, 2.0, 5.0}) {
+            stable[k].label = gd::material_name(m) + " " + std::to_string(static_cast<int>(hz)) + " Hz";
+            for (const char* room : {"cabin", "mt5", "studio", "rehearsal", "hall", "mt9"}) {
+                for (const unsigned seed : k_seeds5) {
+                    auto s      = soundcheck_spec(room, m, seed, hz, "");
+                    s.cal_apply = true;
+                    jobs.emplace_back([s, &st = stable[k]] { st.add(gd::live_run(s)); });
+                }
+            }
+            ++k;
+        }
+    }
+    for (size_t r = 0; r < k_walks.size(); ++r) {
+        walks[r].label = k_walks[r].first + " -> " + k_walks[r].second;
+        pre[r].label   = walks[r].label;
+        for (const unsigned seed : k_seeds5) {
+            auto s      = soundcheck_spec(k_walks[r].first, k_v, seed, 0.0, k_walks[r].second);
+            s.cal_apply = true;
+            s.oracle    = true;
+            jobs.emplace_back([s, &w = walks[r], &p = pre[r]] {
+                const auto t = gd::live_run(s);
+                w.add(t);
+                p.add(t);
+            });
+        }
+    }
+    run_parallel(jobs);
+    print_cal_live_header();
+    for (const auto& r : stable) {
+        r.print();
+    }
+    for (const auto& r : pre) {
+        r.print();
+    }
+    print_walk_header();
+    walk_stats pool;
+    pool.label = "pooled";
+    for (const auto& r : walks) {
+        r.print();
+        pool.merge(r);
+    }
+    pool.print();
 }

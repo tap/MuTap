@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -116,6 +117,31 @@ namespace mutap_test::guard {
         bool                           bus_stage  = true; ///< attach the guard's post-reverb stage
         double                         gap_from_s = -1.0; ///< >= 0: singer and backing track silent (digital zero) ...
         double                         gap_s      = 0.0;  ///< ... for this long (a gap between songs)
+        // The soundcheck (guard_calibration): calibrate_begin() before the
+        // first block, calibrate_end(cal_apply) after calibrate_s of blocks
+        // (the margins are policy.cal_*_margin_db).
+        double calibrate_s = -1.0; ///< < 0: no soundcheck
+        bool   cal_apply   = false;
+        /// Shadow guards (open loop): each a copy of the live guard's
+        /// config with its own calibration margins (d, a), fed the live
+        /// loop's residual and statistics after every block, its soundcheck
+        /// applied at the same block. Until a shadow's gain first differs
+        /// from the live guard's, the loop it would have closed is the live
+        /// one, so its first duck is exact (shadow_result::exact).
+        std::vector<std::pair<double, double>> shadows;
+    };
+
+    /// One shadow guard's record (run_spec::shadows).
+    struct shadow_result {
+        double d_margin    = 0.0;
+        double a_margin    = 0.0;
+        long   first_duck  = -1;    ///< first DUCKED entry after the soundcheck (-1: none)
+        bool   by_lost     = false; ///< ... on the verdict trigger (not a detector TRIP)
+        size_t ducks       = 0;     ///< DUCKED entries after the soundcheck (open loop after the first)
+        long   diverged    = -1;    ///< first block its gain differed from the live guard's (-1: never)
+        bool   exact       = true;  ///< diverged < 0, or a first duck no later than diverged
+        double d_threshold = 0.0;   ///< what it ran on after the soundcheck, dB
+        double a_threshold = 0.0;
     };
 
     /// Per-block traces of one run (mic 0 for the guard columns).
@@ -133,11 +159,15 @@ namespace mutap_test::guard {
         std::vector<long>                 o_blk; ///< oracle blocks
         std::vector<float>                o_margin;
         std::vector<float>                o_mis;
-        long                              change  = -1; ///< the change block
-        size_t                            strikes = 0;
-        bool                              latched = false;
-        size_t                            rearms  = 0;
-        size_t                            hints   = 0;
+        long                              change      = -1; ///< the change block
+        size_t                            strikes     = 0;
+        bool                              latched     = false;
+        size_t                            rearms      = 0;
+        size_t                            hints       = 0;
+        long                              unprot_from = -1; ///< first block with unprotected() raised
+        tap::mu::guard_calibration        cal;              ///< the live guard's soundcheck
+        long                              cal_block = -1;   ///< the block calibrate_end() ran after
+        std::vector<shadow_result>        shadow;
         size_t                            size() const { return e_rms.size(); }
     };
 
@@ -187,13 +217,72 @@ namespace mutap_test::guard {
         run_trace            t;
         t.change = cfg.change_block;
         t.e_rms.reserve(n_blk);
-        size_t rearms = 0;
+        size_t     rearms  = 0;
+        const long cal_blk = s.calibrate_s >= 0.0 ? static_cast<long>(blocks_of(s.calibrate_s)) - 1 : -1L;
+        std::vector<std::unique_ptr<guard_t<double>>> shadows;
+        if (cal_blk >= 0) {
+            g.calibrate_begin();
+            for (const auto& [dm, am] : s.shadows) {
+                auto sc                   = gc;
+                sc.policy.cal_d_margin_db = dm;
+                sc.policy.cal_a_margin_db = am;
+                shadows.push_back(std::make_unique<guard_t<double>>(sc));
+                shadows.back()->calibrate_begin();
+                shadow_result r;
+                r.d_margin = dm;
+                r.a_margin = am;
+                t.shadow.push_back(r);
+            }
+        }
         for (size_t blk = 0; blk < n_blk; ++blk) {
             if (static_cast<long>(blk) == step_blk) {
                 loop.set_gain_db(s.gain_db + s.step_db);
             }
             const double* x[1] = {&v[blk * k_block]};
             t.e_rms.push_back(static_cast<float>(loop.step(x)));
+            if (!shadows.empty()) {
+                const double* e   = loop.chain().error_block(0);
+                const auto&   afc = loop.chain().canceller(0);
+                for (size_t k = 0; k < shadows.size(); ++k) {
+                    guard_t<double>& sh = *shadows[k];
+                    shadow_result&   r  = t.shadow[k];
+                    sh.analyze(0, e, afc.uncertainty_ratio(), afc.shadow_residual_ratio());
+                    sh.update();
+                    if (static_cast<long>(blk) == cal_blk) {
+                        sh.calibrate_end(true);
+                        r.d_threshold = sh.threshold_d_db(0);
+                        r.a_threshold = sh.threshold_a_db(0);
+                    }
+                    if (r.diverged < 0 && sh.gain_db(0) != g.gain_db(0)) {
+                        r.diverged = static_cast<long>(blk);
+                    }
+                    if (static_cast<long>(blk) > cal_blk && sh.state(0) == tap::mu::guard_state::ducked
+                        && sh.time_in_state_s(0) == 0.0) {
+                        ++r.ducks;
+                        if (r.first_duck < 0) {
+                            r.first_duck = static_cast<long>(blk);
+                            r.by_lost    = !sh.tripped(0);
+                            r.exact      = r.diverged < 0 || r.diverged >= r.first_duck;
+                        }
+                    }
+                }
+            }
+            if (static_cast<long>(blk) == cal_blk) {
+                t.cal       = g.calibrate_end(s.cal_apply)[0];
+                t.cal_block = cal_blk;
+            }
+            if (blk + 1 == n_blk) {
+                // A shadow that never ducked is exact only if the live loop
+                // never left it either.
+                for (auto& r : t.shadow) {
+                    if (r.first_duck < 0) {
+                        r.exact = r.diverged < 0;
+                    }
+                }
+            }
+            if (t.unprot_from < 0 && g.unprotected(0)) {
+                t.unprot_from = static_cast<long>(blk);
+            }
             t.spk_rms.push_back(static_cast<float>(loop.speaker_rms()));
             t.voice_rms.push_back(static_cast<float>(loop.voice_rms()));
             t.state.push_back(g.state(0));

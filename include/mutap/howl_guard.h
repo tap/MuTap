@@ -30,10 +30,12 @@
 //     on stable loops' residuals (12 clean trips in 4560 s, 10 of them with
 //     a 2 Hz shift).
 //   * LOST (the verdict trigger): the verdict has been not-ok for
-//     trip_hold_s, counted from an ok tick seen since the last re-arm (a
+//     trip_hold_s, counted from an ok tick seen since the last duck (a
 //     fresh ok -> not-ok edge). Armed only in OPEN and RELEASING after a
-//     declaration; a timer re-arm disarms it until the verdict reads ok
-//     once, so F -> 2F does not pump duck / open.
+//     declaration. A timer re-arm disarms it until the verdict has been ok
+//     for release_hold_s (the same hold as a release), not merely once:
+//     under F -> 2F the verdict reads ok for a while at the re-armed gain,
+//     and arming on the first ok tick pumped duck / open.
 //
 // STATES (guard_state) and every transition. "Gain" is the per-mic gain in
 // dB relative to the host's operating gain (0 = pass). level = -strike_db x
@@ -50,7 +52,10 @@
 //                     ramps up over release_ramp_ms, probation starts).
 //     -> OPEN_CAPPED  arming_timeout_s in ARMING, cap set, quiet: ramp to
 //                     the cap; `unprotected`.
-//     (timeout, no cap: stays ARMING at the arming gain, `unprotected`.)
+//     (timeout, no cap: stays ARMING at the arming gain, `unprotected`, for
+//     as long as the verdict does not declare. cap_db is mandatory for
+//     opening without a declaration: nothing else opens an undeclared mic,
+//     and removing the cap re-arms every undeclared mic, latched or not.)
 //     TRIP: stays ARMING, a strike (never latches here), restarts the hold.
 //     ARMING never re-arms on a timer.
 //   OPEN         gain = level. Probation (probation_s) from entry.
@@ -67,7 +72,8 @@
 //                timer starts at entry and restarts on every TRIP.
 //     -> RELEASING  ok held release_hold_s AND quiet          [walk path]
 //     -> RELEASING  hold reached rearm_timeout_s x 2^strikes AND quiet
-//                   (disarms LOST until ok is seen)           [re-arm path]
+//                   (disarms LOST until ok is held
+//                   release_hold_s)                           [re-arm path]
 //   RELEASING    gain ramps to restore over release_ramp_ms.
 //     -> DUCKED  TRIP (a strike); LOST (no strike).
 //     -> on arrival: LATCHED while latched, else OPEN after a declaration,
@@ -102,6 +108,23 @@
 // in every other state): on a trip the post-reverb bus is cut too. On the
 // dry path a trip then counts twice (per mic, and on the bus).
 //
+// THE SOUNDCHECK CALIBRATION. d_db / a_db are one loop's calibration: in
+// another loop D and A' settle elsewhere, and the verdict may never see a
+// change. calibrate_begin() starts a sampler that takes each mic's D and A'
+// once per block for calibrate_s (the protocol's 30 s track-through);
+// calibrate_end(apply) returns per mic the medians, 95th percentiles and
+// maxima, and suggests d_db / a_db = median + cal_d_margin_db /
+// cal_a_margin_db; with apply the mic runs on them (per mic;
+// set_thresholds() restores a stored soundcheck, clear_calibration()
+// returns to the policy's). The sampler is a fixed histogram per mic and
+// statistic (0.1 dB bins, D over [-60, +20) dB, A' over [-100, +20) dB;
+// 2000 uint32 counts, 8 KB per mic, allocated by the constructor): O(1) per
+// block, exact to the bin width for any quantile, the same on every
+// platform, and no random source - a reservoir would need one and an O(n)
+// selection, a streaming quantile (P^2) has no error bound on the bimodal
+// windows a cold start produces. Applied thresholds re-arm LOST (an ok
+// tick under them first) and survive reset(), like the cap.
+//
 // THE CANCELLER MUST HAVE THE SHADOW. Without it D is 1 (0 dB) and the
 // verdict can never declare. afc_chain::set_guard() static_asserts that the
 // canceller has uncertainty_ratio() and shadow_residual_ratio(), and
@@ -117,21 +140,28 @@
 //     rule in 36 runs. With the backing track every run declares (median
 //     1.77 to 2.07 s); without it none declares in 20 s - at the arming
 //     gain the canceller sees no excitation - and every run leaves ARMING
-//     through the cap at 10 s. At exact_msg_db + 3 / + 6: 0 howl blocks in
+//     through the cap at 10.00 s; with no cap set, all 18 such runs stay in
+//     ARMING (30 dB down, `unprotected` from 10.00 s) for the whole 20 s,
+//     0 howl blocks either way. At exact_msg_db + 3 / + 6: 0 howl blocks in
 //     24 runs; at the limit + 6: 0 guarded, against 575 blocks in 3 of 6
 //     unguarded voiced+aux runs.
 //   * Walks (S2a) at exact_msg_db - 6: 3 of 12 ducked (LOST, 0.36 s after
 //     the change); release (ramp start) - misalignment-oracle reconvergence
 //     median 1.59 s, minimum 1.38 s, 0 early. At the limit - 6 no walk
 //     ducked (D's pre-walk median -8.46 dB; the verdict lost for at most
-//     0.22 s, under trip_hold_s) and none howled.
+//     0.22 s, under trip_hold_s) and none howled. With the soundcheck
+//     calibration applied (30 s from reset, D median + 4 dB, A' median
+//     + 3 dB) 12 of 12 walks at the limit - 6 ducked (0.31 s after the
+//     walk), released 1.74 s (median; minimum 1.63) after the
+//     misalignment oracle reconverged, 0 early, 0 howl blocks; on stable
+//     material the calibrated guard ducked 0 times in 8 runs.
 //   * Above the canceller's limit (+6, rehearsal -> hall): 0 howl blocks
 //     guarded (5 strikes in 3 runs, no latch), 1203 unguarded.
 //   * F -> 2F (S2b): every run ducks; the timer re-arm comes at 5.00 s
-//     (10.01 s after a strike); 0 howl blocks; but the edge rule does NOT
-//     stop a duck / open cycle there: the verdict reads ok again after the
-//     re-arm, which re-arms LOST (16 LOST-ducks after a re-arm in 6 of 8
-//     runs). An open question for the policy.
+//     (10.01 s after a strike); 0 howl blocks. LOST-ducks after the re-arm:
+//     0 in 8 runs with the held-ok rule (16 in 6 of 8 when one ok tick
+//     re-armed LOST). A guard that releases on the walk path (cabin: the
+//     verdict held ok while ducked) still cycles: 7 LOST-ducks in 2 runs.
 //   * A 20 s gap at digital zero: A' plateaus at -15.21 / -15.30 dB (not
 //     ~0 dB), so restart_a_db (-1) never fires on silence; LOST ducks in the
 //     gap and the re-arm opens again before the singer returns; 0 howl.
@@ -144,13 +174,18 @@
 //     ceiling.
 //   * Dattorro (wet 0.5) in the reverb slot: with the bus stage the voice
 //     0.5 s after a trip is 19.40 dB lower than without it.
-//   * Cost per block and mic: 2246 ns float, 3180 ns double - 0.60 / 0.88 %
-//     of one canceller's process_block.
-// The policy defaults are the design note's; this PR's tables moved none
-// of them (docs/howl-guard.md says what each row could and could not test).
+//   * Cost per block and mic: 2180 ns float, 3292 ns double - 0.57 / 0.84 %
+//     of one canceller's process_block (PR B's run: 2246 / 3180 ns).
+// The policy defaults are the design note's; the measured tables moved
+// none of them. The soundcheck margins (cal_d_margin_db 4, cal_a_margin_db
+// 3) are this library's measurement: the smallest D margin with no duck on
+// stable material over 180 sweep runs was 3 dB (2 dB: 3 runs ducked), and
+// A' + 1 dB already ducked none; each carries headroom above that
+// (docs/howl-guard.md says what each row could and could not test).
 //
 // Real-time contract (as fd_kalman.h): the constructor validates, may throw
-// std::invalid_argument, and allocates (M detectors, M x block_size gains).
+// std::invalid_argument, and allocates (M detectors, M x block_size gains,
+// the M soundcheck histograms).
 // Every other entry point is noexcept and allocation-free; set_policy()
 // clamps and never changes M, the block size or the detector's bands. The
 // policy is double (host-facing configuration, converted once); no double
@@ -164,6 +199,7 @@
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
@@ -181,24 +217,47 @@ namespace tap::mu {
     /// docs/howl-guard.md records what this library's tests measured with
     /// them.
     struct guard_policy {
-        double                d_db             = -1.235;  ///< verdict ok needs D below this (dB)
-        double                a_db             = -23.842; ///< ... and A' below this (dB)
-        double                trip_hold_s      = 0.3;     ///< LOST: verdict not-ok this long after an ok
-        double                release_hold_s   = 1.5;     ///< declarations and walk releases: ok held this long
-        double                quiet_s          = 1.0;     ///< no detector verdict this long = quiet
-        double                arming_duck_db   = 30.0;    ///< ARMING's gain is -this (and at most cap_db)
-        double                arming_timeout_s = 10.0;    ///< ARMING without a declaration this long: unprotected
-        double                duck_db          = 20.0;    ///< DUCKED sits this far under the restore target
-        double                attack_ms        = 5.0;     ///< every gain decrease ramps over this
-        double                release_ramp_ms  = 200.0;   ///< every gain increase ramps over this
-        double                rearm_timeout_s  = 5.0;     ///< DUCKED re-arms after this x 2^strikes (and quiet)
-        double                probation_s      = 10.0;    ///< a trip this soon after entering OPEN is a strike
-        double                strike_db        = 3.0;     ///< each strike lowers the restore level by this
-        size_t                max_strikes      = 3;       ///< this many strikes (outside ARMING) latch
-        double                strike_decay_s   = 60.0;    ///< one strike decays per this long in OPEN without a trip
-        double                attrib_db        = 6.0;     ///< attribution: mics within this of the loudest at the peak
-        double                restart_a_db     = -1.0;    ///< A' at or above this: the canceller restarted -> ARMING
-        std::optional<double> cap_db; ///< the host's ceiling (dry MSG - 6 dB, relative); none = unset
+        double d_db             = -1.235;  ///< verdict ok needs D below this (dB)
+        double a_db             = -23.842; ///< ... and A' below this (dB)
+        double trip_hold_s      = 0.3;     ///< LOST: verdict not-ok this long after an ok
+        double release_hold_s   = 1.5;     ///< declarations and walk releases: ok held this long
+        double quiet_s          = 1.0;     ///< no detector verdict this long = quiet
+        double arming_duck_db   = 30.0;    ///< ARMING's gain is -this (and at most cap_db)
+        double arming_timeout_s = 10.0;    ///< ARMING without a declaration this long: unprotected
+        double duck_db          = 20.0;    ///< DUCKED sits this far under the restore target
+        double attack_ms        = 5.0;     ///< every gain decrease ramps over this
+        double release_ramp_ms  = 200.0;   ///< every gain increase ramps over this
+        double rearm_timeout_s  = 5.0;     ///< DUCKED re-arms after this x 2^strikes (and quiet)
+        double probation_s      = 10.0;    ///< a trip this soon after entering OPEN is a strike
+        double strike_db        = 3.0;     ///< each strike lowers the restore level by this
+        size_t max_strikes      = 3;       ///< this many strikes (outside ARMING) latch
+        double strike_decay_s   = 60.0;    ///< one strike decays per this long in OPEN without a trip
+        double attrib_db        = 6.0;     ///< attribution: mics within this of the loudest at the peak
+        double restart_a_db     = -1.0;    ///< A' at or above this: the canceller restarted -> ARMING
+        double calibrate_s      = 30.0;    ///< the soundcheck sampler's window (calibrate_begin())
+        double cal_d_margin_db  = 4.0;     ///< suggested d_db = D's window median + this (measured)
+        double cal_a_margin_db  = 3.0;     ///< suggested a_db = the A' window median + this (measured)
+        /// The host's ceiling (dry MSG - 6 dB, relative); none = unset.
+        /// Mandatory for opening without a declaration (see ARMING).
+        std::optional<double> cap_db;
+    };
+
+    /// One mic's soundcheck calibration (howl_guard::calibrate_end()): the
+    /// distributions of D and A' over the sampled window, from a fixed
+    /// histogram (0.1 dB bins; D over [-60, +20) dB, A' over [-100, +20) dB;
+    /// values outside are clamped into the end bins), and the thresholds
+    /// they suggest.
+    struct guard_calibration {
+        size_t blocks      = 0;   ///< blocks sampled (0: nothing to suggest)
+        double d_median_db = 0.0; ///< D's median over the window, dB (bin centre)
+        double d_p95_db    = 0.0; ///< D's 95th percentile
+        double d_max_db    = 0.0; ///< D's highest occupied bin
+        double a_median_db = 0.0; ///< the A' median
+        double a_p95_db    = 0.0;
+        double a_max_db    = 0.0;
+        double d_db        = 0.0;   ///< suggested: d_median_db + cal_d_margin_db
+        double a_db        = 0.0;   ///< suggested: a_median_db + cal_a_margin_db
+        bool   applied     = false; ///< the mic runs on d_db / a_db
     };
 
     /// Per-mic gain policy over M canceller residuals. See the file comment.
@@ -251,6 +310,8 @@ namespace tap::mu {
             m_mics.resize(cfg.microphones);
             m_gain.resize(cfg.microphones * cfg.block_size);
             m_bus_gain.resize(cfg.block_size);
+            m_hist.resize(cfg.microphones * k_hist_bins);
+            m_cal.resize(cfg.microphones);
             m_policy = clamped(cfg.policy, guard_policy{});
             derive();
             reset();
@@ -296,11 +357,19 @@ namespace tap::mu {
             const Sample g  = arming_db();
             const Sample gl = db_to_lin(g);
             for (auto& s : m_mics) {
-                s       = mic_state{};
-                s.cur   = g;
-                s.tgt   = g;
-                s.tgt_l = gl;
-                s.since = m_quiet_ticks; // quiet from the start
+                // The verdict thresholds are deployment configuration, as the
+                // policy and the cap: reset() keeps a calibration.
+                const Sample d_thr   = s.d_thr;
+                const Sample a_thr   = s.a_thr;
+                const bool   own_thr = s.own_thr;
+                s                    = mic_state{};
+                s.d_thr              = d_thr;
+                s.a_thr              = a_thr;
+                s.own_thr            = own_thr;
+                s.cur                = g;
+                s.tgt                = g;
+                s.tgt_l              = gl;
+                s.since              = m_quiet_ticks; // quiet from the start
             }
             std::fill(m_gain.begin(), m_gain.end(), gl);
             std::fill(m_bus_gain.begin(), m_bus_gain.end(), Sample(1));
@@ -329,6 +398,100 @@ namespace tap::mu {
             }
         }
 
+        // ------------------------------------------- soundcheck calibration
+
+        /// Start the soundcheck sampler: every mic's histograms cleared; from
+        /// the next update() on, each mic's D and A' are sampled once per
+        /// block for calibrate_s (or until calibrate_end()). The guard runs
+        /// on its current thresholds meanwhile.
+        void calibrate_begin() noexcept {
+            std::fill(m_hist.begin(), m_hist.end(), std::uint32_t{0});
+            for (auto& c : m_cal) {
+                c = guard_calibration{};
+            }
+            m_cal_left = ticks(m_policy.calibrate_s);
+            m_sampling = true;
+        }
+
+        /// Whether the sampler is running (calibrate_begin(), and fewer than
+        /// calibrate_s of blocks sampled).
+        bool calibrating() const noexcept { return m_sampling; }
+
+        /// Stop the sampler and compute each mic's calibration from what it
+        /// sampled: medians, 95th percentiles, maxima, and the suggested
+        /// thresholds (median + cal_*_margin_db, clamped as set_policy()
+        /// clamps). With `apply`, every mic that sampled at least one block
+        /// runs on its suggested thresholds from the next update() (see
+        /// set_thresholds()). Returns one entry per mic (valid until the next
+        /// calibrate_begin()).
+        std::span<const guard_calibration> calibrate_end(bool apply = false) noexcept {
+            m_sampling = false;
+            for (size_t m = 0; m < m_mics.size(); ++m) {
+                guard_calibration& c  = m_cal[m];
+                const auto         hb = m_hist.begin() + static_cast<std::ptrdiff_t>(m * k_hist_bins);
+                const auto         he = hb + static_cast<std::ptrdiff_t>(k_d_bins);
+                c.blocks              = 0;
+                for (auto it = hb; it != he; ++it) {
+                    c.blocks += *it;
+                }
+                c.applied = false;
+                if (c.blocks == 0) {
+                    c.d_db = static_cast<double>(m_mics[m].d_thr);
+                    c.a_db = static_cast<double>(m_mics[m].a_thr);
+                    continue;
+                }
+                const auto ae = he + static_cast<std::ptrdiff_t>(k_a_bins);
+                c.d_median_db = quantile(hb, he, c.blocks, 0.5, k_d_lo);
+                c.d_p95_db    = quantile(hb, he, c.blocks, 0.95, k_d_lo);
+                c.d_max_db    = quantile(hb, he, c.blocks, 1.0, k_d_lo);
+                c.a_median_db = quantile(he, ae, c.blocks, 0.5, k_a_lo);
+                c.a_p95_db    = quantile(he, ae, c.blocks, 0.95, k_a_lo);
+                c.a_max_db    = quantile(he, ae, c.blocks, 1.0, k_a_lo);
+                c.d_db        = std::clamp(c.d_median_db + m_policy.cal_d_margin_db, -120.0, 120.0);
+                c.a_db        = std::clamp(c.a_median_db + m_policy.cal_a_margin_db, -300.0, 120.0);
+                if (apply) {
+                    set_thresholds(m, c.d_db, c.a_db);
+                    c.applied = true;
+                }
+            }
+            return {m_cal.data(), m_cal.size()};
+        }
+
+        /// The last calibrate_end()'s entry for mic `mic`.
+        const guard_calibration& calibration(size_t mic) const noexcept { return m_cal[mic]; }
+
+        /// Mic `mic` runs on its own verdict thresholds (dB; clamped as
+        /// set_policy() clamps; a non-finite value keeps the current one)
+        /// instead of the policy's d_db / a_db - a soundcheck the host
+        /// stored, or calibrate_end(true). The verdict trigger then needs an
+        /// ok tick under the new thresholds before it can fire (a fresh
+        /// edge). set_policy() leaves these alone; clear_calibration()
+        /// returns every mic to the policy's.
+        void set_thresholds(size_t mic, double d_db, double a_db) noexcept {
+            mic_state& s = m_mics[mic];
+            if (std::isfinite(d_db)) {
+                s.d_thr = static_cast<Sample>(std::clamp(d_db, -120.0, 120.0));
+            }
+            if (std::isfinite(a_db)) {
+                s.a_thr = static_cast<Sample>(std::clamp(a_db, -300.0, 120.0));
+            }
+            s.own_thr = true;
+            s.ok_seen = false;
+        }
+
+        /// Every mic back on the policy's d_db / a_db.
+        void clear_calibration() noexcept {
+            for (auto& s : m_mics) {
+                s.own_thr = false;
+                s.ok_seen = false;
+            }
+            derive();
+        }
+
+        /// The verdict thresholds mic `mic` runs on, dB.
+        Sample threshold_d_db(size_t mic) const noexcept { return m_mics[mic].d_thr; }
+        Sample threshold_a_db(size_t mic) const noexcept { return m_mics[mic].a_thr; }
+
         // ------------------------------------------------ the block's work
 
         /// Analyse mic `mic`'s residual (block_size() samples) with its
@@ -348,10 +511,13 @@ namespace tap::mu {
         void update() noexcept {
             // Triggers per mic.
             bool any_trip = false;
+            if (m_sampling) {
+                sample();
+            }
             for (size_t m = 0; m < m_mics.size(); ++m) {
                 mic_state&                   s = m_mics[m];
                 const howl_detector<Sample>& d = m_detectors[m];
-                s.ok                           = s.d_db < m_d_db && s.a_db < m_a_db;
+                s.ok                           = s.d_db < s.d_thr && s.a_db < s.a_thr;
                 const howl_trigger tr          = d.trigger();
                 const bool         growth      = tr == howl_trigger::growth;
                 bool               catch_now   = tr == howl_trigger::ceiling || tr == howl_trigger::level;
@@ -441,6 +607,13 @@ namespace tap::mu {
 
       private:
         static constexpr size_t k_big = std::numeric_limits<size_t>::max() / 4;
+        // The soundcheck histograms (guard_calibration): 0.1 dB bins.
+        static constexpr double k_bin_db    = 0.1;
+        static constexpr double k_d_lo      = -60.0;
+        static constexpr double k_a_lo      = -100.0;
+        static constexpr size_t k_d_bins    = 800;  ///< D over [-60, +20) dB
+        static constexpr size_t k_a_bins    = 1200; ///< A' over [-100, +20) dB
+        static constexpr size_t k_hist_bins = k_d_bins + k_a_bins;
 
         struct mic_state {
             guard_state state = guard_state::arming;
@@ -452,9 +625,12 @@ namespace tap::mu {
             Sample ratio = Sample(1); ///< 10^(rate / 20)
             size_t left  = 0;         ///< ramp samples left
             // verdict
-            Sample a_db = Sample(0);
-            Sample d_db = Sample(0);
-            bool   ok   = false;
+            Sample a_db    = Sample(0);
+            Sample d_db    = Sample(0);
+            Sample d_thr   = Sample(0); ///< the verdict's D threshold (the policy's unless own_thr)
+            Sample a_thr   = Sample(0);
+            bool   own_thr = false; ///< set_thresholds() / calibrate_end(true)
+            bool   ok      = false;
             // timers, ticks
             size_t in_state  = 0;
             size_t ok_run    = 0;
@@ -464,7 +640,8 @@ namespace tap::mu {
             size_t probation = 0; ///< ticks of probation left
             size_t decay     = 0; ///< OPEN ticks without a trip toward a strike decay
             // flags
-            bool ok_seen     = false; ///< an ok tick since the last re-arm
+            bool ok_seen     = false; ///< LOST is armed: an ok tick since the last duck (ok HELD after a re-arm)
+            bool rearm_hold  = false; ///< a timer re-arm: ok_seen waits for ok held release_hold_s
             bool fell        = false; ///< A' below a_db since entering ARMING (a restart needs it)
             bool declared    = false;
             bool latched     = false;
@@ -520,6 +697,9 @@ namespace tap::mu {
             q.strike_decay_s   = pick(p.strike_decay_s, prev.strike_decay_s, 0.0, big);
             q.attrib_db        = pick(p.attrib_db, prev.attrib_db, 0.0, 120.0);
             q.restart_a_db     = pick(p.restart_a_db, prev.restart_a_db, -300.0, 120.0);
+            q.calibrate_s      = pick(p.calibrate_s, prev.calibrate_s, 0.0, big);
+            q.cal_d_margin_db  = pick(p.cal_d_margin_db, prev.cal_d_margin_db, -120.0, 120.0);
+            q.cal_a_margin_db  = pick(p.cal_a_margin_db, prev.cal_a_margin_db, -120.0, 120.0);
             if (p.cap_db.has_value()) {
                 const double old = prev.cap_db.value_or(0.0);
                 q.cap_db         = pick(*p.cap_db, old, -120.0, 0.0);
@@ -558,6 +738,55 @@ namespace tap::mu {
             m_has_cap             = p.cap_db.has_value();
             m_cap                 = static_cast<Sample>(p.cap_db.value_or(0.0));
             m_arming              = static_cast<Sample>(-p.arming_duck_db);
+            for (auto& s : m_mics) {
+                if (!s.own_thr) {
+                    s.d_thr = m_d_db;
+                    s.a_thr = m_a_db;
+                }
+            }
+        }
+
+        /// One block of the soundcheck sampler: each mic's D and A' into
+        /// its histograms (non-finite blocks skipped).
+        void sample() noexcept {
+            constexpr auto inv = static_cast<Sample>(1.0 / k_bin_db);
+            const auto     bin = [](Sample db, double lo, size_t bins) noexcept {
+                const Sample x = (db - static_cast<Sample>(lo)) * inv;
+                const Sample t = std::clamp(x, Sample(0), static_cast<Sample>(bins - 1));
+                return static_cast<size_t>(t);
+            };
+            for (size_t m = 0; m < m_mics.size(); ++m) {
+                const mic_state& s = m_mics[m];
+                if (!std::isfinite(s.d_db) || !std::isfinite(s.a_db)) {
+                    continue;
+                }
+                std::uint32_t* h = &m_hist[m * k_hist_bins];
+                std::uint32_t& d = h[bin(s.d_db, k_d_lo, k_d_bins)];
+                std::uint32_t& a = h[k_d_bins + bin(s.a_db, k_a_lo, k_a_bins)];
+                d                = d < std::numeric_limits<std::uint32_t>::max() ? d + 1 : d;
+                a                = a < std::numeric_limits<std::uint32_t>::max() ? a + 1 : a;
+            }
+            if (--m_cal_left == 0) {
+                m_sampling = false;
+            }
+        }
+
+        /// The q-quantile of a histogram [b, e) holding n counts (the bin
+        /// centre of the first bin whose cumulative count reaches
+        /// ceil(q n); q = 1: the highest occupied bin), dB.
+        template <typename It>
+        static double quantile(It b, It e, size_t n, double q, double lo) noexcept {
+            const double want   = std::ceil(q * static_cast<double>(n));
+            const size_t target = want < 1.0 ? size_t{1} : static_cast<size_t>(want);
+            size_t       cum    = 0;
+            size_t       i      = 0;
+            for (auto it = b; it != e; ++it, ++i) {
+                cum += *it;
+                if (cum >= target) {
+                    break;
+                }
+            }
+            return lo + (static_cast<double>(i) + 0.5) * k_bin_db;
         }
 
         static Sample db_to_lin(Sample db) noexcept { return std::pow(Sample(10), db / Sample(20)); }
@@ -615,13 +844,14 @@ namespace tap::mu {
             }
         }
 
-        /// Without a cap, a mic running on one before a declaration re-arms.
+        /// Without a cap, a mic running on one before a declaration re-arms
+        /// (a latched one too: its floor was the cap).
         void on_cap_change() noexcept {
             if (m_has_cap) {
                 return;
             }
             for (auto& s : m_mics) {
-                if (!s.declared && !s.latched && s.state != guard_state::arming) {
+                if (!s.declared && s.state != guard_state::arming) {
                     enter_arming(s);
                 }
             }
@@ -631,12 +861,13 @@ namespace tap::mu {
         /// timeout are forgotten; strikes are kept.
         void enter_arming(mic_state& s) noexcept {
             enter(s, guard_state::arming);
-            s.fell      = false;
-            s.latched   = false;
-            s.declared  = false;
-            s.ok_seen   = false;
-            s.timed_out = false;
-            s.ok_run    = 0;
+            s.fell       = false;
+            s.latched    = false;
+            s.declared   = false;
+            s.ok_seen    = false;
+            s.rearm_hold = false;
+            s.timed_out  = false;
+            s.ok_run     = 0;
         }
 
         /// A strike: lowers the level, doubles the re-arm timeout; outside
@@ -711,8 +942,13 @@ namespace tap::mu {
         void step(mic_state& s) noexcept {
             s.ok_run    = s.ok ? std::min(s.ok_run + 1, k_big) : 0;
             s.notok_run = s.ok ? 0 : std::min(s.notok_run + 1, k_big);
-            if (s.ok) {
-                s.ok_seen = true;
+            // LOST arms on an ok tick - after a timer re-arm, only once ok
+            // has been held release_hold_s (the verdict reads ok for a while
+            // at the re-armed gain under a louder coupling: arming on the
+            // first ok tick pumped duck / open).
+            if (s.ok && (!s.rearm_hold || s.ok_run >= m_release_ticks)) {
+                s.ok_seen    = true;
+                s.rearm_hold = false;
             }
             s.in_state       = std::min(s.in_state + 1, k_big);
             const bool quiet = s.since >= m_quiet_ticks;
@@ -797,8 +1033,9 @@ namespace tap::mu {
                         enter(s, guard_state::releasing);
                     }
                     else if (quiet && s.hold >= rearm_ticks(s)) {
-                        s.ok_seen   = false;
-                        s.notok_run = 0;
+                        s.ok_seen    = false;
+                        s.rearm_hold = true;
+                        s.notok_run  = 0;
                         ++s.rearms;
                         enter(s, guard_state::releasing);
                     }
@@ -910,8 +1147,12 @@ namespace tap::mu {
         std::vector<mic_state>                 m_mics;
         std::vector<Sample>                    m_gain;     ///< M x block, linear
         std::vector<Sample>                    m_bus_gain; ///< block, linear
+        std::vector<std::uint32_t>             m_hist;     ///< M x (D bins, A' bins): the soundcheck sampler
+        std::vector<guard_calibration>         m_cal;      ///< M: the last calibrate_end()
         bus_stage_type                         m_bus;
         guard_policy                           m_policy;
+        size_t                                 m_cal_left = 0; ///< sampler ticks left
+        bool                                   m_sampling = false;
 
         // derived from the policy
         Sample m_d_db            = Sample(0);

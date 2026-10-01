@@ -393,19 +393,31 @@ carries the measured numbers; this is the map:
    at the limit − 6; cost 0.60 / 0.88 % of a canceller per mic (float /
    double). The `MUTAP_SLOW` sweep (4656.5 s on 3 threads): 0 howl blocks in
    620 guarded cold starts; 0 ducks off a loop-born burst in 180 audible-cost
-   runs. Open, with the numbers in the doc:
-   - **F → 2F still cycles duck / open.** The timer re-arm and the edge
-     rule work as specified, but the verdict reads ok again after the
-     re-arm, which re-arms LOST: 16 LOST-ducks after a re-arm in 6 of 8
-     gated runs, 47 in 20 of 30 sweep runs (0 howl blocks). A policy
-     question: a LOST in probation as a strike, or a re-arm that needs ok
-     held.
-   - **The verdict thresholds are one loop's calibration.** At the
-     canceller's limit − 6 D's pre-walk median is −8.46 dB, the verdict is
-     lost for at most 0.22 s after a walk, and no walk ducked (0 of 30 in
-     the sweep); at exact_msg_db − 6 (the release experiment's point) 6 of
-     30 did, releasing a median 1.60 s (minimum 1.38) after the
-     misalignment oracle, 0 early.
+   runs. PR C (follow-up, Tim's decisions of 2026-10-01; 16 gated rows,
+   777.37 s on 4 threads): (1) after a
+   timer re-arm LOST arms only once the verdict has held ok for
+   `release_hold_s` — LOST-ducks after a re-arm under F → 2F fell from 16
+   in 6 of 8 gated runs to 0, and from 47 in 20 of 30 sweep runs to 1, with
+   the walk and cold-start rows unchanged to the last digit; (2) a
+   soundcheck sampler (`calibrate_begin()` / `calibrate_end(apply)`, a
+   fixed 0.1 dB histogram per mic, 8 KB) sets per-mic `d_db` / `a_db` =
+   the 30 s medians + `cal_d_margin_db` (4) / `cal_a_margin_db` (3), the
+   margins measured with shadow guards over 180 stable and 30 walk runs
+   (D + 3 dB was the smallest with 0 stable ducks; + 2 dB ducked in 3):
+   applied, 0 ducks in 180 stable runs and 30 of 30 walks at the limit − 6
+   seen, released a median 1.74 s (minimum 1.63) after the misalignment
+   oracle, where the factory thresholds saw 0 of 30; (3) `cap_db` is
+   mandatory for opening without a declaration (already so in PR B's
+   ARMING; PR C also re-arms a latched undeclared mic when the cap is
+   removed) — without a cap 90 of 90 track-off sweep runs stay in ARMING
+   for all 20 s. Open, with the numbers in the doc:
+   - **F → 2F still cycles where the guard releases on the walk path**
+     (cabin: the verdict holds ok while ducked, then is lost at full gain;
+     7 LOST-ducks in 2 gated runs, unchanged by the re-arm hold). A LOST
+     in probation as a strike would reach it; not measured.
+   - **The soundcheck margins are one loop's and one song's.** Measured
+     in this loop with the backing track; a soundcheck on another song or
+     gain, or without the track, was not measured.
    - **A′ does not return to ~0 dB in silence**: in a 20 s gap it peaks
      at −15.21 / −15.30 dB (medians, cabin / mt5; maximum −14.96), so
      `restart_a_db` (−1, a field this PR added) fires only on a
