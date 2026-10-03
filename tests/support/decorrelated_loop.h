@@ -99,6 +99,40 @@ namespace mutap_test {
         tap::mu::allpass_hilbert<double> m_pair;
     };
 
+    /// A forward-path stage after the decorrelator: the chain's reverb slot
+    /// (support for test_reverb_stage*.cpp). Non-owning and type-erased, like
+    /// tap::mu::afc_stage_ref, plus a reset: every loop built with one calls
+    /// reset() in its constructor, so each bisection probe (a fresh loop with
+    /// a zero error history) also starts the stage from silence. The caller
+    /// owns the object and keeps it alive while any loop config refers to it;
+    /// one object per thread.
+    template <typename Sample>
+    class forward_stage {
+      public:
+        forward_stage() = default;
+
+        /// Any object with process_block(in, out, n) (in != out) and reset().
+        template <typename Stage>
+        static forward_stage of(Stage* stage) {
+            forward_stage f;
+            f.m_object  = stage;
+            f.m_process = [](void* o, const Sample* in, Sample* out, size_t n) {
+                static_cast<Stage*>(o)->process_block(in, out, n);
+            };
+            f.m_reset = [](void* o) { static_cast<Stage*>(o)->reset(); };
+            return f;
+        }
+
+        explicit operator bool() const { return m_process != nullptr; }
+        void     process_block(const Sample* in, Sample* out, size_t n) const { m_process(m_object, in, out, n); }
+        void     reset() const { m_reset(m_object); }
+
+      private:
+        void* m_object                                           = nullptr;
+        void (*m_process)(void*, const Sample*, Sample*, size_t) = nullptr;
+        void (*m_reset)(void*)                                   = nullptr;
+    };
+
     /// Loop with a decorrelator and an auxiliary speaker feed. Same contract
     /// as closed_loop_sim: step() advances one block and returns the RMS of
     /// the loop output (+inf once the loop has gone non-finite).
@@ -123,6 +157,10 @@ namespace mutap_test {
             /// short buffer loops. Null for none.
             const std::vector<Sample>* aux      = nullptr;
             double                     aux_gain = 1.0;
+
+            /// Run on each block of the forward signal after the decorrelator
+            /// and before the gain (the chain's reverb slot); empty for none.
+            forward_stage<Sample> stage;
         };
 
         explicit decorrelated_loop(config cfg)
@@ -132,7 +170,9 @@ namespace mutap_test {
             , m_u(m_cfg.block_size)
             , m_y(m_cfg.block_size)
             , m_e(m_cfg.block_size)
-            , m_aux(m_cfg.block_size, Sample(0)) {
+            , m_aux(m_cfg.block_size, Sample(0))
+            , m_fwd(m_cfg.block_size, Sample(0))
+            , m_staged(m_cfg.block_size, Sample(0)) {
             if (m_cfg.feedback_path.empty()) {
                 throw std::invalid_argument("decorrelated_loop: empty feedback path");
             }
@@ -145,6 +185,9 @@ namespace mutap_test {
                 throw std::invalid_argument("decorrelated_loop: forward_delay too short for this mode");
             }
             set_forward_gain_db(m_cfg.forward_gain_db);
+            if (m_cfg.stage) {
+                m_cfg.stage.reset();
+            }
         }
 
         void set_forward_gain_db(double k_db) {
@@ -162,12 +205,22 @@ namespace mutap_test {
             const size_t lf  = m_cfg.feedback_path.size();
             const double lim = m_cfg.speaker_limit;
 
+            // The forward signal is rounded to Sample before the gain, as
+            // the loudspeaker path of a Sample-typed chain would be. Every
+            // sample it reads is at least one block old (forward_delay >=
+            // block_size), so the whole block exists before the stage runs.
             for (size_t i = 0; i < b; ++i) {
-                const long long t = m_t + static_cast<long long>(i);
-                // The forward signal is rounded to Sample before the gain,
-                // as the loudspeaker path of a Sample-typed chain would be.
-                const auto fwd = static_cast<Sample>(forward_sample(t));
-                double     u   = m_gain * static_cast<double>(fwd);
+                m_fwd[i] = static_cast<Sample>(forward_sample(m_t + static_cast<long long>(i)));
+            }
+            const Sample* fwd_block = m_fwd.data();
+            if (m_cfg.stage) {
+                m_cfg.stage.process_block(m_fwd.data(), m_staged.data(), b);
+                fwd_block = m_staged.data();
+            }
+            for (size_t i = 0; i < b; ++i) {
+                const long long t   = m_t + static_cast<long long>(i);
+                const Sample    fwd = fwd_block[i];
+                double          u   = m_gain * static_cast<double>(fwd);
                 if (m_cfg.aux != nullptr && !m_cfg.aux->empty()) {
                     const double a =
                         m_cfg.aux_gain * static_cast<double>((*m_cfg.aux)[static_cast<size_t>(t) % m_cfg.aux->size()]);
@@ -222,6 +275,10 @@ namespace mutap_test {
         const std::vector<Sample>& mic_block() const { return m_y; }
         /// The aux feed's contribution to the last speaker block (zeros without one).
         const std::vector<Sample>& aux_block() const { return m_aux; }
+        /// The forward signal of the last speaker block before the gain: after
+        /// the decorrelator and the stage (the chain's output, PROTOCOL.md
+        /// §7.3's "chain output").
+        const std::vector<Sample>& forward_block() const { return m_cfg.stage ? m_staged : m_fwd; }
 
       private:
         static constexpr size_t k_history      = 8192; ///< power of two; >> forward_delay
@@ -271,7 +328,9 @@ namespace mutap_test {
         std::vector<Sample> m_u;
         std::vector<Sample> m_y;
         std::vector<Sample> m_e;
-        std::vector<Sample> m_aux; ///< the aux feed as played, this block
+        std::vector<Sample> m_aux;    ///< the aux feed as played, this block
+        std::vector<Sample> m_fwd;    ///< the forward signal after the decorrelator, this block
+        std::vector<Sample> m_staged; ///< ... and after the stage
         iir_ssb_shifter     m_shifter;
     };
 

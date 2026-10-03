@@ -18,5 +18,8 @@ endif()
 if(MUTAP_BUILD_KARAOKE_DUMP)
     add_executable(karaoke_ramp_dump karaoke_ramp_dump.cpp)
     target_link_libraries(karaoke_ramp_dump PRIVATE MuTap::MuTap mutap_warnings)
-    target_include_directories(karaoke_ramp_dump PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    # tests/ for the suites' loop machinery; third_party/faust for the
+    # vendored Dattorro plates its --reverb rows put behind the canceller.
+    target_include_directories(karaoke_ramp_dump PRIVATE ${CMAKE_SOURCE_DIR}/tests
+                                                         ${CMAKE_SOURCE_DIR}/third_party/faust)
 endif()

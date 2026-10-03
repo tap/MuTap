@@ -29,11 +29,26 @@
 // mic): the criterion's reference ramp. `--ir-only` writes PREFIX.ir.wav and
 // exits (the driver uses it at 4096 taps for the room's T30).
 //
+// A REVERB BEHIND THE CANCELLER (docs/reverb-afc.md; tests/support/
+// reverb_rig.h, the reverb suites' forward path): `--reverb shipped|paper`
+// puts a vendored Dattorro plate (FAUST, third_party/faust/) in the chain's
+// reverb slot through tap::mu::reverb_mix, at `--wet`, `--decay`,
+// `--damping` and `--return L|M` (L or (L + R) / 2). With a reverb, or with
+// `--lib-shift`, the shift (`--shift-hz`) runs inside that stage on the
+// library's frequency_shifter instead of the loop's exact-ramp oscillator:
+// `--topology bus` shifts the whole bus before the reverb (the chain's slot
+// order: the tail recirculates through the shifter), `--topology dry` uses
+// tap::mu::shifted_dry_mix (only the dry path is shifted; the reverb is fed
+// the unshifted bus). `--reverb-ir-only` writes the plate's impulse response
+// (L, R) to PREFIX.reverb.wav and exits (the driver's --chain-rt60).
+//
 // Outputs, with `--out PREFIX`:
-//   PREFIX.wav      float32, 48 kHz, 3 channels: c (the canceller output),
-//                   the voice stem (the near end v as it enters the mic) and
+//   PREFIX.wav      float32, 48 kHz, 4 channels: c (the canceller output),
+//                   the voice stem (the near end v as it enters the mic),
 //                   the track stem (the aux feed as the loudspeaker plays it;
-//                   silence when there is none);
+//                   silence when there is none) and the chain output (the
+//                   forward signal after the shift and the reverb, before the
+//                   gain: PROTOCOL.md 7.3's signal for a reverb-only chain);
 //   PREFIX.gain.csv rows "time_s,gain_db", one per block (absolute bus gain);
 //   PREFIX.ir.wav   float32 mono, the band-limited room path in the loop (for
 //                   measure_rir.py's Schroeder T30, the criterion's --rt60);
@@ -56,6 +71,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -67,6 +83,7 @@
 #include "mutap/pem_afc.h"
 #include "support/closed_loop.h"
 #include "support/decorrelated_loop.h"
+#include "support/reverb_rig.h"
 #include "support/rooms.h"
 
 namespace {
@@ -94,8 +111,16 @@ namespace {
         double      rate        = 0.5;
         double      max_over    = 40.0;
         double      tail_s      = 2.0;
-        bool        canceller   = true;  ///< false: the dry open loop (the reference ramp)
-        bool        ir_only     = false; ///< write PREFIX.ir.wav and stop
+        bool        canceller   = true;   ///< false: the dry open loop (the reference ramp)
+        bool        ir_only     = false;  ///< write PREFIX.ir.wav and stop
+        std::string reverb      = "none"; ///< none | shipped | paper
+        double      wet         = 0.30;
+        double      decay       = 0.5;
+        double      damping     = 0.0005;
+        std::string ret         = "L";   ///< L | M ((L + R) / 2)
+        std::string topology    = "bus"; ///< bus | dry (with a shift and a reverb)
+        bool        lib_shift   = false; ///< shift inside the stage, no reverb
+        bool        reverb_ir   = false; ///< write PREFIX.reverb.wav and stop
         std::string out;
     };
 
@@ -105,7 +130,9 @@ namespace {
                      "usage: karaoke_ramp_dump --out PREFIX [--room cabin|studio|rehearsal|hall|mtN]\n"
                      "       [--taps 1024] [--raw] [--delay 480] [--shift-hz 0] [--material held|ar]\n"
                      "       [--aux-db DB] [--seed 2] [--warmup 30] [--start-below 20] [--rate 0.5]\n"
-                     "       [--max-over 40] [--tail 2] [--no-canceller] [--ir-only]\n",
+                     "       [--max-over 40] [--tail 2] [--no-canceller] [--ir-only]\n"
+                     "       [--reverb none|shipped|paper] [--wet 0.3] [--decay 0.5] [--damping 0.0005]\n"
+                     "       [--return L|M] [--topology bus|dry] [--lib-shift] [--reverb-ir-only]\n",
                      msg);
         std::exit(2);
     }
@@ -166,6 +193,30 @@ namespace {
             else if (a == "--ir-only") {
                 o.ir_only = true;
             }
+            else if (a == "--reverb") {
+                o.reverb = next();
+            }
+            else if (a == "--wet") {
+                o.wet = std::stod(next());
+            }
+            else if (a == "--decay") {
+                o.decay = std::stod(next());
+            }
+            else if (a == "--damping") {
+                o.damping = std::stod(next());
+            }
+            else if (a == "--return") {
+                o.ret = next();
+            }
+            else if (a == "--topology") {
+                o.topology = next();
+            }
+            else if (a == "--lib-shift") {
+                o.lib_shift = true;
+            }
+            else if (a == "--reverb-ir-only") {
+                o.reverb_ir = true;
+            }
             else if (a == "--out") {
                 o.out = next();
             }
@@ -178,6 +229,18 @@ namespace {
         }
         if (o.material != "held" && o.material != "ar") {
             usage("--material must be held or ar");
+        }
+        if (o.reverb != "none" && o.reverb != "shipped" && o.reverb != "paper") {
+            usage("--reverb must be none, shipped or paper");
+        }
+        if (o.ret != "L" && o.ret != "M") {
+            usage("--return must be L or M");
+        }
+        if (o.topology != "bus" && o.topology != "dry") {
+            usage("--topology must be bus or dry");
+        }
+        if (o.reverb_ir && o.reverb == "none") {
+            usage("--reverb-ir-only needs --reverb");
         }
         return o;
     }
@@ -263,6 +326,28 @@ namespace {
         return std::fclose(f) == 0;
     }
 
+    /// The reverb suites' forward path for these options (reverb_rig.h).
+    mutap_test::reverb::params rig_params(const options& o) {
+        namespace rv = mutap_test::reverb;
+        rv::params p;
+        p.plate    = (o.reverb == "paper") ? rv::variant::paper : rv::variant::shipped;
+        p.decay    = o.decay;
+        p.damping  = o.damping;
+        p.wet      = o.wet;
+        p.ret      = (o.ret == "M") ? tap::mu::reverb_return::mid : tap::mu::reverb_return::left;
+        p.shift_hz = o.shift_hz;
+        if (o.reverb == "none") {
+            p.topo = rv::topology::shift_only;
+        }
+        else if (o.shift_hz != 0.0) {
+            p.topo = (o.topology == "dry") ? rv::topology::dry_shift : rv::topology::bus_shift;
+        }
+        else {
+            p.topo = rv::topology::reverb;
+        }
+        return p;
+    }
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -283,6 +368,20 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (o.reverb_ir) {
+        const auto                      h = mutap_test::reverb::plate_ir(rig_params(o).plate, o.decay, o.damping);
+        std::vector<std::vector<float>> ch(2);
+        for (size_t i = 0; i < h.l.size(); ++i) {
+            ch[0].push_back(static_cast<float>(h.l[i]));
+            ch[1].push_back(static_cast<float>(h.r[i]));
+        }
+        if (!write_wav(o.out + ".reverb.wav", ch)) {
+            std::fprintf(stderr, "karaoke_ramp_dump: cannot write %s.reverb.wav\n", o.out.c_str());
+            return 1;
+        }
+        return 0;
+    }
+
     const double exact    = mutap_test::exact_msg_db(path, o.delay);
     const double max_f    = mutap_test::theoretical_msg_db(path);
     const double start_db = exact - o.start_below;
@@ -300,11 +399,17 @@ int main(int argc, char** argv) {
     const std::vector<double> aux = mutap_test::white_near_end<double>(120000, o.seed + 777);
 
     decorrelated_loop<double>::config lc;
-    lc.feedback_path   = path;
-    lc.block_size      = k_block;
-    lc.forward_delay   = o.delay;
-    lc.forward_gain_db = start_db;
-    if (o.shift_hz != 0.0) {
+    lc.feedback_path                                = path;
+    lc.block_size                                   = k_block;
+    lc.forward_delay                                = o.delay;
+    lc.forward_gain_db                              = start_db;
+    const bool                               staged = o.reverb != "none" || o.lib_shift;
+    std::unique_ptr<mutap_test::reverb::rig> rig;
+    if (staged) {
+        rig      = std::make_unique<mutap_test::reverb::rig>(rig_params(o));
+        lc.stage = mutap_test::forward_stage<double>::of(rig.get());
+    }
+    else if (o.shift_hz != 0.0) {
         lc.mode     = forward_mode::shift;
         lc.shift_hz = o.shift_hz;
     }
@@ -319,7 +424,7 @@ int main(int argc, char** argv) {
     pc.fdaf.partitions = o.taps / k_block;
     kalman_afc afc(pc);
 
-    std::vector<std::vector<float>> wav(3);
+    std::vector<std::vector<float>> wav(4);
     for (auto& ch : wav) {
         ch.reserve(n);
     }
@@ -342,10 +447,12 @@ int main(int argc, char** argv) {
         const double rms = sim.step(&v[blk * k_block], o.canceller ? &afc : nullptr);
         const auto&  e   = sim.error_block();
         const auto&  a   = sim.aux_block();
+        const auto&  fw  = sim.forward_block();
         for (size_t i = 0; i < k_block; ++i) {
             wav[0].push_back(static_cast<float>(e[i]));
             wav[1].push_back(static_cast<float>(v[blk * k_block + i]));
             wav[2].push_back(static_cast<float>(a[i]));
+            wav[3].push_back(static_cast<float>(fw[i]));
         }
         if (std::isnan(runaway_db) && rms >= 100.0) {
             runaway_db = g;
@@ -367,11 +474,13 @@ int main(int argc, char** argv) {
     std::printf("{\"room\": \"%s\", \"taps\": %zu, \"banded\": %s, \"delay\": %zu, \"shift_hz\": %g, "
                 "\"material\": \"%s\", \"aux_db\": %s, \"seed\": %u, \"canceller\": %s, \"exact_msg_db\": %.4f, "
                 "\"theoretical_msg_db\": %.4f, \"start_db\": %.4f, \"warmup_s\": %g, \"rate_db_per_s\": %g, "
-                "\"runaway_db\": %s, \"runaway_t\": %s, \"seconds\": %.3f}\n",
+                "\"runaway_db\": %s, \"runaway_t\": %s, \"seconds\": %.3f, \"reverb\": \"%s\", \"wet\": %g, "
+                "\"decay\": %g, \"damping\": %g, \"return\": \"%s\", \"topology\": \"%s\", \"staged\": %s}\n",
                 o.room.c_str(), o.taps, o.banded ? "true" : "false", o.delay, o.shift_hz, o.material.c_str(),
                 o.aux ? std::to_string(o.aux_db).c_str() : "null", o.seed, o.canceller ? "true" : "false", exact, max_f,
                 start_db, o.warmup_s, o.rate, std::isnan(runaway_db) ? "null" : std::to_string(runaway_db).c_str(),
                 std::isnan(runaway_t) ? "null" : std::to_string(runaway_t).c_str(),
-                static_cast<double>(blk * k_block) / k_fs);
+                static_cast<double>(blk * k_block) / k_fs, o.reverb.c_str(), o.wet, o.decay, o.damping, o.ret.c_str(),
+                o.topology.c_str(), staged ? "true" : "false");
     return 0;
 }

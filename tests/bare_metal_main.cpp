@@ -54,17 +54,19 @@ int main() {
         "frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:"
         "FrequencyShifterRtContract.*:"
         "howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*:"
-        "howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*";
+        "howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:"
+        "reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is 101 tests (the FFT suites left with the FFT; FftEngineContract, the
+    // is 108 tests (the FFT suites left with the FFT; FftEngineContract, the
     // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump;
     // PortableRandom, the fixtures' variates, when they replaced <random>'s;
     // the frequency shifter's 7 with the shifter; the howl detector's 12
-    // with the detector; the howl guard's 19 with the guard); 30 leaves headroom for
+    // with the detector; the howl guard's 19 with the guard; the reverb
+    // stage's 7 with the stage); 30 leaves headroom for
     // legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {
