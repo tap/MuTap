@@ -24,3 +24,4 @@
 #include "mutap/lpc.h"
 #include "mutap/pem_afc.h"
 #include "mutap/postfilter.h"
+#include "mutap/reverb_stage.h"

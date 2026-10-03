@@ -299,6 +299,14 @@ algorithmically complete. What exists today:
   `howl_detector` on each residual, attached to `afc_chain` with
   `set_guard()`, with a soundcheck sampler that sets each mic's verdict
   thresholds; measured live in [`docs/howl-guard.md`](docs/howl-guard.md).
+- **The reverb stage** — `tap::mu::reverb_mix` and `tap::mu::shifted_dry_mix`
+  ([`include/mutap/reverb_stage.h`](include/mutap/reverb_stage.h)): any
+  mono-in reverb engine in `afc_chain`'s reverb slot as
+  y = (1 − w)·x + w·r, and the topology that frequency-shifts the dry path
+  only so a reverb tail never recirculates through the shifter;
+  header-only, no FFT. The vendored FAUST Dattorro plates measured behind
+  the canceller, with converged probes, in
+  [`docs/reverb-afc.md`](docs/reverb-afc.md).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance

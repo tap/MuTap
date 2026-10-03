@@ -119,6 +119,10 @@ namespace mutap_test::karaoke {
         engine       core     = engine::kalman;
         material     mat      = material::held;
         bool         aux      = false; ///< white aux feed at the singer's level (0 dB)
+        /// After the decorrelator, before the gain: the chain's reverb slot
+        /// (decorrelated_loop.h's forward_stage; caller-owned, one per
+        /// thread). Empty for none.
+        forward_stage<double> stage;
     };
 
     /// How it is measured.
@@ -147,6 +151,7 @@ namespace mutap_test::karaoke {
         cfg.forward_delay = delay;
         cfg.mode          = s.mode;
         cfg.shift_hz      = s.shift_hz;
+        cfg.stage         = s.stage;
         if (s.aux && aux != nullptr) {
             cfg.aux      = aux;
             cfg.aux_gain = 1.0;
