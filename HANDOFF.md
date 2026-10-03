@@ -344,6 +344,10 @@ carries the measured numbers; this is the map:
      reference lags one block, so the cabin S1 held note reads +9.71 against
      the karaoke suite's +11.63.
 11. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
+   **Its return is the next PR (phase 2 item 7, part 2)**, on the harness
+   part 1 built (item 13: `reverb_mix`, the loop's forward stage, the
+   probe-convergence sweep, the audible driver; `docs/reverb-afc.md`), so
+   the spectral reverb is measured exactly as the Dattorro plates were.
    The per-bin spectral reverb shaped from F̂ is commit `8abe958` on the
    local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
    bundle); it did not land. Measured during the karaoke landing with a
@@ -428,6 +432,66 @@ carries the measured numbers; this is the map:
      the canceller's limit + 6 instead.
    - The latch never engaged in a gated row; it is covered by the state
      machine suite only.
+13. **The reverb behind the canceller, part 1: the Dattorro plates
+   (2026-10-02; [`docs/reverb-afc.md`](docs/reverb-afc.md)).** Phase 2
+   item 7, part 1; the spectral reverb's return is part 2 (item 11).
+   Landed: `include/mutap/reverb_stage.h` (`tap::mu::reverb_mix<Sample,
+   Reverb>`, y = (1 − w)·x + w·r with r the reverb's L or (L + R)/2, and
+   `shifted_dry_mix<Sample, Shifter, Reverb>`, the dry-only-shift
+   topology; any reverb with the FAUST shim's `process(in, out, n)`;
+   header-only, no FFT, no ABI tag, `latency()` 0); the float plumbing
+   suite `test_reverb_mix.cpp` in both emulated selections (7 tests; the
+   bare-metal count comment is now 108); `decorrelated_loop`'s forward
+   stage (reset per probe; bit-identical without one, checked on the
+   karaoke measurement against origin/main); `tests/support/reverb_rig.h`;
+   the gated host rows `test_reverb_stage.cpp`; the `MUTAP_SLOW` sweep
+   `test_reverb_stage_sweep.cpp` (ProbeConvergence, Grid, Shift,
+   BareLoopCost); `karaoke_ramp_dump --reverb ...` and
+   `tools/notebook/reverb_audible.py`. Measured (macOS x86_64, AppleClang,
+   Release, five seed sets):
+   - **Probe convergence:** every held-note row (both plates, decay 0.5 to
+     0.85, the 5 Hz shift rows; cabin and mt5, S1) converged at 10 s, its
+     20 to 160 s medians identical; phase 0's 384 s was the dry loop with
+     the plate and does not carry over to the canceller-held loop. The
+     speech envelope drifts down with probe length; 3 of its 8 rows had
+     not converged by their longest probe (cabin canceller to 80 s, cabin
+     decay 0.5 and mt5 decay 0.7 to 160 s); none is gated.
+   - **Runaway cost behind the canceller (Grid, six rooms, held note, 20 s
+     probes):** the as-shipped plate at decay 0.5 / 0.7 / 0.85 × wet 0.15 /
+     0.30 / 0.50 costs at most +1.46 dB (median of room medians, S1; +2.69
+     at matched loudness) and nothing at S3; decay 0.85 at w 0.50 RAISES
+     the S1 limit by 4.39 dB. The bare loop charges the same plate up to
+     +5.79 dB (bound). Damping 0.5, the (L + R)/2 return and the paper
+     plate (decay 0.5) move the cost by at most 1.07 dB, inside the rows'
+     room spreads. Speech envelope (S1, 80 s, wet 0.30): −1.17 / −0.88 /
+     −0.29 dB raw.
+   - **Audible (cabin, ramp + criterion, PROTOCOL §7.3 flags):** the
+     plate lowers the audible limit (S1: canceller +16.57; plate 0.5 / 0.7
+     at w 0.30 +12.89 / +10.46) while the ramp's runaway does not fall.
+     With a 2 or 5 Hz shift the dry-only topology (`shifted_dry_mix`) is
+     audible later than the whole-bus shift in 13 of 16 pairs; bisected
+     runaway says the opposite at S1 (whole bus higher in 22 of 24 room
+     medians; gated in the cabin, +3.09 dB) and at S3 at 2 Hz; at S3, 5 Hz
+     the two do not separate.
+   - **dattorro_paper bare-loop table** (phase 0's method; reproduces the
+     as-shipped table to the digit): at equal decay it costs more than as
+     shipped, at equal T30 less (paper 0.5 +0.30 against as-shipped 0.7
+     +1.11 dB bound at w 0.30). T30 at decay 0.3 / 0.5 / 0.7 / 0.85: 1.7252
+     / 2.1186 / 3.7882 / 8.2457 s (L).
+   Gated (`ReverbStage.*`, host-only): the mix over both plates, the T30s
+   and mix levels, three bare-loop cells, the cabin S1 cost ceiling (+3.5
+   dB on medians measured ≤ +0.56) and the topology direction. Every
+   number is one host's; no second host ran the sweep. Open:
+   - **The S3 reverb-only rows at wet 0.30 are audible below the dry
+     loop's limit in some seeds** (−13.55 to +1.89 at decay 0.5); what the
+     criterion flags there was not examined.
+   - **Runaway and audible disagree on the shift topology**; phase 1's
+     rooms decide.
+   - **Not run:** speech at S3, the paper plate in the loop at decay 0.7 /
+     0.85, bisected shift rows at wet 0.15 / 0.50, audible rows beyond the
+     cabin held note, float32 in the loop, the backing track, two mics.
+   - The audible driver's first invocation filled the scratch disk (about
+     180 MB of WAV a run); it now deletes WAVs and checkpoints per run.
 
 ## The next effort (Rev 4): AEC objects + echo chapter
 

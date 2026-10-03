@@ -314,7 +314,10 @@ does not land with this work, for three reasons:
 - The class also needs the FFT ABI tag.
 
 It returns with phase 2's reverb-integration item. HANDOFF records what was
-measured and the code's location.
+measured and the code's location. That item's first part put the FAUST
+Dattorro plates behind the canceller and measured them with converged
+probes ([A reverb behind the canceller](reverb-afc.md)); the spectral
+reverb comes back on the same harness in the next part.
 
 ## Reading these numbers
 

@@ -14,9 +14,15 @@ here:
 
 This is reference and test material. It is not part of MuTap's library:
 generated code never enters `include/mutap/`, nothing under `include/`
-includes it, and it is compiled only by `tests/test_faust_vendored.cpp`, on
-host builds (the cross and bare-metal test builds skip it; see
-`tests/CMakeLists.txt`). Like every `third_party/` directory it is excluded
+includes it, and it is compiled only by host-only tests
+(`tests/test_faust_vendored.cpp`, `test_howl_guard_host.cpp`,
+`test_reverb_stage.cpp` and its sweep) and the opt-in
+`tools/notebook/karaoke_ramp_dump.cpp` (the cross and bare-metal test
+builds skip it; see `tests/CMakeLists.txt`). The library drives the
+Dattorro plates without knowing them: `tap::mu::reverb_mix`
+(`include/mutap/reverb_stage.h`) takes any type with `faust_block`'s
+`process(in, out, n)`; `docs/reverb-afc.md` measures them behind the
+canceller. Like every `third_party/` directory it is excluded
 from the clang-format hook (`.pre-commit-config.yaml`: `^third_party/`) and
 from the clang-tidy sweep (`scripts/tidy.sh`: `'third_party' not in f`;
 `.clang-tidy`'s `HeaderFilterRegex` covers only `include/` and `tests/`).
