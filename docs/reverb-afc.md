@@ -31,7 +31,8 @@ on the same harness next (HANDOFF item 11).
   canceller alone is audible at +16.57 dB; with the plate at decay 0.5 /
   0.7 and wet 0.30, at +12.89 / +10.46, while the ramp's runaway does not
   move (+20.70 alone, +22.07 / +21.76 with the plate). At S3, wet 0.30,
-  some seeds are audible below the dry loop's limit (not examined).
+  some seeds are audible below the dry loop's limit: a real, bounded,
+  feedback-dependent effect at the plate's own modes, examined below (‡).
 - **With a frequency shift, shifting the dry path only is audible later**
   than shifting the whole bus ahead of the plate: per-seed medians favour
   it in 13 of 16 decay × wet × shift × delay pairs, by up to +5.11 dB
@@ -406,8 +407,30 @@ harmonics, so partials recirculating through the shifter stand out.
 ‡ The reverb-only rows at S3, wet 0.30, are audible below the dry loop's
 limit in some seeds: per seed −7.89 −0.17 +1.89 −4.77 −13.55 at decay 0.5
 (c cross-check −2.48 −0.18 +1.90 +6.39 −13.55) and +4.56 +6.94 −7.15 +3.62
-−2.56 at 0.7. Their runaway limits are the highest in the table. What the
-criterion flags there was not examined.
+−2.56 at 0.7. Their runaway limits are the highest in the table. Examined
+(same host, same seeds, cabin, held note; the controls re-ran the ramp dump
+and `reverb_audible.py` with the §7.3 flags): what the criterion flags is a
+sustained narrowband line at one of the plate's own strongest low modes —
+93.8 Hz or 832 Hz in 7 of the 10 rows, both within 3 dB of the plate's
+impulse-response peak below 2 kHz (164.7 Hz) — 26–31 dB over the envelope
+for 0.5–0.8 s, first crossing at a forward gain 0.1–20.4 dB below the dry
+limit. It needs the loop: with the feedback path open (gain held at −300 dB
+for 120 s) the plate on the held note or on speech produces zero flagged
+tracks in 20 of 20 runs; the canceller alone at S3 on the same seeds reads
++10.75 / +12.37 (sane); the same plate at S1 reads +10.14 on both the chain
+output and c. It does not run away: the bisected cost at these settings is
+≤ −0.10 dB and the ramp's runaway is the highest in the table, so the lines
+stay bounded 20–30 dB over the envelope rather than growing to the 40 dB
+rule. In 3 of 10 rows the chain output and c disagree by more than 5 dB on
+different lines (the cross-check working as intended; no alignment warning).
+So the bisected cost and the audible limit answer different questions in
+this cell: by the broadband measure the plate is free at S3; by the
+criterion it sets an earlier, seed-dependent limit at its own modes. The
+mechanism that lets a loop 10–20 dB under its limit sustain a 30 dB line at
+a plate mode was not identified (the canceller is in the loop; the effect
+is absent without the plate and absent at S1). Read the per-seed range,
+not the median, for this cell; whether it is audible on real singing is a
+phase 1 question. Full table: the investigation's record.
 
 What the audible rows say:
 
@@ -507,7 +530,8 @@ decay and a wet:
   later on the ramp. Neither protocol is wrong; which a room shows is a
   phase 1 measurement.
 - **The reverb-only rows at S3, wet 0.30, are audible below the dry loop's
-  limit in some seeds** (the audible table, ‡). Not examined.
+  limit in some seeds** (the audible table, ‡): real, feedback-dependent,
+  bounded, at the plate's own modes; mechanism not identified.
 - **Not run:** the speech envelope at S3; the paper plate in the loop at
   decay 0.7 and 0.85 (the bare loop covers them); the shift rows at wet
   0.15 and 0.50 by bisection (the audible driver covers 0.15); the
