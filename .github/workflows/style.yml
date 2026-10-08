@@ -7,9 +7,10 @@ on: [push, pull_request]
 
 jobs:
   drift:
-    uses: tap/taphouse/.github/workflows/drift-check.yml@v5
+    uses: tap/taphouse/.github/workflows/drift-check.yml@v6
     with:
-      ref: v5
+      ref: v6
+      icon: MuTap
 
   clang-tidy:
     runs-on: ubuntu-latest
