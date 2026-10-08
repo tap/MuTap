@@ -94,10 +94,9 @@ namespace {
     };
 
     spectral_rows run_spectral(const std::string& room, double probe_s, const std::vector<double>& shapes, bool chain,
-                               double lo, double hi) {
-        const auto     path = kk::room(room);
-        const unsigned sets = mutap_test::k_claim_seed_sets;
-        spectral_rows  r;
+                               double lo, double hi, unsigned sets = mutap_test::k_claim_seed_sets) {
+        const auto    path = kk::room(room);
+        spectral_rows r;
         r.open.assign(sets, 0.0);
         r.value.assign(shapes.size(), std::vector<double>(sets, 0.0));
         std::vector<std::function<void()>> jobs;
@@ -128,6 +127,20 @@ namespace {
         }
         run_parallel(jobs);
         return r;
+    }
+
+    double mean(const std::vector<double>& v) {
+        double sum = 0.0;
+        for (const double x : v) {
+            sum += x;
+        }
+        return v.empty() ? 0.0 : sum / static_cast<double>(v.size());
+    }
+
+    /// The rows the default run cannot afford (ASan legs): MUTAP_SLOW=1.
+    bool slow_enabled() {
+        const char* v = std::getenv("MUTAP_SLOW");
+        return v != nullptr && std::string(v) == "1";
     }
 
     /// The canceller alone's limit (karaoke_asg.h's measure, absolute dB) on
@@ -202,8 +215,12 @@ TEST(SpectralReverbHost, DecayAndLevelBesideThePlate) {
 // differ by.) Gates: flat median < -15 dB (largest measured -22.77),
 // shape_max 1 median < -8 dB (largest -14.69). The plate costs a bare loop at
 // most +5.79 dB by the magnitude bound (docs/reverb-afc.md). 189.41 s on 3
-// threads of the Intel Mac.
+// threads of the Intel Mac, so MUTAP_SLOW only; the default run carries
+// UnsafeWithoutTheCancellerShortProbe below.
 TEST(SpectralReverbHost, UnsafeWithoutTheCanceller) {
+    if (!slow_enabled()) {
+        GTEST_SKIP() << "set MUTAP_SLOW=1 (189 s on 3 threads); UnsafeWithoutTheCancellerShortProbe runs by default";
+    }
     for (const std::string room : {"cabin", "mt5"}) {
         const auto r = run_spectral(room, 80.0, {0.0, 1.0}, false, -40.0, 5.0);
         for (size_t k = 0; k < 2; ++k) {
@@ -236,8 +253,12 @@ TEST(SpectralReverbHost, UnsafeWithoutTheCanceller) {
 // at 20 s). Gates: the
 // median cost of flat > +8 dB and of shape_max 1 > +4 dB, both above the
 // plate's +3.5 dB ceiling (smallest measured +8.44; smallest single seed
-// +6.06). 696.95 s on 3 threads of the Intel Mac.
+// +6.06). 696.95 s on 3 threads of the Intel Mac, so MUTAP_SLOW only; the
+// default run carries CostsMoreThanThePlateShortProbe below.
 TEST(SpectralReverbHost, CostsMoreThanThePlateBehindTheCanceller) {
+    if (!slow_enabled()) {
+        GTEST_SKIP() << "set MUTAP_SLOW=1 (697 s on 3 threads); CostsMoreThanThePlateShortProbe runs by default";
+    }
     const auto canc = canceller_alone("cabin", 20.0);
     const auto r    = run_spectral("cabin", 80.0, {0.0, 1.0}, true, -20.0, 20.0);
     std::printf("cabin canceller alone: limit%s\n", per_seed(canc).c_str());
@@ -250,5 +271,118 @@ TEST(SpectralReverbHost, CostsMoreThanThePlateBehindTheCanceller) {
                     per_seed(r.asg(k)).c_str(), median(r.asg(k)), per_seed(cost).c_str(), median(cost));
         EXPECT_GT(median(cost), k == 0 ? 8.0 : 4.0)
             << (k == 0 ? "flat (measured +17.19)" : "shape_max 1 (measured +8.44)");
+    }
+}
+
+// THE DEFAULT RUN'S PROXY FOR UnsafeWithoutTheCanceller (MUTAP_SLOW): the same
+// open loops on 20 s probes and two seed sets (2, 22), cabin and mt5. Short
+// probes UNDERSTATE how unsafe the open loop is (ProbeConvergence: every
+// open row's median falls with probe length, e.g. cabin flat -29.75 at 20 s
+// against -30.43 at 160 s), so a pass here is conservative. The gate is the
+// mean of the two seed sets. Measured (macOS x86_64, AppleClang 17, Release;
+// open-loop ASG, seed sets 2 / 22, dB; the 80 s medians from the slow row):
+//
+//                        20 s, sets 2 / 22     mean      80 s median (5 sets)
+//   cabin  flat          -29.80 -29.80        -29.80    -30.51
+//   cabin  shape_max 1   -20.31 -19.26        -19.79    -19.61
+//   mt5    flat          -22.42 -22.42        -22.42    -22.77
+//   mt5    shape_max 1   -13.63 -14.34        -13.98    -14.69
+//
+// Gates, the slow row's: flat mean < -15 dB (largest measured -22.42),
+// shape_max 1 mean < -8 dB (largest -13.98). 27.03 s on 3 threads of the
+// Intel Mac. (Other hosts: not yet recorded; CI's legs run it.)
+TEST(SpectralReverbHost, UnsafeWithoutTheCancellerShortProbe) {
+    for (const std::string room : {"cabin", "mt5"}) {
+        const auto r = run_spectral(room, 20.0, {0.0, 1.0}, false, -40.0, 5.0, 2);
+        for (size_t k = 0; k < 2; ++k) {
+            const auto a = r.asg(k);
+            std::printf("%s open loop, 20 s, %s: ASG%s  mean %+.2f\n", room.c_str(), k == 0 ? "flat" : "shape_max 1",
+                        per_seed(a).c_str(), mean(a));
+        }
+        EXPECT_LT(mean(r.asg(0)), -15.0) << room << " flat (measured -29.80 cabin, -22.42 mt5)";
+        EXPECT_LT(mean(r.asg(1)), -8.0) << room << " shape_max 1 (measured -19.79 cabin, -13.98 mt5)";
+    }
+}
+
+// THE DEFAULT RUN'S PROXY FOR CostsMoreThanThePlateBehindTheCanceller
+// (MUTAP_SLOW): direction only, cabin, S1, wet 0.30, two seed sets (2, 22),
+// 20 s probes. Per seed set, the limit of the canceller behind the
+// as-shipped plate (decay 0.5) minus its limit behind the spectral reverb
+// (rt60 1 s; flat and shape_max 1): positive = the spectral reverb costs more
+// than the plate (the canceller-alone limit cancels out of the difference).
+// Short probes UNDERSTATE the spectral reverb's cost (ProbeConvergence: the
+// cabin's flat and shape_max 1 chain medians fall from 20 to 160 s, -4.67
+// to -6.82 and +2.27 to -0.27, where the plate's converged at 10 s), so a
+// pass is conservative. The gate is the mean of the two seed sets.
+// Measured (macOS x86_64, AppleClang 17, Release; dB):
+//
+//                        limits re exact_msg_db,   plate - spectral,
+//                        sets 2 / 22               sets 2 / 22       mean
+//   plate 0.5            +11.88 +9.69
+//   flat                 -3.88 -3.88               +15.75 +13.56     +14.66
+//   shape_max 1          +0.25 +1.75               +11.62 +7.94      +9.78
+//
+// beside the slow row's 80 s costs against the canceller alone, +17.19
+// (flat) and +8.44 (shape_max 1), medians of five sets. Gates: the mean of
+// plate - spectral > +6 dB for flat and > +3 dB for shape_max 1 (measured
+// +14.66 and +9.78; smallest single set +7.94). 77.25 s on 3 threads of the
+// Intel Mac. (Other hosts: not yet recorded; CI's legs run it.)
+TEST(SpectralReverbHost, CostsMoreThanThePlateShortProbe) {
+    // One pool for the six bisections (plate, flat, shape_max 1 x two seed
+    // sets), each to 0.5 dB over a bracket around the 20 s limits measured
+    // (dB re exact_msg_db): the plate over [+4, +18], the spectral rows over
+    // [-14, +10].
+    const auto                         path   = kk::room("cabin");
+    constexpr unsigned                 k_sets = 2;
+    std::vector<double>                plate(k_sets, 0.0);
+    std::vector<std::vector<double>>   spec(2, std::vector<double>(k_sets, 0.0));
+    std::vector<std::function<void()>> jobs;
+    auto                               proto = [] {
+        kk::protocol p;
+        p.delay        = kk::k_s1;
+        p.probe_blocks = kk::probe_blocks(20.0);
+        return p;
+    };
+    for (unsigned set = 0; set < k_sets; ++set) {
+        const unsigned seed = seed_in_set(2, set);
+        jobs.emplace_back([&, set, seed] {
+            kk::protocol p = proto();
+            p.chain_lo     = 4.0;
+            p.chain_hi     = 18.0;
+            rv::params pp;
+            pp.decay = 0.5;
+            pp.wet   = 0.30;
+            rv::rig   rig(pp);
+            kk::setup st;
+            st.mat     = kk::material::held;
+            st.stage   = mutap_test::forward_stage<double>::of(&rig);
+            plate[set] = kk::measure(path, st, p, seed, false).chain_db;
+        });
+        for (size_t k = 0; k < 2; ++k) {
+            jobs.emplace_back([&, set, seed, k] {
+                kk::protocol p = proto();
+                p.chain_lo     = -14.0;
+                p.chain_hi     = 10.0;
+                sp::params prm;
+                prm.rt60      = 1.0;
+                prm.wet       = 0.30;
+                prm.shape_max = (k == 0) ? 0.0 : 1.0;
+                spec[k][set]  = sp::measure(path, kk::material::held, p, seed, prm, true, false).chain_db;
+            });
+        }
+    }
+    run_parallel(jobs);
+    const double exact = mutap_test::exact_msg_db(path, kk::k_s1);
+    std::printf("cabin plate 0.5 w0.30, 20 s: limit re exact_msg_db %+.2f %+.2f\n", plate[0] - exact, plate[1] - exact);
+    for (size_t k = 0; k < 2; ++k) {
+        std::vector<double> diff;
+        for (unsigned set = 0; set < k_sets; ++set) {
+            diff.push_back(plate[set] - spec[k][set]);
+        }
+        std::printf("cabin chain, 20 s, %s: limit re exact_msg_db %+.2f %+.2f | plate - spectral%s  mean %+.2f\n",
+                    k == 0 ? "flat" : "shape_max 1", spec[k][0] - exact, spec[k][1] - exact, per_seed(diff).c_str(),
+                    mean(diff));
+        EXPECT_GT(mean(diff), k == 0 ? 6.0 : 3.0)
+            << (k == 0 ? "flat (measured +14.66)" : "shape_max 1 (measured +9.78)");
     }
 }
