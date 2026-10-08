@@ -100,18 +100,22 @@ namespace mutap_test {
     };
 
     /// A forward-path stage after the decorrelator: the chain's reverb slot
-    /// (support for test_reverb_stage*.cpp). Non-owning and type-erased, like
-    /// tap::mu::afc_stage_ref, plus a reset: every loop built with one calls
-    /// reset() in its constructor, so each bisection probe (a fresh loop with
-    /// a zero error history) also starts the stage from silence. The caller
-    /// owns the object and keeps it alive while any loop config refers to it;
-    /// one object per thread.
+    /// (support for test_reverb_stage*.cpp and test_spectral_reverb*.cpp).
+    /// Non-owning and type-erased, like tap::mu::afc_stage_ref, plus a reset:
+    /// every loop built with one calls reset() in its constructor, so each
+    /// bisection probe (a fresh loop with a zero error history) also starts
+    /// the stage from silence. A stage with a bulk latency (latency(), in
+    /// samples; 0 without one) has it taken out of the loop's forward_delay,
+    /// as a chain's output delay line would absorb it, so the loop's total
+    /// delay stays forward_delay. The caller owns the object and keeps it
+    /// alive while any loop config refers to it; one object per thread.
     template <typename Sample>
     class forward_stage {
       public:
         forward_stage() = default;
 
-        /// Any object with process_block(in, out, n) (in != out) and reset().
+        /// Any object with process_block(in, out, n) (in != out) and reset(),
+        /// and optionally latency().
         template <typename Stage>
         static forward_stage of(Stage* stage) {
             forward_stage f;
@@ -120,17 +124,23 @@ namespace mutap_test {
                 static_cast<Stage*>(o)->process_block(in, out, n);
             };
             f.m_reset = [](void* o) { static_cast<Stage*>(o)->reset(); };
+            if constexpr (requires { stage->latency(); }) {
+                f.m_latency = static_cast<size_t>(stage->latency());
+            }
             return f;
         }
 
         explicit operator bool() const { return m_process != nullptr; }
         void     process_block(const Sample* in, Sample* out, size_t n) const { m_process(m_object, in, out, n); }
         void     reset() const { m_reset(m_object); }
+        /// The stage's bulk latency in samples (0 for a stage without latency()).
+        size_t latency() const { return m_latency; }
 
       private:
         void* m_object                                           = nullptr;
         void (*m_process)(void*, const Sample*, Sample*, size_t) = nullptr;
         void (*m_reset)(void*)                                   = nullptr;
+        size_t m_latency                                         = 0;
     };
 
     /// Loop with a decorrelator and an auxiliary speaker feed. Same contract
@@ -181,9 +191,11 @@ namespace mutap_test {
             // The IIR shifter is causal and needs no lookahead.
             const size_t lookahead =
                 (m_cfg.mode == forward_mode::delay_modulation) ? static_cast<size_t>(0.5 * m_cfg.depth + 1.0) : 0;
-            if (m_cfg.forward_delay < m_cfg.block_size + lookahead) {
+            const size_t stage_latency = m_cfg.stage ? m_cfg.stage.latency() : 0;
+            if (m_cfg.forward_delay < m_cfg.block_size + lookahead + stage_latency) {
                 throw std::invalid_argument("decorrelated_loop: forward_delay too short for this mode");
             }
+            m_read_delay = m_cfg.forward_delay - stage_latency;
             set_forward_gain_db(m_cfg.forward_gain_db);
             if (m_cfg.stage) {
                 m_cfg.stage.reset();
@@ -297,7 +309,7 @@ namespace mutap_test {
         /// The loop signal as it reaches the loudspeaker at absolute time t
         /// (called once per sample, in order: the shifter carries state).
         double forward_sample(long long t) {
-            const double d = static_cast<double>(m_cfg.forward_delay);
+            const double d = static_cast<double>(m_read_delay);
             switch (m_cfg.mode) {
             case forward_mode::delay_modulation: {
                 // Mean delay stays d; the wobble is +-depth/2 around it.
@@ -319,7 +331,8 @@ namespace mutap_test {
         }
 
         config m_cfg;
-        double m_gain = 1.0;
+        double m_gain       = 1.0;
+        size_t m_read_delay = 0; ///< forward_delay minus the stage's latency (the stage adds it back)
         /// Absolute sample clock, started mid-buffer so the first blocks'
         /// history reads land on the zero-filled past rather than wrapping.
         long long           m_t = static_cast<long long>(k_history) / 2;

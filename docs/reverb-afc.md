@@ -5,18 +5,20 @@ rooms from both generator families, band-limited through a loudspeaker
 model, and phase 0's four room fixtures at full length for the bare loop.
 Host: macOS 15.7 x86_64 (i9-8950HK), AppleClang 17, Release, on a shared
 machine ([Hosts](#hosts)). Nothing here has been heard in a real room. Every
-number below comes from `tests/test_reverb_stage.cpp`, its `MUTAP_SLOW`
-sweep `tests/test_reverb_stage_sweep.cpp`, or the
-`tools/notebook/reverb_audible.py` driver; [Provenance](#provenance) gives
-the commands.*
+number below comes from `tests/test_reverb_stage.cpp`,
+`tests/test_spectral_reverb_host.cpp`, their `MUTAP_SLOW` sweeps
+`tests/test_reverb_stage_sweep.cpp` and `tests/test_spectral_reverb_sweep.cpp`,
+or the `tools/notebook/reverb_audible.py` driver; [Provenance](#provenance)
+gives the commands.*
 
 A reverb in the voice bus sits inside the feedback loop: whatever it does
 to the bus, it does to the howl. This document puts FAUST's Dattorro plate,
 as shipped and with the paper's delay lengths, in `afc_chain`'s reverb slot
 behind the PEM + FD-Kalman canceller, and measures what it costs, with the
-probe lengths shown to converge first. It is the first half of the reverb
-work; the spectral reverb shaped from the canceller's estimate comes back
-on the same harness next (HANDOFF item 11).
+probe lengths shown to converge first. The second half puts the spectral
+reverb shaped from the canceller's estimate (`tap::mu::spectral_reverb`)
+on the same harness beside the plate ([Spectral reverb](#spectral-reverb);
+HANDOFF item 11): it loses.
 
 ## Headline
 
@@ -42,6 +44,13 @@ on the same harness next (HANDOFF item 11).
   here.
 - **Probes: the held note converges at 10 s, decay 0.85 included**; the
   speech envelope drifts and is reported, not gated.
+- **The spectral reverb loses to the plate everywhere measured**
+  ([Spectral reverb](#spectral-reverb)): behind the canceller it costs
+  +2.83 to +30.57 dB of runaway gain (six rooms, S1 and S3, wet 0.15 and
+  0.30, flat and shaped; 40 s probes, not converged) where the plate costs
+  −1.37 to +0.88, and without a canceller the flat reverb sits 17 to 32 dB
+  below the dry room's limit. Shaping from F̂ helps only at shape_max 1. It
+  stays in the repository as a measured negative result.
 - **The paper plate**, new in the bare-loop table: at equal decay it costs
   more than the plate as shipped (it rings longer); at equal T30 (paper 0.5
   against as-shipped 0.7, 2.12 s) it costs less by the bound, +0.30 against
@@ -518,6 +527,370 @@ decay and a wet:
   by the exact crossing from 0.73 dB below to 0.14 above. The sweep prints
   its full table.
 
+## Spectral reverb
+
+Phase 2 item 7, part 2 (HANDOFF item 11): `tap::mu::spectral_reverb`, the
+per-bin reverb from the karaoke branch (commit `8abe958`), back under the
+ABI rules and measured on the harness above, beside the as-shipped plate.
+
+**Verdict: it loses to the plate, everywhere measured, and it stays in the
+repository only as a measured negative result** (the header says so). Behind
+the canceller it costs +2.83 to +30.57 dB of runaway gain (median over six
+rooms, held note, 40 s probes) where the plate at the same wet costs −1.37
+to +0.88. Paired by seed, no room's median favours the spectral reverb
+over the plate for 22 of the 24 spectral rows compared, and 1 of 6 rooms
+does for the other two. Shaping from F̂ helps a flat spectral reverb at
+shape_max 1 (and at S3, w 0.30, at every ceiling) but never closes the gap
+to the plate, and shape_max 4 loses up to 12.79 dB more than flat at S1.
+Without a canceller the flat reverb's limit is 17 to 32 dB below the dry
+room's (room medians, 160 s probes), which confirms HANDOFF item 11's −18
+to −25. On the audible ramp every spectral row is audible earlier than the
+plate at the same wet. The alternative, removing the class again, is
+recommended against (HANDOFF item 11): the gated rows that hold the
+negative result need it.
+
+### The spectral stage
+
+`include/mutap/spectral_reverb.h`: one complex one-pole per bin on
+weighted-overlap-add spectra (Hann window of 2 × block, hop one block, no
+synthesis window), S_k ← a_k S_k + X_k, Y_k = (1 − w) X_k + w_k S_k. The
+whole output, dry path included, is the input one block late (`latency()`,
+64 samples, 1.33 ms at 48 kHz). In the loop that block comes out of the
+forward delay (`decorrelated_loop`'s forward stage now subtracts a stage's
+`latency()`; 0 for the plates, whose rows are unchanged), so every
+spectral row has the plates' total loop delay, 480 samples at S1 and 960 at
+S3, as a chain's output delay line would absorb it.
+
+- **Flat** (`spectral_shaping::flat`): every bin at the configured rt60 and
+  wet; `reshape*()` is ignored.
+- **Shaped** (`spectral_shaping::from_path`): per bin the allowance
+  (median|P| / |P_k|), clamped to [0.05, `shape_max`], scales the wet gain
+  and the decay time up where the path P is weak and down where it is
+  strong; the wet gains are renormalised to the flat shape's Σ w_k², the
+  decay times are not. P is the canceller's F̂ (`copy_impulse_response()`,
+  `reshape_from_impulse_response()`), or for several microphones the
+  coherent bus sum |Σ F̂_m| (`reshape_from_impulse_responses()`).
+- **The rules:** defined inside `tap::mu::inline TAP_DSP_FFT_ABI` (it holds
+  a `basic_real_fft` by value) and pinned as the sixth embedder in
+  `tests/test_fft_engine_contract.cpp`; the transform size 2 × block goes
+  through `fft_detail::checked_fft_size` before any buffer is sized (block
+  16 to 2048 on the Cortex-M55's CMSIS-DSP; an unchecked size there is a
+  release-mode HardFault). An `afc_stage` (`process_block(in, out, n)`
+  `noexcept`, n a multiple of the block), allocation only at construction,
+  float and double; `tests/test_spectral_reverb.cpp` runs its plumbing on
+  every target, both emulated selections included.
+
+What it is beside the plate (`SpectralReverbHost.DecayAndLevelBesideThePlate`):
+its all-wet impulse response's T30 equals its rt60 (1.0000 s at rt60 1 s,
+1.1846 s at 1.1846 s, the plate's decay-0.5 T30), and it is much louder
+than the plate's mix at the same wet. For white input the flat stage reads
++3.40 / +7.60 dB at wet 0.15 / 0.30 (rt60 1 s) and +3.81 / +8.22 dB (rt60
+1.1846 s), against the plate's −0.956 / −1.687 dB: each bin's one-pole sums
+about rt60 × 750 hops of its input. Shaped, the level rises with
+`shape_max` (the decay times are not renormalised): the grid's medians run
+from +3.34 (shape_max 1, w 0.15) to +13.06 dB (shape_max 4, w 0.30).
+
+### How the spectral rows are measured
+
+The plates' protocol ([How the loop is measured](#how-the-loop-is-measured))
+with one step the shaping needs (`tests/support/spectral_rig.h`): the
+canceller converges with the reverb in the loop, flat (nothing to shape
+from yet); the reverb is then shaped once from the converged F̂ and the
+shape is held through every probe of the bisection, each probe starting the
+tail from silence. That is the branch's protocol ("converge, then shape from
+what the canceller has identified"). Shaped rows run without a canceller
+(the open loop) are shaped from the F̂ a canceller converged to in the same
+loop, then bisected with no canceller. The audible rows refresh the shape
+from the live canceller every 256 blocks instead, since that canceller
+starts cold.
+
+### Spectral probe convergence
+
+`SpectralReverbSweep.ProbeConvergence`: the cabin and mt5 at S1, wet 0.30,
+rt60 1 s, flat and shaped (shape_max 1, 2, 4), held note to 160 s and
+speech envelope to 80 s (the budget), each chain row with the open loop of
+the same reverb beside it. Converged as for the plates. Median ASG, dB re
+the dry open loop:
+
+| Room, material | Row (wet 0.30, rt60 1 s) | 10 s | 20 s | 40 s | 80 s | 160 s | Converged |
+|---|---|---|---|---|---|---|---|
+| cabin, held | canceller alone | +11.66 | +11.74 | +11.74 | +11.74 | | 10 s |
+| cabin, held | flat | −3.87 | −4.67 | −5.64 | −6.62 | −6.82 | 80 s |
+| cabin, held | shape_max 1 | +3.36 | +2.27 | +1.48 | −0.37 | −0.27 | 80 s |
+| cabin, held | shape_max 2 | +5.41 | +3.63 | +3.63 | +2.27 | +2.36 | 80 s |
+| cabin, held | shape_max 4 | −2.01 | −3.30 | −5.74 | −17.46 | −19.02 | **not converged** |
+| cabin, held | flat, no canceller | −29.14 | −29.75 | −30.14 | −30.33 | −30.43 | 80 s |
+| cabin, held | shape_max 1, no canceller | −18.30 | −19.00 | −19.39 | −19.59 | −19.69 | 80 s |
+| cabin, held | shape_max 2, no canceller | −18.50 | −19.30 | −19.79 | −20.08 | −20.18 | 80 s |
+| cabin, held | shape_max 4, no canceller | −22.70 | −25.06 | −26.52 | −27.50 | −27.99 | **not converged** |
+| mt5, held | canceller alone | +11.05 | +11.05 | +11.05 | +11.05 | | 10 s |
+| mt5, held | flat | +1.21 | +1.00 | +0.41 | −0.27 | −0.57 | **not converged** |
+| mt5, held | shape_max 1 | +10.57 | +8.03 | +9.49 | +8.03 | +8.42 | **not converged** |
+| mt5, held | shape_max 2 | +8.52 | +5.00 | +5.98 | +6.86 | +6.46 | **not converged** |
+| mt5, held | shape_max 4 | +5.98 | +2.75 | −13.85 | +2.07 | −20.00 | **not converged** |
+| mt5, held | flat, no canceller | −21.91 | −22.23 | −22.52 | −22.81 | −22.91 | 80 s |
+| mt5, held | shape_max 1, no canceller | −13.71 | −14.22 | −14.51 | −14.61 | −14.71 | 40 s |
+| mt5, held | shape_max 2, no canceller | −16.35 | −17.73 | −18.61 | −19.10 | −19.39 | **not converged** |
+| mt5, held | shape_max 4, no canceller | −19.86 | −22.03 | −23.40 | −24.18 | −24.57 | **not converged** |
+| cabin, speech | canceller alone | +21.02 | +20.82 | +20.23 | +19.75 | | **not converged** |
+| cabin, speech | flat | +3.26 | +3.05 | +2.95 | +2.66 | | **not converged** |
+| cabin, speech | shape_max 1 | +15.47 | +15.55 | +15.45 | +15.45 | | 10 s |
+| cabin, speech | shape_max 2 | +13.81 | +13.89 | +12.81 | +12.81 | | 40 s |
+| cabin, speech | shape_max 4 | +12.42 | +10.76 | +11.25 | +10.86 | | **not converged** |
+| mt5, speech | canceller alone | +23.26 | +23.16 | +22.87 | +22.68 | | 40 s |
+| mt5, speech | flat | +10.18 | +11.25 | +9.30 | +8.81 | | **not converged** |
+| mt5, speech | shape_max 1 | +14.28 | +14.38 | +13.59 | +13.40 | | 40 s |
+| mt5, speech | shape_max 2 | +11.25 | +10.96 | +10.66 | +10.37 | | **not converged** |
+| mt5, speech | shape_max 4 | +10.86 | +10.47 | +10.47 | +10.47 | | 20 s |
+
+- **Unlike the plates, the spectral rows do not converge at 10 s.** On the
+  held note the cabin's flat, shape_max 1 and 2 rows converged at 80 s;
+  shape_max 4 and every mt5 chain row had not converged by 160 s. The
+  medians mostly fall with probe length (more cost): the cabin's shape_max
+  4 row goes from −2.01 at 10 s to −19.02 at 160 s, two of its five seeds
+  at the bracket floor (−20.00). This is HANDOFF item 11's "not converged by
+  40 s", now measured to 160 s.
+- **The open loop converges by 80 s** for flat and shape_max 1 (both rooms)
+  and shape_max 2 in the cabin; shape_max 4 drifts down to 160 s.
+- **On speech** four of the eight spectral chain rows converged by 80 s
+  (cabin shape_max 1 at 10 s, shape_max 2 at 40 s; mt5 shape_max 1 at 40 s,
+  shape_max 4 at 20 s); the canceller alone in the cabin had not, as in the
+  plates' table.
+
+The grid below therefore runs the held note on 40 s probes (the budget: a
+160 s row costs about four times a 40 s one), which is **not converged** and
+is reported, not gated. The 40 s median ASG read at or above the 160 s one
+in 7 of the 8 held rows above (mt5 shape_max 2: +5.98 against +6.46), so
+the grid mostly understates the spectral reverb's cost. The open-loop rows
+run on 160 s probes. Gated rows run only where the table converged: 80 s
+probes in the cabin (flat, shape_max 1) and in the cabin and mt5 for the
+open loop.
+
+### Behind the canceller: the spectral reverb against the plate (runaway)
+
+`SpectralReverbSweep.Grid`, six rooms, five seed sets, held note, 40 s
+probes. Each cell is the median over the six rooms of each room's five-seed
+median, [the range of the room medians] and {the per-seed range over all
+30 runs}. Cost = the canceller-alone limit − the limit with the reverb, per
+seed; level = the stage's level change for white input (median over runs);
+matched = cost − level. The plate rows are the as-shipped plate at decay
+0.5 (T30 1.1846 s; rt60 1.1846 s is matched to it). Their cost medians
+reproduce the plates' 20 s grid
+([above](#what-the-plate-costs-behind-the-canceller-runaway)) to the
+printed digit at S1 and at S3, w 0.15 (ASG medians within 0.08 dB); at S3,
+w 0.30 the cost reads −1.37 against −1.17 there, the S3 canceller-alone
+row moving between 20 and 40 s probes (+18.38 here against +18.40).
+
+**S1 (10 ms).** The canceller alone: ASG +11.74 [+11.05, +12.42] {+7.73,
++13.98}.
+
+| Reverb, wet | ASG | Cost [rooms] {seeds} | Level | Matched |
+|---|---|---|---|---|
+| plate 0.5, w 0.15 | +11.05 | +0.49 [−0.39, +2.05] {−4.00, +5.76} | −0.96 | +1.44 |
+| spectral flat, rt60 1.18, w 0.15 | +7.34 | +5.66 [−1.76, +10.35] {−3.71, +13.48} | +3.81 | +1.85 |
+| shape_max 1, rt60 1.18, w 0.15 | +8.61 | +2.83 [−2.15, +6.35] {−5.27, +10.55} | +3.34 | −0.51 |
+| shape_max 2, rt60 1.18, w 0.15 | +6.46 | +7.03 [+0.98, +11.62] {−2.93, +15.43} | +4.91 | +2.12 |
+| shape_max 4, rt60 1.18, w 0.15 | +0.21 | +14.26 [+3.61, +21.39] {−2.44, +31.74} | +7.25 | +7.01 |
+| plate 0.5, w 0.30 | +11.54 | +0.88 [−0.78, +2.44] {−4.30, +4.20} | −1.69 | +2.57 |
+| spectral flat, rt60 1, w 0.30 | +0.31 | +12.70 [+6.05, +17.38] {+4.39, +19.14} | +7.60 | +5.09 |
+| shape_max 1, rt60 1, w 0.30 | +1.48 | +10.35 [+1.56, +12.01] {−2.54, +13.96} | +6.92 | +3.43 |
+| shape_max 2, rt60 1, w 0.30 | +2.85 | +12.89 [+6.45, +14.45] {+2.73, +31.74} | +9.15 | +3.74 |
+| shape_max 4, rt60 1, w 0.30 | −13.65 | +27.34 [+17.48, +32.42] {+5.37, +33.01} | +11.96 | +15.38 |
+| spectral flat, rt60 1.18, w 0.30 | −0.76 | +13.09 [+9.57, +17.68] {+5.66, +21.97} | +8.22 | +4.87 |
+| shape_max 1, rt60 1.18, w 0.30 | +4.22 | +10.74 [+3.91, +12.89] {+1.07, +18.46} | +7.61 | +3.13 |
+| shape_max 2, rt60 1.18, w 0.30 | +0.02 | +13.48 [+5.08, +15.72] {+1.56, +30.66} | +9.94 | +3.53 |
+| shape_max 4, rt60 1.18, w 0.30 | −18.34 | +30.57 [+13.38, +32.42] {+3.42, +33.98} | +12.22 | +18.34 |
+
+**S3 (20 ms).** The canceller alone: ASG +18.38 [+16.93, +18.59] {+16.52,
++19.36}.
+
+| Reverb, wet | ASG | Cost [rooms] {seeds} | Level | Matched |
+|---|---|---|---|---|
+| plate 0.5, w 0.15 | +18.87 | −0.59 [−1.76, +1.17] {−3.22, +3.71} | −0.96 | +0.37 |
+| spectral flat, rt60 1.18, w 0.15 | +8.61 | +10.16 [+7.32, +11.91] {+5.86, +12.99} | +3.81 | +6.34 |
+| shape_max 1, rt60 1.18, w 0.15 | +9.10 | +10.94 [+3.42, +12.79] {+1.46, +13.18} | +3.59 | +7.35 |
+| shape_max 2, rt60 1.18, w 0.15 | +8.22 | +11.82 [+6.35, +14.84] {+2.44, +18.75} | +5.22 | +6.60 |
+| shape_max 4, rt60 1.18, w 0.15 | +9.49 | +15.04 [+6.84, +17.77] {+1.46, +20.90} | +8.09 | +6.95 |
+| plate 0.5, w 0.30 | +18.87 | −1.37 [−2.15, +0.49] {−4.20, +1.56} | −1.69 | +0.32 |
+| spectral flat, rt60 1, w 0.30 | +0.61 | +18.07 [+13.48, +18.36] {+12.89, +20.02} | +7.60 | +10.46 |
+| shape_max 1, rt60 1, w 0.30 | +3.14 | +16.99 [+10.35, +17.87] {+7.62, +20.61} | +6.94 | +10.05 |
+| shape_max 2, rt60 1, w 0.30 | +1.68 | +17.77 [+12.01, +20.61] {+8.89, +23.44} | +9.04 | +8.74 |
+| shape_max 4, rt60 1, w 0.30 | +1.78 | +18.07 [+12.50, +24.12] {+9.38, +27.15} | +12.19 | +5.87 |
+| spectral flat, rt60 1.18, w 0.30 | −0.57 | +18.75 [+15.14, +19.92] {+14.65, +21.39} | +8.22 | +10.53 |
+| shape_max 1, rt60 1.18, w 0.30 | +3.44 | +15.14 [+10.16, +17.77] {+7.23, +20.41} | +7.49 | +7.65 |
+| shape_max 2, rt60 1.18, w 0.30 | +1.78 | +16.70 [+11.91, +18.65] {+7.81, +24.80} | +9.85 | +6.85 |
+| shape_max 4, rt60 1.18, w 0.30 | +3.63 | +15.23 [+11.33, +17.09] {+3.91, +30.08} | +13.06 | +2.17 |
+
+The same runs paired by seed: the spectral chain's limit minus the plate's
+at the same wet, and shaped minus flat at the same rt60 and wet; the
+median over the six rooms of each room's per-seed median, [range], (rooms
+where it is > 0):
+
+| | S1, w 0.15 (rt60 1.18) | S1, w 0.30 (rt60 1) | S1, w 0.30 (rt60 1.18) | S3, w 0.15 (rt60 1.18) | S3, w 0.30 (rt60 1) | S3, w 0.30 (rt60 1.18) |
+|---|---|---|---|---|---|---|
+| flat − plate | −3.52 (1 of 6) | −11.52 (0) | −11.72 (0) | −10.25 (0) | −17.77 (0) | −19.43 (0) |
+| shape_max 1 − plate | −2.73 (1 of 6) | −8.50 (0) | −7.03 (0) | −8.20 (0) | −16.21 (0) | −15.43 (0) |
+| shape_max 2 − plate | −4.59 (0) | −7.81 (0) | −10.45 (0) | −9.08 (0) | −16.89 (0) | −17.19 (0) |
+| shape_max 4 − plate | −10.64 (0) | −24.51 (0) | −29.30 (0) | −8.98 (0) | −17.58 (0) | −15.72 (0) |
+| shape_max 1 − flat | +1.17 (3 of 6) | +1.86 (4 of 6) | +4.30 (5 of 6) | +1.46 (3 of 6) | +1.95 (6 of 6) | +3.71 (6 of 6) |
+| shape_max 2 − flat | −1.17 (2 of 6) | −0.49 (2 of 6) | −0.78 (2 of 6) | +0.59 (3 of 6) | +1.37 (4 of 6) | +2.64 (6 of 6) |
+| shape_max 4 − flat | −7.91 (0) | −12.79 (0) | −12.60 (0) | +0.39 (3 of 6) | +0.98 (3 of 6) | +3.71 (6 of 6) |
+
+- **The plate holds more runaway gain than every spectral row:** the
+  median per-seed difference is −2.73 to −29.30 dB, and in 22 of the 24
+  comparisons no room's median favours the spectral reverb (1 of 6 rooms
+  for flat and shape_max 1 at S1, w 0.15). Its cost, +2.83 to +30.57 dB,
+  starts above the plate's largest (+0.88 on this grid; +1.46 on the
+  plates' own).
+- **Loudness explains part of it, not all.** The spectral stage at equal
+  wet is 4.30 to 14.75 dB louder than the plate's mix. At matched loudness the
+  spectral rows still cost +2.12 to +18.34 at S1 except shape_max 1 at
+  w 0.15 (−0.51; the plate +1.44) and flat at w 0.15 (+1.85; plate +1.44),
+  and +2.17 to +10.53 at S3 against the plate's +0.32 / +0.37. Matched is
+  the cost had the stage been turned down to the dry bus's loudness; the
+  measurement ran it as configured.
+- **Shaping helps only at shape_max 1** at S1 (+1.17 to +4.30 over flat, 3
+  to 5 of 6 rooms); shape_max 2 does not separate from flat there and
+  shape_max 4 loses 7.91 to 12.79 dB in every room. At S3 every ceiling
+  reads at or above flat at w 0.30 (+0.98 to +3.71). Where the branch had
+  "shaped ≥ flat" at shape_max 4 (0.8 s probes), the converged and 40 s
+  probes say the opposite at S1.
+- **Speech envelope** (S1, wet 0.30, rt60 1 s; ProbeConvergence, cabin and
+  mt5 only, 80 s; the six-room speech grid was not run): the spectral rows
+  cost +4.30 to +17.09 (cabin) and +9.28 to +14.06 (mt5) against the
+  canceller alone, where the plate at decay 0.5 raised the limit (cabin
+  +21.31 against the canceller's +19.75, mt5 +24.24 against +22.68; the
+  plates' convergence table).
+
+### Without a canceller (open loop)
+
+The open loop with the reverb in it against the dry room (no canceller),
+160 s probes, six rooms (the grid; rt60 1.1846 s), median of room medians
+[range]:
+
+| | S1, w 0.15 | S1, w 0.30 | S3, w 0.15 | S3, w 0.30 |
+|---|---|---|---|---|
+| flat | −19.49 [−26.04, −17.15] | −25.45 [−31.80, −23.40] | −19.10 [−24.57, −17.83] | −25.16 [−30.33, −23.98] |
+| shape_max 1 | −18.32 [−19.20, −14.71] | −18.52 [−22.13, −15.49] | −16.56 [−19.98, −12.56] | −17.44 [−23.30, −16.46] |
+| shape_max 2 | −18.42 [−25.94, −15.68] | −20.96 [−25.84, −15.78] | −18.81 [−21.05, −13.34] | −19.79 [−24.77, −17.54] |
+| shape_max 4 | −22.42 [−29.84, −18.22] | −23.69 [−28.87, −17.54] | −17.64 [−19.98, −13.73] | −17.44 [−25.74, −13.83] |
+
+The plate costs a bare loop at most +5.79 dB by the bound (decay 0.85, w
+0.50; [The bare loop](#the-bare-loop-what-the-plate-costs-without-a-canceller)).
+HANDOFF item 11's −18.05 to −24.61 for the flat reverb holds with converged
+probes: −17.15 to −31.80 over the six rooms. Shaping does not make it safe:
+every shaped row is 12.56 to 29.84 dB below the dry room's limit. Gated
+(`SpectralReverbHost.UnsafeWithoutTheCanceller`, cabin and mt5, S1, w 0.30,
+rt60 1 s, 80 s, converged): flat −30.51 / −22.77, shape_max 1 −19.61 /
+−14.69.
+
+### The hypothesis: does shaping put the reverb where the estimate is worst?
+
+HANDOFF item 11's hypothesis was that the allowance up to shape_max builds
+high-Q resonances where the canceller's estimate is poorest. Measured at
+the moment of shaping in every shaped grid run (`spectral_rig.h`'s
+`per_bin`; 30 runs a row): per bin of the reverb's 65-bin grid, the
+misalignment m_k = |F_k − F̂_k| (F the true band-limited path, both sampled
+exactly on the grid), the bin's decay time T_k, its tail energy E_k =
+w_k²/(1 − a_k²) and peak gain g_k = (1 − w) + w_k/(1 − a_k); per run,
+Spearman's ρ over the bins, the share of Σ E_k in the quarter of the bins
+with the largest m_k (a flat reverb's share is 16/65 = 0.246), and a
+residual-loop indicator, 20 log10 of max_k m_k g_k over the flat reverb's.
+Medians over the 30 runs [min, max]:
+
+| Row | ρ(T, m) | ρ(T, m / \|F\|) | E share, worst quarter | Peak m·g re flat, dB |
+|---|---|---|---|---|
+| S1, shape_max 1, w 0.15 | −0.535 [−0.865, −0.200] | +0.161 [−0.235, +0.644] | 0.134 [0.025, 0.217] | −2.456 [−6.914, +0.247] |
+| S1, shape_max 2, w 0.15 | −0.589 [−0.876, −0.258] | +0.217 [−0.201, +0.689] | 0.082 [0.007, 0.238] | +2.375 [−4.481, +7.970] |
+| S1, shape_max 4, w 0.15 | −0.601 [−0.881, −0.263] | +0.239 [−0.199, +0.680] | 0.036 [0.003, 0.312] | +8.251 [−3.879, +16.717] |
+| S1, shape_max 1, w 0.30 | −0.336 [−0.784, −0.033] | +0.495 [−0.204, +0.625] | 0.175 [0.063, 0.230] | −1.015 [−6.522, +1.722] |
+| S1, shape_max 2, w 0.30 | −0.437 [−0.843, −0.108] | +0.516 [−0.161, +0.657] | 0.091 [0.013, 0.217] | +3.706 [−4.829, +9.853] |
+| S1, shape_max 4, w 0.30 | −0.458 [−0.840, −0.131] | +0.526 [−0.143, +0.640] | 0.050 [0.003, 0.189] | +8.408 [−5.239, +17.698] |
+| S3, shape_max 1, w 0.15 | −0.625 [−0.877, −0.243] | +0.168 [−0.240, +0.537] | 0.110 [0.029, 0.230] | −3.250 [−6.873, +1.261] |
+| S3, shape_max 2, w 0.15 | −0.683 [−0.942, −0.277] | +0.205 [−0.208, +0.588] | 0.058 [0.007, 0.177] | +0.438 [−5.248, +7.515] |
+| S3, shape_max 4, w 0.15 | −0.688 [−0.945, −0.285] | +0.187 [−0.205, +0.585] | 0.022 [0.002, 0.211] | +5.487 [−2.705, +14.620] |
+| S3, shape_max 1, w 0.30 | −0.336 [−0.687, −0.109] | +0.404 [−0.125, +0.596] | 0.177 [0.093, 0.230] | −0.848 [−5.504, +1.783] |
+| S3, shape_max 2, w 0.30 | −0.381 [−0.755, −0.135] | +0.429 [−0.211, +0.655] | 0.110 [0.030, 0.314] | +4.981 [−2.803, +9.010] |
+| S3, shape_max 4, w 0.30 | −0.402 [−0.754, −0.135] | +0.440 [−0.203, +0.654] | 0.059 [0.010, 0.363] | +9.717 [−3.728, +17.130] |
+
+(rt60 1.1846 s; the rt60 1 s rows at w 0.30 read within 0.11 of these in
+ρ and within 0.017 in share, and the sweep prints them.) ρ(E, ·) and ρ(g, ·) equal ρ(T, ·):
+all three rise with the allowance.
+
+- **In absolute terms, no: shaping puts the long decays where the
+  misalignment is smallest.** ρ(T, m) is negative in every row (median
+  −0.336 to −0.688), and the shaped reverb puts less of its tail energy in
+  the worst quarter of the bins than a flat one does (0.022 to 0.178 over
+  all 18 rows, against 0.246).
+- **In relative terms, yes, weakly:** ρ(T, m / |F|) is positive in every
+  row (median +0.161 to +0.526). The bins where |F̂| is weak are where the
+  estimate is worst relative to the path.
+- **What tracks the loss is the ceiling.** The residual-loop indicator
+  rises with shape_max: shape_max 1 lowers the worst bin's m·g against flat
+  (−0.848 to −3.250 dB), shape_max 4 raises it by +5.487 to +9.717 dB,
+  which matches shape_max 1 being the only ceiling that beats flat at S1 and
+  shape_max 4 losing there. Across runs, the indicator and the energy share
+  barely predict a run's own shaped − flat limit: Spearman's ρ over the 30
+  runs of a row is −0.239 to +0.699 (indicator) and −0.351 to +0.434
+  (share), with no consistent sign. In the measured form: a large ceiling
+  raises the largest residual m_k·g_k on the grid (+5.487 to +9.717 dB at
+  shape_max 4) although its long decays sit in bins of below-median
+  misalignment, so the hypothesis as worded (energy concentrated where the
+  estimate is worst) is not what the runs show; and none of the per-bin
+  statistics predicts a single run's outcome well.
+
+### Spectral audible limits
+
+The plates' audible protocol ([Audible limits](#audible-limits-the-product-chain-candidates)),
+`reverb_audible.py --plate spectral`: the cabin, held note, the ramp from
+20 dB under the dry loop's `exact_msg_db` after a 30 s warm-up, the live
+canceller from a cold start, the shape refreshed from its F̂ every 256
+blocks (flat rows: never). PROTOCOL.md §7.3's reverb-only flags: the
+chain output analysed (after the reverb, before the gain), c as the
+cross-check, `--rt60 0.0328` and `--chain-rt60 1.1846` (the spectral
+reverb's own T30 at rt60 1.1846 s, flat and shaped rows alike). rt60
+1.1846 s, five seeds, medians, dB over `exact_msg_db`; the first four rows
+are the plates' table's (same protocol, this host):
+
+| Chain | S1 audible (c) | S1 runaway (ramp) | S3 audible (c) | S3 runaway (ramp) |
+|---|---|---|---|---|
+| dry (no canceller) | +0.18 | +1.08 | +0.21 | +1.62 |
+| canceller | +16.57 | +20.70 | +12.37 | +21.37 |
+| + plate 0.5, w 0.15 | +16.53 | +21.46 | +10.38 | +23.01 |
+| + plate 0.5, w 0.30 | +12.89 | +22.07 | −4.77 ‡ | +23.31 |
+| + spectral flat, w 0.15 | −7.42 (−6.74) | +4.73 | −17.78 (−2.05) | +11.66 |
+| + spectral flat, w 0.30 | −6.30 (−6.42) | −2.82 | −12.77 (−9.24) | +3.56 |
+| + shape_max 1, w 0.15 | +11.90 (+11.90) | +18.31 | −13.14 (+4.98) | +17.98 |
+| + shape_max 1, w 0.30 | −4.32 (−4.33) | +7.83 | −17.06 (−1.14) | +9.41 |
+| + shape_max 2, w 0.15 | +4.52 (−1.39) | +13.52 | −18.66 (+6.70) | +17.07 |
+| + shape_max 2, w 0.30 | −16.47 (−10.79) | +2.27 | −19.38 (−6.32) | +8.40 |
+| + shape_max 4, w 0.15 | −9.40 (−7.99) | +1.16 | −17.23 (+8.34) | +14.11 |
+| + shape_max 4, w 0.30 | −18.18 (−17.49) § | −6.94 | −18.83 (−6.15) | +7.84 |
+
+§ Four seeds: seed 62 ran away at the ramp's start gain (runaway −20.00,
+the floor) and the criterion found no audible event. Over the 80 runs the
+criterion raised 23 warnings on the chain output (flat 4 and 5 at S1, w
+0.15 / 0.30, and 2 and 5 at S3; shape_max 2 at S1, w 0.30, 2; shape_max 4
+at S1, 2 and 3) and 2 on c; the driver's JSON keeps them.
+
+- **Every spectral row is audible earlier than the plate at the same wet.**
+  The best, shape_max 1 at S1, w 0.15, is audible at +11.90 against the
+  plate's +16.53. 14 of the 16 rows are audible below the dry loop's own
+  audible limit (+0.18 / +0.21) on the chain output, and 12 of 16 on c.
+- **The ramp's runaway falls too**, unlike the plate's: −6.94 to +18.31
+  against the plate's +21.46 to +23.31 and the canceller's +20.70 /
+  +21.37. On the ramp shape_max 1 and 2 run away later than flat at S1
+  (+18.31 / +7.83 and +13.52 / +2.27 against +4.73 / −2.82; shape_max 4
+  earlier, +1.16 / −6.94), and every shaped row later than flat at S3.
+- **At S3 the chain output is flagged near the ramp's start** (−12.77 to
+  −19.38; the ramp starts at −20 after the warm-up) where c reads −9.24 to
+  +8.34. What the criterion flags in the chain output there was not
+  examined. On c as on the chain output, every spectral row sits below the
+  plate's row at the same wet (at S3, w 0.30, the plate's c cross-check
+  reads −0.18, its chain output −4.77 ‡).
+- 80 runs on 3 jobs, 1380.5 s wall. Every WAV was deleted after its
+  analysis.
+
 ## What did not converge, separate or get measured
 
 - **The speech envelope did not converge** in three of eight convergence
@@ -532,6 +905,12 @@ decay and a wet:
 - **The reverb-only rows at S3, wet 0.30, are audible below the dry loop's
   limit in some seeds** (the audible table, ‡): real, feedback-dependent,
   bounded, at the plate's own modes; mechanism not identified.
+- **The spectral reverb's in-loop rows did not converge at 10 s** and most
+  had not by 160 s ([Spectral reverb](#spectral-reverb)); its grid ran on
+  40 s probes and is reported, not gated. Not run for it: the six-room
+  speech grid, S3 on speech, converged grid probes, float32 in the loop,
+  two microphones (the bus-sum shaping has plumbing tests only), and
+  audible rows beyond the cabin held note at rt60 1.1846 s.
 - **Not run:** the speech envelope at S3; the paper plate in the loop at
   decay 0.7 and 0.85 (the bare loop covers them); the shift rows at wet
   0.15 and 0.50 by bisection (the audible driver covers 0.15); the
@@ -552,7 +931,8 @@ decay and a wet:
 Every number here was measured on **macOS 15.7.9 x86_64 (i9-8950HK),
 AppleClang 17.0.0, Release**, double precision in the loop, on a machine
 shared with another job (at most four of its twelve threads were this
-work's). The analytic tables (T30, mix level, bare loop) are deterministic;
+work's; three for the spectral reverb's sweeps and audible runs). The
+analytic tables (T30, mix level, bare loop) are deterministic;
 the loop is chaotic, which is why the in-loop claims are medians over five
 seed sets and six rooms, and the gated rows bound medians with several dB
 of margin. No second host has run the sweep or the audible driver. CI runs
@@ -599,6 +979,40 @@ MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='ReverbStageSweep.BareLoopCo
 | `Shift`, S1 | 17611.7 s (cpu-sum 17611.6 s) | 1 | 420 |
 | `Shift`, S3 | 4813.9 s (cpu-sum 19196.2 s) | 4 | 420 |
 | `BareLoopCost` | 53.5 s | 1 | (analytic) |
+
+The spectral reverb ([Spectral reverb](#spectral-reverb)): its plumbing on
+every target, the gated host rows, then the sweep (`SPECTRAL_SWEEP_*`
+variables select subsets; the file comment lists them):
+
+```sh
+build/tests/mutap_tests --gtest_filter='spectral_reverb_test*:SpectralReverbConfig*:SpectralReverbRt*'
+MUTAP_SLOW_THREADS=3 build/tests/mutap_tests --gtest_filter='SpectralReverbHost.*'
+MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=held build/tests/mutap_tests --gtest_filter='SpectralReverbSweep.ProbeConvergence'
+MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=speech SPECTRAL_SWEEP_PROBES=10,20,40,80 build/tests/mutap_tests --gtest_filter='SpectralReverbSweep.ProbeConvergence'
+MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=held build/tests/mutap_tests --gtest_filter='SpectralReverbSweep.Grid'
+```
+
+| Test | Wall time | Threads | Jobs |
+|---|---|---|---|
+| `SpectralReverbHost.UnsafeWithoutTheCanceller` | 189.41 s | 3 | 30 open-loop bisections (10 after a convergence) |
+| `SpectralReverbHost.CostsMoreThanThePlateBehindTheCanceller` | 696.95 s | 3 | 15 chain + 5 open-loop bisections |
+| `ProbeConvergence`, held | 11349.4 s (cpu-sum 34003.1 s) | 3 | 290 |
+| `ProbeConvergence`, speech | 6849.3 s (cpu-sum 20503.6 s) | 3 | 240 |
+| `Grid`, held | 35418.6 s (cpu-sum 106197.4 s) | 3 | 1500 |
+
+A spectral job bisects the chain or the open loop with the reverb, after
+converging the canceller where the shape needs it. The audible rows:
+
+```sh
+python3 tools/notebook/reverb_audible.py --dump build/tools/notebook/karaoke_ramp_dump --work runs --jobs 3 \
+    --plate spectral --decays 1.1846 --wets 0.15,0.3 --shape-maxes 0,1,2,4 \
+    --configs spec0_1.1846_0.15,spec0_1.1846_0.3,spec1_1.1846_0.15,spec1_1.1846_0.3,spec2_1.1846_0.15,spec2_1.1846_0.3,spec4_1.1846_0.15,spec4_1.1846_0.3 \
+    --json audible_spectral.json
+```
+
+80 runs on 3 jobs: 1380.5 s wall (per-run sum 4071.5 s). Each run's WAVs
+are deleted after its analysis; the scratch directory held 139 MB of JSON
+and gain logs at the end.
 
 The audible table needs numpy and scipy; each run is about 2 minutes of
 dump and one to three analyses. One invocation with `--control` reproduces

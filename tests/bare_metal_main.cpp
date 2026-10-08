@@ -55,18 +55,20 @@ int main() {
         "FrequencyShifterRtContract.*:"
         "howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*:"
         "howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:"
-        "reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*";
+        "reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*:"
+        "spectral_reverb_test/0.*:SpectralReverbConfigValidation.*:SpectralReverbRtContract.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an
     // empty run must not pass green. Checked after the run because gtest
     // only applies the filter inside RUN_ALL_TESTS. The on-target selection
-    // is 108 tests (the FFT suites left with the FFT; FftEngineContract, the
+    // is 118 tests (the FFT suites left with the FFT; FftEngineContract, the
     // engine-contract rows MuTap owns, joined at the DspTap 0db95b6 bump;
     // PortableRandom, the fixtures' variates, when they replaced <random>'s;
     // the frequency shifter's 7 with the shifter; the howl detector's 12
     // with the detector; the howl guard's 19 with the guard; the reverb
-    // stage's 7 with the stage); 30 leaves headroom for
+    // stage's 7 with the stage; the spectral reverb's 9, and its
+    // FftEngineContract row, with the spectral reverb); 30 leaves headroom for
     // legitimate removals without masking a typo.
     const int selected = ::testing::UnitTest::GetInstance()->test_to_run_count();
     if (selected < 30) {

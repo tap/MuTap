@@ -60,7 +60,8 @@ add_executable(mutap_tests
     test_nn_suppressor.cpp
     test_fft_engine_contract.cpp
     test_portable_random.cpp
-    test_reverb_mix.cpp)
+    test_reverb_mix.cpp
+    test_spectral_reverb.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)
@@ -92,6 +93,9 @@ if(NOT MUTAP_BARE_METAL AND NOT CMAKE_CROSSCOMPILING)
     # The reverb behind the canceller (docs/reverb-afc.md): host-only for the
     # same reasons, and it drives the vendored Dattorro plates.
     target_sources(mutap_tests PRIVATE test_reverb_stage.cpp test_reverb_stage_sweep.cpp)
+    # The spectral reverb in the same slot (docs/reverb-afc.md, "Spectral
+    # reverb"): its in-loop rows and sweep; its plumbing is test_spectral_reverb.cpp.
+    target_sources(mutap_tests PRIVATE test_spectral_reverb_host.cpp test_spectral_reverb_sweep.cpp)
     target_include_directories(mutap_tests PRIVATE ${PROJECT_SOURCE_DIR}/third_party/faust)
 endif()
 
@@ -129,7 +133,7 @@ else()
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*:howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*:howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*")
+            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*:howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*:howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*:spectral_reverb_test/0.*:SpectralReverbConfigValidation.*:SpectralReverbRtContract.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)

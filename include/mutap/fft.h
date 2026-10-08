@@ -39,14 +39,15 @@ namespace tap::mu {
     // float engine the build selected, and so does the layout of every MuTap
     // class that holds a basic_real_fft<Sample> by value: partitioned_fdaf
     // (fdaf.h), partitioned_fdkf (fd_kalman.h), pem_afc (pem_afc.h),
-    // residual_suppressor (postfilter.h) and nn_suppressor (nn_suppressor.h).
-    // Their member functions are weak symbols in every image that
-    // instantiates them, and a dynamic loader may coalesce weak definitions
-    // across images (macOS dyld binds them to one definition; on ELF a
-    // plugin resolves against the executable's exports first), so two
+    // residual_suppressor (postfilter.h), nn_suppressor (nn_suppressor.h) and
+    // spectral_reverb (spectral_reverb.h). Their member functions are weak
+    // symbols in every image that instantiates them, and a dynamic loader may
+    // coalesce weak definitions across images (macOS dyld binds them to one
+    // definition; on ELF a plugin resolves against the executable's exports
+    // first), so two
     // images built with different engines, loaded into one process, could
     // run one image's code over the other's layout.
-    // Each of the five is therefore defined inside
+    // Each of the six is therefore defined inside
     //
     //     namespace tap::mu::inline TAP_DSP_FFT_ABI { ... }
     //
@@ -63,7 +64,7 @@ namespace tap::mu {
     //
     // THE RULE IS TRANSITIVE. The hazard belongs to any class whose object
     // layout depends on the float engine and whose mangled name does not
-    // carry it: one that holds a basic_real_fft<float>, any of the five
+    // carry it: one that holds a basic_real_fft<float>, any of the six
     // above at <float>, or an aec_chain<float, ...> by value — directly or
     // through std::optional / std::array / std::variant / a member struct —
     // without naming it as a template argument. Such a class must itself be
@@ -79,7 +80,7 @@ namespace tap::mu {
     // harmless: they live in one test image with one engine.
     //
     // tests/test_fft_engine_contract.cpp pins the tag on every leg for the
-    // five (by qualified name at compile time, by typeid at run time); it
+    // six (by qualified name at compile time, by typeid at run time); it
     // cannot see a wrapper someone adds later, so the transitive rule is
     // enforced by review. Two more rules follow:
     //   - never forward-declare a tagged class in plain tap::mu
@@ -154,9 +155,9 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// of two): srdif (double always; float by default) 4 ... 2^30;
         /// vDSP (float, TAP_DSP_FFT_ACCELERATE) 4 ... 2^20; CMSIS-DSP (float,
         /// TAP_DSP_FFT_CMSIS, the Cortex-M55 default) 32 ... 4096. What a
-        /// MuTap block size maps to: N = 2 * block_size for the cancellers,
-        /// analysis_blocks * block_size for the residual suppressor, and
-        /// 2 * the trained hop for the learned suppressor.
+        /// MuTap block size maps to: N = 2 * block_size for the cancellers and
+        /// the spectral reverb, analysis_blocks * block_size for the residual
+        /// suppressor, and 2 * the trained hop for the learned suppressor.
         ///
         /// The message is a string literal from the call site, naming the
         /// class and how n is derived, followed by MUTAP_FFT_SIZE_RANGES:
