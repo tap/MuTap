@@ -379,8 +379,12 @@ carries the measured numbers; this is the map:
      160 s). Gated rows use the converged ones only.
    - **Flat is unsafe open loop, confirmed:** 17.15 to 31.80 dB below the
      dry room (room medians, 160 s, both wets, S1 and S3); shaped rows
-     12.56 to 29.84 dB below. Gated (cabin / mt5, 80 s): flat −30.51 /
-     −22.77, shape_max 1 −19.61 / −14.69.
+     12.56 to 29.84 dB below. Gated: on converged 80 s probes behind
+     `MUTAP_SLOW` (cabin / mt5) flat −30.51 / −22.77, shape_max 1 −19.61 /
+     −14.69, and the cost rows (cabin) +17.19 / +8.44; the default run
+     carries 20 s two-set proxies of both (conservative: short probes
+     understate), 104.5 s together on 3 threads with the level row. The
+     sanitizer legs could not afford the 80 s rows (697 s and 189 s).
    - **Shaped vs flat:** shape_max 1 beats flat at S1 (+1.17 to +4.30 dB,
      3 to 5 of 6 rooms) and every ceiling does at S3, w 0.30 (+0.98 to
      +3.71); shape_max 4 loses 7.91 to 12.79 dB at S1 in every room. The
@@ -402,7 +406,8 @@ carries the measured numbers; this is the map:
      the chain output (12 of 16 on c), and the ramp's runaway falls to
      −6.94 … +18.31 where the plate's does not (+21.46 … +23.31). At S3 the
      chain output is flagged near the ramp's start (−12.77 to −19.38) where
-     c reads −9.24 to +8.34; not examined. 80 runs, 1380.5 s on 3 jobs,
+     c reads −9.24 to +8.34; not examined: an open item of the same family
+     as part 1's S3 lines (the plates' ‡). 80 runs, 1380.5 s on 3 jobs,
      WAVs deleted per run.
    - **Kept, not removed:** the class stays as a measured negative result
      (its header says so) because the gated rows and the sweep that hold

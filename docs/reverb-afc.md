@@ -131,7 +131,10 @@ The karaoke suites' loop and protocol ([karaoke-afc.md](karaoke-afc.md),
   `decorrelated_loop`'s new forward stage, run on each block after the
   forward delay and before the gain: the chain's reverb slot. Every loop
   built with a stage resets it, so each bisection probe starts the plate
-  from silence, as it starts the loop's own history from zero.
+  from silence, as it starts the loop's own history from zero. A stage's
+  own bulk latency is budgeted inside the forward delay, so the loop's total
+  delay stays S1's or S3's whatever the stage (the plates report none; the
+  spectral reverb's one block comes out of it, keeping it like for like).
   `tests/support/reverb_rig.h` builds the stage: `reverb_mix` over a
   vendored plate, the library's `frequency_shifter` then `reverb_mix` (the
   whole-bus shift), `shifted_dry_mix` (the dry-only shift), or the shifter
@@ -662,9 +665,14 @@ The grid below therefore runs the held note on 40 s probes (the budget: a
 is reported, not gated. The 40 s median ASG read at or above the 160 s one
 in 7 of the 8 held rows above (mt5 shape_max 2: +5.98 against +6.46), so
 the grid mostly understates the spectral reverb's cost. The open-loop rows
-run on 160 s probes. Gated rows run only where the table converged: 80 s
-probes in the cabin (flat, shape_max 1) and in the cabin and mt5 for the
-open loop.
+run on 160 s probes. The gated rows that use converged probes (80 s, the
+cabin's flat and shape_max 1 chain rows, the cabin's and mt5's open loops)
+run behind `MUTAP_SLOW`: at 697 s and 189 s on 3 threads they do not fit
+the default run (the sanitizer legs). The default run carries a short proxy
+for each, 20 s probes and two seed sets, and asserts the same directions.
+Short probes understate both the spectral reverb's cost and the open
+loop's danger (the table: every such median falls with probe length), so a
+pass on 20 s is conservative.
 
 ### Behind the canceller: the spectral reverb against the plate (runaway)
 
@@ -780,9 +788,16 @@ The plate costs a bare loop at most +5.79 dB by the bound (decay 0.85, w
 HANDOFF item 11's −18.05 to −24.61 for the flat reverb holds with converged
 probes: −17.15 to −31.80 over the six rooms. Shaping does not make it safe:
 every shaped row is 12.56 to 29.84 dB below the dry room's limit. Gated
-(`SpectralReverbHost.UnsafeWithoutTheCanceller`, cabin and mt5, S1, w 0.30,
-rt60 1 s, 80 s, converged): flat −30.51 / −22.77, shape_max 1 −19.61 /
-−14.69.
+(cabin / mt5, S1, w 0.30, rt60 1 s): on converged 80 s probes behind
+`MUTAP_SLOW` (`SpectralReverbHost.UnsafeWithoutTheCanceller`) flat
+−30.51 / −22.77, shape_max 1 −19.61 / −14.69 (five-set medians); in the
+default run on 20 s probes (`UnsafeWithoutTheCancellerShortProbe`, two
+sets) −29.80 / −22.42 and −19.79 / −13.98 (means). Behind the canceller,
+`CostsMoreThanThePlateShortProbe` (default, cabin, 20 s, two sets) reads the
+plate's limit above the spectral reverb's by +14.66 (flat) and +9.78
+(shape_max 1) dB, and `CostsMoreThanThePlateBehindTheCanceller`
+(`MUTAP_SLOW`, 80 s) costs the spectral reverb +17.19 and +8.44 dB
+against the canceller alone.
 
 ### The hypothesis: does shaping put the reverb where the estimate is worst?
 
@@ -905,6 +920,11 @@ at S1, 2 and 3) and 2 on c; the driver's JSON keeps them.
 - **The reverb-only rows at S3, wet 0.30, are audible below the dry loop's
   limit in some seeds** (the audible table, ‡): real, feedback-dependent,
   bounded, at the plate's own modes; mechanism not identified.
+- **The spectral reverb's S3 audible rows are flagged near the ramp's
+  start on the chain output** (−12.77 to −19.38, where c reads −9.24 to
+  +8.34; [Spectral audible limits](#spectral-audible-limits)): the same
+  family as the plate's S3 lines (‡ in the audible table), not examined
+  here.
 - **The spectral reverb's in-loop rows did not converge at 10 s** and most
   had not by 160 s ([Spectral reverb](#spectral-reverb)); its grid ran on
   40 s probes and is reported, not gated. Not run for it: the six-room
@@ -981,12 +1001,14 @@ MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='ReverbStageSweep.BareLoopCo
 | `BareLoopCost` | 53.5 s | 1 | (analytic) |
 
 The spectral reverb ([Spectral reverb](#spectral-reverb)): its plumbing on
-every target, the gated host rows, then the sweep (`SPECTRAL_SWEEP_*`
+every target, the gated host rows (the default run's, then the two
+converged rows behind `MUTAP_SLOW`), then the sweep (`SPECTRAL_SWEEP_*`
 variables select subsets; the file comment lists them):
 
 ```sh
 build/tests/mutap_tests --gtest_filter='spectral_reverb_test*:SpectralReverbConfig*:SpectralReverbRt*'
 MUTAP_SLOW_THREADS=3 build/tests/mutap_tests --gtest_filter='SpectralReverbHost.*'
+MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 build/tests/mutap_tests --gtest_filter='SpectralReverbHost.*'
 MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=held build/tests/mutap_tests --gtest_filter='SpectralReverbSweep.ProbeConvergence'
 MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=speech SPECTRAL_SWEEP_PROBES=10,20,40,80 build/tests/mutap_tests --gtest_filter='SpectralReverbSweep.ProbeConvergence'
 MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=held build/tests/mutap_tests --gtest_filter='SpectralReverbSweep.Grid'
@@ -994,8 +1016,11 @@ MUTAP_SLOW=1 MUTAP_SLOW_THREADS=3 SPECTRAL_SWEEP_MATS=held build/tests/mutap_tes
 
 | Test | Wall time | Threads | Jobs |
 |---|---|---|---|
-| `SpectralReverbHost.UnsafeWithoutTheCanceller` | 189.41 s | 3 | 30 open-loop bisections (10 after a convergence) |
-| `SpectralReverbHost.CostsMoreThanThePlateBehindTheCanceller` | 696.95 s | 3 | 15 chain + 5 open-loop bisections |
+| `SpectralReverbHost.DecayAndLevelBesideThePlate` (default) | 0.25 s | 1 | (analytic) |
+| `SpectralReverbHost.UnsafeWithoutTheCancellerShortProbe` (default) | 27.03 s | 3 | 12 open-loop bisections (4 after a convergence) |
+| `SpectralReverbHost.CostsMoreThanThePlateShortProbe` (default) | 77.25 s | 3 | 6 chain bisections |
+| `SpectralReverbHost.UnsafeWithoutTheCanceller` (`MUTAP_SLOW`) | 189.41 s | 3 | 30 open-loop bisections (10 after a convergence) |
+| `SpectralReverbHost.CostsMoreThanThePlateBehindTheCanceller` (`MUTAP_SLOW`) | 696.95 s | 3 | 15 chain + 5 open-loop bisections |
 | `ProbeConvergence`, held | 11349.4 s (cpu-sum 34003.1 s) | 3 | 290 |
 | `ProbeConvergence`, speech | 6849.3 s (cpu-sum 20503.6 s) | 3 | 240 |
 | `Grid`, held | 35418.6 s (cpu-sum 106197.4 s) | 3 | 1500 |
