@@ -42,6 +42,16 @@
 // the unshifted bus). `--reverb-ir-only` writes the plate's impulse response
 // (L, R) to PREFIX.reverb.wav and exits (the driver's --chain-rt60).
 //
+// THE SPECTRAL REVERB (docs/reverb-afc.md, "Spectral reverb"; tests/support/
+// spectral_rig.h): `--reverb spectral` puts tap::mu::spectral_reverb in the
+// same slot at `--wet` and `--rt60`, flat (`--shape-max 0`, the default) or
+// shaped from the live canceller's F_hat with that ceiling, reshaped every
+// `--reshape-blocks` blocks (256, 0.34 s: the branch measured the cadence
+// not to matter) once F_hat is nonzero (the canceller starts cold, so the
+// shape starts flat). Its one block of latency comes out of `--delay`, as in
+// the suites. `--reverb-ir-only` writes its all-wet flat impulse response
+// (twice, as L and R).
+//
 // Outputs, with `--out PREFIX`:
 //   PREFIX.wav      float32, 48 kHz, 4 channels: c (the canceller output),
 //                   the voice stem (the near end v as it enters the mic),
@@ -81,10 +91,12 @@
 #include "fixtures/rir_studio.h"
 #include "mutap/fd_kalman.h"
 #include "mutap/pem_afc.h"
+#include "mutap/spectral_reverb.h"
 #include "support/closed_loop.h"
 #include "support/decorrelated_loop.h"
 #include "support/reverb_rig.h"
 #include "support/rooms.h"
+#include "support/spectral_rig.h"
 
 namespace {
 
@@ -113,7 +125,7 @@ namespace {
         double      tail_s      = 2.0;
         bool        canceller   = true;   ///< false: the dry open loop (the reference ramp)
         bool        ir_only     = false;  ///< write PREFIX.ir.wav and stop
-        std::string reverb      = "none"; ///< none | shipped | paper
+        std::string reverb      = "none"; ///< none | shipped | paper | spectral
         double      wet         = 0.30;
         double      decay       = 0.5;
         double      damping     = 0.0005;
@@ -121,6 +133,9 @@ namespace {
         std::string topology    = "bus"; ///< bus | dry (with a shift and a reverb)
         bool        lib_shift   = false; ///< shift inside the stage, no reverb
         bool        reverb_ir   = false; ///< write PREFIX.reverb.wav and stop
+        double      rt60        = 1.0;   ///< spectral
+        double      shape_max   = 0.0;   ///< spectral: 0 flat, else shaped from F_hat with this ceiling
+        size_t      reshape     = 256;   ///< spectral: blocks between reshapes
         std::string out;
     };
 
@@ -132,7 +147,8 @@ namespace {
                      "       [--aux-db DB] [--seed 2] [--warmup 30] [--start-below 20] [--rate 0.5]\n"
                      "       [--max-over 40] [--tail 2] [--no-canceller] [--ir-only]\n"
                      "       [--reverb none|shipped|paper] [--wet 0.3] [--decay 0.5] [--damping 0.0005]\n"
-                     "       [--return L|M] [--topology bus|dry] [--lib-shift] [--reverb-ir-only]\n",
+                     "       [--return L|M] [--topology bus|dry] [--lib-shift] [--reverb-ir-only]\n"
+                     "       [--reverb spectral [--rt60 1] [--shape-max 0] [--reshape-blocks 256]]\n",
                      msg);
         std::exit(2);
     }
@@ -214,6 +230,15 @@ namespace {
             else if (a == "--lib-shift") {
                 o.lib_shift = true;
             }
+            else if (a == "--rt60") {
+                o.rt60 = std::stod(next());
+            }
+            else if (a == "--shape-max") {
+                o.shape_max = std::stod(next());
+            }
+            else if (a == "--reshape-blocks") {
+                o.reshape = static_cast<size_t>(std::stoul(next()));
+            }
             else if (a == "--reverb-ir-only") {
                 o.reverb_ir = true;
             }
@@ -230,8 +255,14 @@ namespace {
         if (o.material != "held" && o.material != "ar") {
             usage("--material must be held or ar");
         }
-        if (o.reverb != "none" && o.reverb != "shipped" && o.reverb != "paper") {
-            usage("--reverb must be none, shipped or paper");
+        if (o.reverb != "none" && o.reverb != "shipped" && o.reverb != "paper" && o.reverb != "spectral") {
+            usage("--reverb must be none, shipped, paper or spectral");
+        }
+        if (o.reverb == "spectral" && (o.shift_hz != 0.0 || o.lib_shift)) {
+            usage("--reverb spectral takes no shift");
+        }
+        if (o.reverb == "spectral" && o.reshape == 0) {
+            usage("--reshape-blocks must be >= 1");
         }
         if (o.ret != "L" && o.ret != "M") {
             usage("--return must be L or M");
@@ -368,6 +399,19 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (o.reverb_ir && o.reverb == "spectral") {
+        const auto                      h = mutap_test::spectral::wet_impulse_response(o.rt60, 4.0 * o.rt60);
+        std::vector<std::vector<float>> ch(2);
+        for (const double x : h) {
+            ch[0].push_back(static_cast<float>(x));
+            ch[1].push_back(static_cast<float>(x));
+        }
+        if (!write_wav(o.out + ".reverb.wav", ch)) {
+            std::fprintf(stderr, "karaoke_ramp_dump: cannot write %s.reverb.wav\n", o.out.c_str());
+            return 1;
+        }
+        return 0;
+    }
     if (o.reverb_ir) {
         const auto                      h = mutap_test::reverb::plate_ir(rig_params(o).plate, o.decay, o.damping);
         std::vector<std::vector<float>> ch(2);
@@ -399,13 +443,23 @@ int main(int argc, char** argv) {
     const std::vector<double> aux = mutap_test::white_near_end<double>(120000, o.seed + 777);
 
     decorrelated_loop<double>::config lc;
-    lc.feedback_path                                = path;
-    lc.block_size                                   = k_block;
-    lc.forward_delay                                = o.delay;
-    lc.forward_gain_db                              = start_db;
-    const bool                               staged = o.reverb != "none" || o.lib_shift;
-    std::unique_ptr<mutap_test::reverb::rig> rig;
-    if (staged) {
+    lc.feedback_path                                       = path;
+    lc.block_size                                          = k_block;
+    lc.forward_delay                                       = o.delay;
+    lc.forward_gain_db                                     = start_db;
+    const bool                                    spectral = o.reverb == "spectral";
+    const bool                                    staged   = o.reverb != "none" || o.lib_shift;
+    std::unique_ptr<mutap_test::reverb::rig>      rig;
+    std::unique_ptr<mutap_test::spectral::reverb> spec;
+    if (spectral) {
+        mutap_test::spectral::params sp;
+        sp.rt60      = o.rt60;
+        sp.wet       = o.wet;
+        sp.shape_max = o.shape_max;
+        spec         = std::make_unique<mutap_test::spectral::reverb>(mutap_test::spectral::config_of(sp));
+        lc.stage     = mutap_test::forward_stage<double>::of(spec.get());
+    }
+    else if (staged) {
         rig      = std::make_unique<mutap_test::reverb::rig>(rig_params(o));
         lc.stage = mutap_test::forward_stage<double>::of(rig.get());
     }
@@ -430,6 +484,9 @@ int main(int argc, char** argv) {
     }
     std::string csv = "time_s,gain_db\n";
 
+    std::vector<double> f_hat(afc.filter_length(), 0.0);
+    size_t              reshapes = 0;
+
     double runaway_db = NAN;
     double runaway_t  = NAN;
     size_t stop_at    = max_blocks;
@@ -444,6 +501,10 @@ int main(int argc, char** argv) {
         std::snprintf(row, sizeof row, "%.6f,%.6f\n", t, g);
         csv += row;
 
+        if (spectral && o.canceller && o.shape_max > 0.0 && blk > 0 && blk % o.reshape == 0) {
+            afc.copy_impulse_response(f_hat.data());
+            reshapes += spec->reshape_from_impulse_response(f_hat.data(), f_hat.size()) ? 1 : 0;
+        }
         const double rms = sim.step(&v[blk * k_block], o.canceller ? &afc : nullptr);
         const auto&  e   = sim.error_block();
         const auto&  a   = sim.aux_block();
@@ -475,12 +536,13 @@ int main(int argc, char** argv) {
                 "\"material\": \"%s\", \"aux_db\": %s, \"seed\": %u, \"canceller\": %s, \"exact_msg_db\": %.4f, "
                 "\"theoretical_msg_db\": %.4f, \"start_db\": %.4f, \"warmup_s\": %g, \"rate_db_per_s\": %g, "
                 "\"runaway_db\": %s, \"runaway_t\": %s, \"seconds\": %.3f, \"reverb\": \"%s\", \"wet\": %g, "
-                "\"decay\": %g, \"damping\": %g, \"return\": \"%s\", \"topology\": \"%s\", \"staged\": %s}\n",
+                "\"decay\": %g, \"damping\": %g, \"return\": \"%s\", \"topology\": \"%s\", \"staged\": %s, "
+                "\"rt60\": %g, \"shape_max\": %g, \"reshape_blocks\": %zu, \"reshapes\": %zu}\n",
                 o.room.c_str(), o.taps, o.banded ? "true" : "false", o.delay, o.shift_hz, o.material.c_str(),
                 o.aux ? std::to_string(o.aux_db).c_str() : "null", o.seed, o.canceller ? "true" : "false", exact, max_f,
                 start_db, o.warmup_s, o.rate, std::isnan(runaway_db) ? "null" : std::to_string(runaway_db).c_str(),
                 std::isnan(runaway_t) ? "null" : std::to_string(runaway_t).c_str(),
                 static_cast<double>(blk * k_block) / k_fs, o.reverb.c_str(), o.wet, o.decay, o.damping, o.ret.c_str(),
-                o.topology.c_str(), staged ? "true" : "false");
+                o.topology.c_str(), staged ? "true" : "false", o.rt60, o.shape_max, o.reshape, reshapes);
     return 0;
 }

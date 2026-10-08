@@ -35,6 +35,16 @@ Configurations (the product-chain candidates; --plate picks the plate):
     dry2/5_D_W  + shifted_dry_mix: only the dry path shifted, the plate fed the unshifted bus
 for D in --decays and W in --wets.
 
+With --plate spectral the reverb is tap::mu::spectral_reverb (docs/reverb-afc.md,
+"Spectral reverb"; the dump's --reverb spectral) and the rows are
+    specS_R_W   + the spectral reverb at rt60 R, wet W, flat (S = 0) or shaped
+                from the live canceller's F_hat with shape_max S (reshaped every
+                256 blocks)
+for S in --shape-maxes, R in --decays (read as rt60 values, seconds) and W in
+--wets, beside dry and plain; no shift rows. Their --chain-rt60 is the
+spectral reverb's own T30 at rt60 R (its all-wet flat impulse response through
+schroeder()), for flat and shaped rows alike.
+
 Printed per configuration and delay: each seed's audible limit and the
 ramp's runaway gain, both in dB over the dry loop's exact_msg_db, and their
 medians; for reverb-only rows also the cross-check on c. --merge prints the
@@ -85,14 +95,21 @@ import karaoke_audible  # noqa: E402  (cabin_t30, plain_pass_limit, fmt)
 import measure_rir  # noqa: E402
 
 
-def configs(decays: list[float], wets: list[float], plate: str) -> dict:
+def configs(decays: list[float], wets: list[float], plate: str, shape_maxes: list[float] | None = None) -> dict:
     """name -> (dump arguments, kind); kind picks section 7.3's row."""
     out = {
         "dry": (["--no-canceller"], "plain"),
         "plain": ([], "plain"),
-        "shift2": (["--lib-shift", "--shift-hz", "2"], "shift"),
-        "shift5": (["--lib-shift", "--shift-hz", "5"], "shift"),
     }
+    if plate == "spectral":
+        for sm in shape_maxes or [0.0]:
+            for rt in decays:
+                for w in wets:
+                    out[f"spec{sm:g}_{rt:g}_{w:g}"] = (["--reverb", "spectral", "--rt60", f"{rt:g}", "--wet", f"{w:g}",
+                                                        "--shape-max", f"{sm:g}"], "reverb")
+        return out
+    out["shift2"] = (["--lib-shift", "--shift-hz", "2"], "shift")
+    out["shift5"] = (["--lib-shift", "--shift-hz", "5"], "shift")
     for d in decays:
         for w in wets:
             rv = ["--reverb", plate, "--decay", f"{d:g}", "--wet", f"{w:g}"]
@@ -101,6 +118,22 @@ def configs(decays: list[float], wets: list[float], plate: str) -> dict:
                 out[f"bus{hz}_{d:g}_{w:g}"] = (rv + ["--shift-hz", str(hz), "--topology", "bus"], "product")
                 out[f"dry{hz}_{d:g}_{w:g}"] = (rv + ["--shift-hz", str(hz), "--topology", "dry"], "product")
     return out
+
+
+def spectral_t30(dump: str, work: pathlib.Path, rt60: float) -> float:
+    """The spectral reverb's own T30 at rt60 (its all-wet flat impulse response)."""
+    prefix = work / f"spectral_rt{rt60:g}"
+    subprocess.run([dump, "--out", str(prefix), "--reverb", "spectral", "--rt60", f"{rt60:g}", "--reverb-ir-only"],
+                   check=True)
+    fs, ir = wavfile.read(str(prefix) + ".reverb.wav")
+    return float(measure_rir.schroeder(ir[:, 0].astype(np.float64), fs)["T30"])
+
+
+def chain_key(meta: dict):
+    """The --chain-rt60 table's key for a dump's JSON line."""
+    if meta["reverb"] == "spectral":
+        return ("spectral", float(meta["rt60"]))
+    return (meta["reverb"], float(meta["decay"]), float(meta["damping"]), meta["return"])
 
 
 def plate_t30(dump: str, work: pathlib.Path, plate: str, decay: float, damping: float, ret: str) -> float:
@@ -167,7 +200,7 @@ def one_run(dump: str, work: pathlib.Path, name: str, spec: tuple, delay: int, s
     wavfile.write(voice, fs, x[:, 1].copy())
     t_chain = None
     if meta.get("reverb", "none") != "none":
-        t_chain = chain_t30[(meta["reverb"], float(meta["decay"]), float(meta["damping"]), meta["return"])]
+        t_chain = chain_t30[chain_key(meta)]
     rec = dict(name=name, kind=kind, delay=delay, seed=seed, exact=meta["exact_msg_db"],
                max_f=meta["theoretical_msg_db"], runaway=meta["runaway_db"], chain_t30=t_chain)
     c_wav = str(prefix) + ".c.wav"
@@ -217,7 +250,7 @@ def recover(dump: str, work: pathlib.Path, name: str, spec: tuple, delay: int, s
         f.unlink()
     t_chain = None
     if meta.get("reverb", "none") != "none":
-        t_chain = chain_t30[(meta["reverb"], float(meta["decay"]), float(meta["damping"]), meta["return"])]
+        t_chain = chain_t30[chain_key(meta)]
     rec = dict(name=name, kind=kind, delay=delay, seed=seed, exact=meta["exact_msg_db"],
                max_f=meta["theoretical_msg_db"], runaway=runaway_from_gain_log(str(prefix) + ".gain.csv"),
                chain_t30=t_chain, recovered=True)
@@ -272,6 +305,8 @@ def print_table(runs: list, order: list) -> None:
                       + f"  median {fmt(statistics.median(gap))})")
 
     # The two shift topologies against each other: per seed, dry-only shift - whole-bus shift.
+    if not any(n.startswith("bus") for n in order):
+        return  # the spectral rows have no shift
     print("\ndry-only shift - whole-bus shift, per seed (same seed, delay, shift, decay and wet), dB")
     pairs = 0
     higher = 0
@@ -307,7 +342,8 @@ def main(argv=None) -> None:
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--seeds", default="2,22,42,62,82")
     ap.add_argument("--delays", default="480,960")
-    ap.add_argument("--plate", default="shipped", choices=["shipped", "paper"])
+    ap.add_argument("--plate", default="shipped", choices=["shipped", "paper", "spectral"])
+    ap.add_argument("--shape-maxes", default="0,1,2,4", help="with --plate spectral: 0 = flat, else the shape_max")
     ap.add_argument("--decays", default="0.5,0.7")
     ap.add_argument("--wets", default="0.15,0.3")
     ap.add_argument("--configs", default=None, help="comma-separated subset of the configuration names")
@@ -322,7 +358,7 @@ def main(argv=None) -> None:
 
     decays = [float(x) for x in args.decays.split(",")]
     wets = [float(x) for x in args.wets.split(",")]
-    cfgs = configs(decays, wets, args.plate)
+    cfgs = configs(decays, wets, args.plate, [float(x) for x in args.shape_maxes.split(",")])
     order = list(cfgs)
     if args.merge:
         by_key = {}
@@ -342,6 +378,11 @@ def main(argv=None) -> None:
     print(f"band-limited cabin (4096 taps) T30 = {room_t30:.4f} s  (--rt60)")
     chain_t30 = {}
     for d in decays:
+        if args.plate == "spectral":
+            key = ("spectral", d)
+            chain_t30[key] = spectral_t30(args.dump, work, d)
+            print(f"spectral reverb, rt60 {d:g}: T30 = {chain_t30[key]:.4f} s  (--chain-rt60)")
+            continue
         key = (args.plate, d, 0.0005, "L")
         chain_t30[key] = plate_t30(args.dump, work, args.plate, d, 0.0005, "L")
         print(f"{args.plate} plate, decay {d:g}, damping 0.0005, L: T30 = {chain_t30[key]:.4f} s  (--chain-rt60)")

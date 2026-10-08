@@ -136,16 +136,16 @@ carries the measured numbers; this is the map:
    carry the ABI tag: define it inside `namespace tap::mu::inline
    TAP_DSP_FFT_ABI`, or take the engine-dependent member as a template
    argument (as `aec_chain` does), and never forward-declare it in plain
-   `tap::mu`. That is transitive: it covers the five classes that hold a
+   `tap::mu`. That is transitive: it covers the six classes that hold a
    `basic_real_fft` by value (`partitioned_fdaf`, `partitioned_fdkf`,
-   `pem_afc`, `residual_suppressor`, `nn_suppressor`) and anything that
+   `pem_afc`, `residual_suppressor`, `nn_suppressor`, `spectral_reverb`) and anything that
    holds one of them at `<float>`, or an `aec_chain<float, …>`, by value —
    directly or through `optional` / `array` / `variant` — without naming it
    as a template argument. Double-only holders are exempt (the tag keys on
    the float default; `double` always runs the srdif engine, so the
    layout never changes): the C ABI handles, the ITU dump, and MuTap-Max's
    externals (`<double>` behind `unique_ptr`), so MuTap-Max has nothing to
-   tag on its bump. `tests/test_fft_engine_contract.cpp` pins the five; it
+   tag on its bump. `tests/test_fft_engine_contract.cpp` pins the six; it
    cannot see a wrapper added later — review has to. (b) Pass every FFT
    size derived from configuration through `fft_detail::checked_fft_size`
    — CMSIS-DSP on the M55 supports only 32 … 4096 and an unchecked size
@@ -343,38 +343,76 @@ carries the measured numbers; this is the map:
    - **Single-mic numbers here are not karaoke-suite numbers**: the chain's
      reference lags one block, so the cabin S1 held note reads +9.71 against
      the karaoke suite's +11.63.
-11. **Deferred to phase 2's reverb-integration item: `mutap::spectral_reverb`.**
-   **Its return is the next PR (phase 2 item 7, part 2)**, on the harness
-   part 1 built (item 13: `reverb_mix`, the loop's forward stage, the
-   probe-convergence sweep, the audible driver; `docs/reverb-afc.md`), so
-   the spectral reverb is measured exactly as the Dattorro plates were.
-   The per-bin spectral reverb shaped from F̂ is commit `8abe958` on the
-   local branch `karaoke-afc-decorrelation-reverb` (from the karaoke
-   bundle); it did not land. Measured during the karaoke landing with a
-   scratch harness (cabin band-limited, held note, wet 0.15, RT60 1 s,
-   PEM + FD-Kalman, like-for-like ASG, five seeds; not reproducible from
-   this repo until the class returns):
-   - **Shaped-from-F̂ loses to flat everywhere.** 40 s probes: S1 dry
-     +11.66 / flat +2.81 / shaped −27.66 (three seeds at the −30 bracket
-     floor); S3 +18.34 / +9.20 / +7.09; at the branch's 5.3 ms +5.45 /
-     +6.45 / +6.27. At S1 in studio / rehearsal / mt5 / mt9 (20 s) shaped
-     reads +0.92 / −1.60 / +6.21 / +3.28 against flat +7.77 / +6.48 /
-     +12.77 / +14.36. The branch's "shaped ≥ flat" came from 0.8 s probes
-     (at S1 then: shaped +12.29, flat +7.48, dry +10.41).
-   - **Reverb-with-canceller bisection had not converged by 40 s:** the
-     20 s -> 40 s step still moved the medians by -25.73 (shaped, S1) to
-     +0.24 dB (flat, 5.3 ms), so no in-loop reverb claim was assertable.
-   - **Flat is unsafe open loop:** −18.05 to −24.61 dB against the dry
-     room (cabin S1 −24.61 at a 160 s probe; studio −18.05, rehearsal
-     −20.62, mt5 −20.86, mt9 −21.62 at 80 s).
-   - **Hypothesis, untested:** the shaping's per-bin allowance (up to
-     `shape_max` = 4, i.e. wet gain ×4 and decay time ×4 in the bins where
-     |F̂| is weakest) builds high-Q resonances where the canceller's
-     estimate is poorest, which the loop then finds.
-   - **Fix when it returns:** it holds a `basic_real_fft<Sample>` by value
-     but is not defined inside `tap::mu::inline TAP_DSP_FFT_ABI` and does
-     not pass its FFT size through `fft_detail::checked_fft_size` (working
-     note 6 (a) and (b)); pin it in `test_fft_engine_contract.cpp`.
+11. **`mutap::spectral_reverb`: RESOLVED, a measured negative result
+   (2026-10-08; phase 2 item 7, part 2; [`docs/reverb-afc.md`](docs/reverb-afc.md),
+   "Spectral reverb").** The per-bin reverb from the karaoke branch
+   (`8abe958`) is back as `include/mutap/spectral_reverb.h`, legal under
+   working note 6: defined inside `tap::mu::inline TAP_DSP_FFT_ABI`, its
+   2 × block FFT size through `fft_detail::checked_fft_size`, pinned as the
+   sixth embedder in `test_fft_engine_contract.cpp`; an `afc_stage` with
+   `latency()` one block, a flat mode (`spectral_shaping::flat`) and an
+   explicit `shape_max`, shaped from F̂ (`reshape_from_impulse_response()`)
+   or the coherent bus sum |Σ F̂_m| (`reshape_from_impulse_responses()`).
+   Float plumbing `test_spectral_reverb.cpp` (both emulated selections; the
+   on-target count is now 118 in the comment, 120 selected by the filter on
+   the host build); host rows `test_spectral_reverb_host.cpp`; the
+   `MUTAP_SLOW` sweep `test_spectral_reverb_sweep.cpp` (ProbeConvergence,
+   Grid); `karaoke_ramp_dump --reverb spectral` and `reverb_audible.py
+   --plate spectral`. `decorrelated_loop`'s forward stage now takes a
+   stage's `latency()` out of the forward delay (0 for the plates: their
+   rows reproduce part 1's). Measured (macOS x86_64, AppleClang, Release,
+   five seed sets, held note unless stated):
+   - **Verdict: it loses to the plate everywhere measured.** Behind the
+     canceller (six rooms, S1 and S3, wet 0.15 / 0.30, rt60 1 s and the
+     plate's 1.1846 s T30, flat and shape_max 1 / 2 / 4, 40 s probes, NOT
+     converged and mostly understating the cost) it costs +2.83 to +30.57
+     dB (median of room medians) where the as-shipped plate at decay 0.5
+     costs −1.37 to +0.88; per seed the plate holds more in every room's
+     median for 22 of 24 rows, in 5 of 6 for the other two. At equal wet it
+     is 4.30 to 14.75 dB louder than the plate's mix; at matched loudness it
+     still costs more except shape_max 1 at S1, w 0.15 (−0.51 against the
+     plate's +1.44). Speech envelope (cabin and mt5, S1, w 0.30, 80 s): it
+     costs +4.30 to +17.09 dB where the plate raised the limit.
+   - **Convergence:** unlike the plates (10 s), only the cabin's flat,
+     shape_max 1 and 2 held rows converged (80 s); shape_max 4 and every mt5
+     chain row had not by 160 s (cabin shape_max 4: −2.01 at 10 s, −19.02 at
+     160 s). Gated rows use the converged ones only.
+   - **Flat is unsafe open loop, confirmed:** 17.15 to 31.80 dB below the
+     dry room (room medians, 160 s, both wets, S1 and S3); shaped rows
+     12.56 to 29.84 dB below. Gated (cabin / mt5, 80 s): flat −30.51 /
+     −22.77, shape_max 1 −19.61 / −14.69.
+   - **Shaped vs flat:** shape_max 1 beats flat at S1 (+1.17 to +4.30 dB,
+     3 to 5 of 6 rooms) and every ceiling does at S3, w 0.30 (+0.98 to
+     +3.71); shape_max 4 loses 7.91 to 12.79 dB at S1 in every room. The
+     branch's "shaped ≥ flat" (0.8 s probes) does not hold.
+   - **The hypothesis, measured:** at the moment of shaping, Spearman's ρ
+     between a bin's decay time and its misalignment |F − F̂| is negative in
+     every row (median −0.336 to −0.688): the long decays sit where the
+     absolute misalignment is SMALL, and the worst quarter of the bins gets
+     0.022 to 0.178 of the tail energy (flat 0.246). Against the RELATIVE
+     misalignment |F − F̂|/|F| ρ is positive (+0.161 to +0.526). A
+     residual-loop indicator (max_k |F − F̂|·g_k against flat) rises with
+     the ceiling: −0.848 to −3.250 dB at shape_max 1, +5.487 to +9.717 at
+     shape_max 4. Per run, none of these predicts the run's shaped − flat
+     limit (ρ over 30 runs −0.351 to +0.699, no consistent sign).
+   - **Audible (cabin, ramp + criterion, PROTOCOL §7.3):** every
+     spectral row is audible earlier than the plate at the same wet (rt60
+     1.1846 s, five seeds; best shape_max 1 at S1, w 0.15, +11.90 against
+     the plate's +16.53), 14 of 16 below the dry loop's own audible limit on
+     the chain output (12 of 16 on c), and the ramp's runaway falls to
+     −6.94 … +18.31 where the plate's does not (+21.46 … +23.31). At S3 the
+     chain output is flagged near the ramp's start (−12.77 to −19.38) where
+     c reads −9.24 to +8.34; not examined. 80 runs, 1380.5 s on 3 jobs,
+     WAVs deleted per run.
+   - **Kept, not removed:** the class stays as a measured negative result
+     (its header says so) because the gated rows and the sweep that hold
+     the verdict need it. Removing it again is the alternative; recommended
+     against for that reason.
+   - **Not run (the budget):** the six-room speech grid (speech is the two
+     ProbeConvergence rooms), converged probes for the grid (160 s would
+     have cost about four times the 40 s grid's 9.8 h), the backing track,
+     float32 in the loop, two microphones (the bus-sum shaping is tested for
+     plumbing only), audible rows beyond the cabin held note.
 12. **The safety layer (2026-09-30; [`docs/howl-guard.md`](docs/howl-guard.md)).**
    PR A (tap/MuTap#77) adds `howl_detector`; PR B adds
    `include/mutap/howl_guard.h` (`tap::mu::howl_guard`: per-mic ARMING /
@@ -434,7 +472,10 @@ carries the measured numbers; this is the map:
      machine suite only.
 13. **The reverb behind the canceller, part 1: the Dattorro plates
    (2026-10-02; [`docs/reverb-afc.md`](docs/reverb-afc.md)).** Phase 2
-   item 7, part 1; the spectral reverb's return is part 2 (item 11).
+   item 7, part 1. Part 2 (2026-10-08, item 11) measured the spectral
+   reverb on this harness against these plates: it loses everywhere
+   measured and stays only as a negative result, so the plate is the
+   reverb this chain has; what follows is part 1's record.
    Landed: `include/mutap/reverb_stage.h` (`tap::mu::reverb_mix<Sample,
    Reverb>`, y = (1 − w)·x + w·r with r the reverb's L or (L + R)/2, and
    `shifted_dry_mix<Sample, Shifter, Reverb>`, the dry-only-shift
@@ -492,6 +533,10 @@ carries the measured numbers; this is the map:
      cabin held note, float32 in the loop, the backing track, two mics.
    - The audible driver's first invocation filled the scratch disk (about
      180 MB of WAV a run); it now deletes WAVs and checkpoints per run.
+   - Part 2 changed one thing under part 1's rows: `decorrelated_loop`'s
+     forward stage now takes a stage's `latency()` out of the forward
+     delay. The plates report none, and their grid cost medians at S1
+     repeat to the printed digit on part 2's 40 s probes.
 
 ## The next effort (Rev 4): AEC objects + echo chapter
 

@@ -6,9 +6,10 @@
 //
 // THE ABI TAG. Every MuTap class that holds a basic_real_fft<Sample> by value
 // (partitioned_fdaf, partitioned_fdkf, pem_afc, residual_suppressor,
-// nn_suppressor) is defined inside tap::mu::inline TAP_DSP_FFT_ABI, so the
-// build's float FFT engine is part of its mangled name (mutap/fft.h has the
-// why). Pinned two ways, on every leg that runs the battery:
+// nn_suppressor and, the sixth, spectral_reverb) is defined inside
+// tap::mu::inline TAP_DSP_FFT_ABI, so the build's float FFT engine is part of
+// its mangled name (mutap/fft.h has the why). Pinned two ways, on every leg
+// that runs the battery:
 //   - at compile time, by naming each class through the tag namespace
 //     explicitly (tap::mu::TAP_DSP_FFT_ABI::partitioned_fdaf): qualified
 //     lookup into a namespace finds only what is declared there, so a class
@@ -41,6 +42,7 @@
 //                                         checked before the core is built)
 //     residual_suppressor                 N = analysis_blocks * block_size
 //     nn_suppressor                       N = 2 * the weights' hop
+//     spectral_reverb                     N = 2 * block_size
 
 #include <algorithm>
 #include <cstddef>
@@ -63,6 +65,7 @@
 #include "mutap/nn_suppressor.h"
 #include "mutap/pem_afc.h"
 #include "mutap/postfilter.h"
+#include "mutap/spectral_reverb.h"
 
 namespace {
 
@@ -76,7 +79,8 @@ namespace {
         && std::is_same_v<tap::mu::partitioned_fdkf<Sample>, tagged::partitioned_fdkf<Sample>>
         && std::is_same_v<tap::mu::pem_afc<Sample>, tagged::pem_afc<Sample>>
         && std::is_same_v<tap::mu::residual_suppressor<Sample>, tagged::residual_suppressor<Sample>>
-        && std::is_same_v<tap::mu::nn_suppressor<Sample>, tagged::nn_suppressor<Sample>>;
+        && std::is_same_v<tap::mu::nn_suppressor<Sample>, tagged::nn_suppressor<Sample>>
+        && std::is_same_v<tap::mu::spectral_reverb<Sample>, tagged::spectral_reverb<Sample>>;
     static_assert(k_declared_in_tag<float>, "every float FFT embedder is defined inside the ABI tag");
     static_assert(k_declared_in_tag<double>, "every double FFT embedder is defined inside the ABI tag");
 
@@ -100,6 +104,7 @@ namespace {
             tap::mu::pem_afc<Sample, tap::mu::speech_predictor<Sample>, tap::mu::partitioned_fdkf<Sample>>>();
         expect_only_this_builds_tag<tap::mu::residual_suppressor<Sample>>();
         expect_only_this_builds_tag<tap::mu::nn_suppressor<Sample>>();
+        expect_only_this_builds_tag<tap::mu::spectral_reverb<Sample>>();
         expect_only_this_builds_tag<tap::mu::aec_chain<Sample>>();
         expect_only_this_builds_tag<tap::mu::aec_chain_nn<Sample>>();
         expect_only_this_builds_tag<tap::mu::afc_chain<Sample>>();
@@ -231,6 +236,23 @@ namespace {
     }
 
     template <typename Sample>
+    bool spectral_reverb_accepts(std::size_t block) {
+        typename tap::mu::spectral_reverb<Sample>::config cfg;
+        cfg.block_size = block;
+        return accepted([&] { return tap::mu::spectral_reverb<Sample>(cfg); });
+    }
+
+    template <typename Sample>
+    void expect_spectral_reverb_follows_the_range() {
+        for (const std::size_t b : block_sweep()) {
+            EXPECT_EQ(spectral_reverb_accepts<Sample>(b), fft<Sample>::supports_size(2 * b))
+                << "spectral_reverb block " << b;
+        }
+        EXPECT_FALSE(spectral_reverb_accepts<Sample>(std::size_t{1} << 30));
+        EXPECT_FALSE(spectral_reverb_accepts<Sample>(k_top_power));
+    }
+
+    template <typename Sample>
     void expect_nn_follows_the_range() {
         for (std::size_t hop = 16; hop <= 4096; hop *= 2) {
             EXPECT_EQ(nn_accepts<Sample>(hop), fft<Sample>::supports_size(2 * hop)) << "nn_suppressor hop " << hop;
@@ -267,6 +289,11 @@ TEST(FftEngineContract, LearnedSuppressorHopIsGatedBySupportsSize) {
     expect_nn_follows_the_range<double>();
 }
 
+TEST(FftEngineContract, SpectralReverbBlockSizeIsGatedBySupportsSize) {
+    expect_spectral_reverb_follows_the_range<float>();
+    expect_spectral_reverb_follows_the_range<double>();
+}
+
 // The plan's rows, stated per build rather than read from the predicate: the
 // double profile always runs the srdif engine (4 ... 2^30); the float
 // profile runs CMSIS-DSP (32 ... 4096) on the Cortex-M55 leg, vDSP
@@ -277,18 +304,26 @@ TEST(FftEngineContract, ConfiguredSizesThisBuildRejects) {
     EXPECT_TRUE(fdaf_accepts<double>(4096)); // N = 8192
 #if defined(TAP_DSP_FFT_CMSIS)
     static_assert(fft<float>::k_min_size == 32 && fft<float>::k_max_size == 4096);
-    EXPECT_FALSE(fdaf_accepts<float>(8));          // N = 16
-    EXPECT_FALSE(fdaf_accepts<float>(4096));       // N = 8192
-    EXPECT_TRUE(fdaf_accepts<float>(16));          // N = 32
-    EXPECT_TRUE(fdaf_accepts<float>(2048));        // N = 4096
-    EXPECT_FALSE(suppressor_accepts<float>(4, 4)); // N = 16
-    EXPECT_FALSE(nn_accepts<float>(4096));         // N = 8192
+    EXPECT_FALSE(fdaf_accepts<float>(8));               // N = 16
+    EXPECT_FALSE(fdaf_accepts<float>(4096));            // N = 8192
+    EXPECT_TRUE(fdaf_accepts<float>(16));               // N = 32
+    EXPECT_TRUE(fdaf_accepts<float>(2048));             // N = 4096
+    EXPECT_FALSE(suppressor_accepts<float>(4, 4));      // N = 16
+    EXPECT_FALSE(nn_accepts<float>(4096));              // N = 8192
+    EXPECT_FALSE(spectral_reverb_accepts<float>(8));    // N = 16
+    EXPECT_FALSE(spectral_reverb_accepts<float>(4096)); // N = 8192
+    EXPECT_TRUE(spectral_reverb_accepts<float>(16));    // N = 32
+    EXPECT_TRUE(spectral_reverb_accepts<float>(2048));  // N = 4096
 #else
     EXPECT_TRUE(fdaf_accepts<float>(8));    // N = 16
     EXPECT_TRUE(fdaf_accepts<float>(4096)); // N = 8192
     EXPECT_TRUE(suppressor_accepts<float>(4, 4));
     EXPECT_TRUE(nn_accepts<float>(4096));
+    EXPECT_TRUE(spectral_reverb_accepts<float>(8));    // N = 16
+    EXPECT_TRUE(spectral_reverb_accepts<float>(4096)); // N = 8192
 #endif
+    EXPECT_TRUE(spectral_reverb_accepts<double>(8));    // N = 16
+    EXPECT_TRUE(spectral_reverb_accepts<double>(4096)); // N = 8192
 }
 
 // pem_afc states its own gate before its core is constructed, so the

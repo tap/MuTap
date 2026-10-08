@@ -25,3 +25,4 @@
 #include "mutap/pem_afc.h"
 #include "mutap/postfilter.h"
 #include "mutap/reverb_stage.h"
+#include "mutap/spectral_reverb.h"
