@@ -7,12 +7,15 @@
 // AN ASG CLAIM.
 //
 // HOST-ONLY (tests/CMakeLists.txt): the smoke test runs its seed sets on
-// std::thread.
+// std::thread, at most 4 at a time by default (MUTAP_SLOW_THREADS
+// overrides, as in the MUTAP_SLOW sweeps).
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <vector>
@@ -28,6 +31,33 @@ namespace {
     namespace tmic = mutap_test::two_mic;
     using mutap_test::median;
     using mutap_test::seed_in_set;
+
+    /// At most 4 workers by default (the suites share their machines);
+    /// MUTAP_SLOW_THREADS overrides (test_howl_guard_host.cpp's rule).
+    unsigned worker_count() {
+        if (const char* v = std::getenv("MUTAP_SLOW_THREADS")) {
+            return std::max(1U, static_cast<unsigned>(std::strtoul(v, nullptr, 10)));
+        }
+        const unsigned hw_threads = std::thread::hardware_concurrency();
+        return std::clamp(hw_threads > 1 ? hw_threads - 1 : 1U, 1U, 4U);
+    }
+
+    /// f(i) for every i in [0, n), on worker_count() threads.
+    template <typename F>
+    void parallel_for(size_t n, const F& f) {
+        std::atomic<size_t>      next{0};
+        std::vector<std::thread> pool;
+        for (unsigned t = 0; t < worker_count(); ++t) {
+            pool.emplace_back([&] {
+                for (size_t i = next++; i < n; i = next++) {
+                    f(i);
+                }
+            });
+        }
+        for (auto& t : pool) {
+            t.join();
+        }
+    }
 
     /// Misalignment (dB) of `ir` against `f` delayed by `lag` taps, over the
     /// filter's length.
@@ -120,20 +150,15 @@ TEST(TwoMicLoop, DryTwoMicLimitIsTheSummedPaths) {
     };
     std::vector<row> rows = {
         {"cabin", tmic::k_s1}, {"cabin", tmic::k_s3}, {"mt5+mt9", tmic::k_s1}, {"mt5+mt9", tmic::k_s3}};
-    std::vector<std::thread> pool;
-    for (auto& r : rows) {
-        pool.emplace_back([&r] {
-            tmic::condition c;
-            c.delay       = r.delay;
-            c.leak_db     = -300.0;
-            const auto sc = tmic::make_scenario<double>(tmic::room_pair(r.pair), c, 2, 1, tmic::probe_blocks(10.0));
-            r.open        = tmic::open_limit_db(sc, tmic::protocol{});
-            r.exact       = tmic::exact_db(sc);
-        });
-    }
-    for (auto& t : pool) {
-        t.join();
-    }
+    parallel_for(rows.size(), [&rows](size_t i) {
+        row&            r = rows[i];
+        tmic::condition c;
+        c.delay       = r.delay;
+        c.leak_db     = -300.0;
+        const auto sc = tmic::make_scenario<double>(tmic::room_pair(r.pair), c, 2, 1, tmic::probe_blocks(10.0));
+        r.open        = tmic::open_limit_db(sc, tmic::protocol{});
+        r.exact       = tmic::exact_db(sc);
+    });
     for (const auto& r : rows) {
         std::printf("%-8s d=%zu  dry two-mic %+.2f  exact %+.2f  (%+.2f)\n", r.pair, r.delay, r.open, r.exact,
                     r.open - r.exact);
@@ -197,14 +222,10 @@ namespace {
 TEST(TwoMicSmoke, BothMicsConvergeOnTheSharedReference) {
     constexpr unsigned k_sets = mutap_test::k_claim_seed_sets;
     for (const tmic::singers who : {tmic::singers::speech, tmic::singers::unison}) {
-        std::vector<smoke_run>   runs(k_sets);
-        std::vector<std::thread> pool;
-        for (unsigned set = 0; set < k_sets; ++set) {
-            pool.emplace_back([&runs, set, who] { runs[set] = run_smoke(who, seed_in_set(2, set), 1500); });
-        }
-        for (auto& t : pool) {
-            t.join();
-        }
+        std::vector<smoke_run> runs(k_sets);
+        parallel_for(k_sets, [&runs, who](size_t set) {
+            runs[set] = run_smoke(who, seed_in_set(2, static_cast<unsigned>(set)), 1500);
+        });
         std::vector<double> unc[2];
         std::vector<double> mis[2];
         for (unsigned set = 0; set < k_sets; ++set) {
