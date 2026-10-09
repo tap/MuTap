@@ -18,7 +18,7 @@
 //
 // The gated rows (HowlGuardHost.*) run seeds 1, 21, 41 (or 1, 21) on cabin
 // and mt5 (both generator families); each takes about 90 s or less on 4 threads
-// (877.17 s for all 16 in one run on the Intel Mac). HowlGuardSweep.*
+// (755.91 s for all 16 in one run on the Intel Mac). HowlGuardSweep.*
 // (MUTAP_SLOW=1) re-measures the operating points and runs the long grids
 // (six rooms, five seed sets) that docs/howl-guard.md quotes, including the
 // soundcheck margin grid (CalibrationMargins: shadow guards, see
@@ -586,7 +586,7 @@ namespace {
         std::vector<rearm_stats>           rows(rooms.size());
         std::vector<std::function<void()>> jobs;
         for (size_t r = 0; r < rooms.size(); ++r) {
-            rows[r].label = rooms[r] + " x2" + (lost_strikes ? " (L)" : "");
+            rows[r].label = rooms[r] + " x2" + (lost_strikes ? "" : " (off)");
             for (const unsigned seed : seeds) {
                 gd::run_spec s;
                 s.room                             = rooms[r];
@@ -772,6 +772,8 @@ namespace {
         size_t              open_at_end = 0; ///< runs OPEN when the singer returns
         size_t              howl        = 0; ///< howl blocks after the gap
         std::vector<double> reentry_db;      ///< loudest residual in the 1 s after the gap, dB re the unit near end
+        size_t              strikes = 0;     ///< strikes at the end
+        std::vector<double> level_db;        ///< the restore level at the end, dB
         std::mutex          mu;
 
         void add(const gd::run_trace& t, const gd::run_spec& s) {
@@ -796,17 +798,19 @@ namespace {
                 peak = std::max(peak, t.e_rms[i]);
             }
             reentry_db.push_back(20.0 * std::log10(static_cast<double>(peak)));
+            strikes += t.strikes;
+            level_db.push_back(static_cast<double>(t.level_db));
         }
         void print() const {
-            std::printf("  %-20s %3zu | %7.2f %7.2f | %3zu %3zu %3zu | %4zu | %6.2f %6.2f\n", label.c_str(), runs,
-                        med(max_a_db), max_of(max_a_db), gap_ducks, restarts, open_at_end, howl, med(reentry_db),
-                        max_of(reentry_db));
+            std::printf("  %-20s %3zu | %7.2f %7.2f | %3zu %3zu %3zu | %4zu | %6.2f %6.2f | %3zu %6.2f\n",
+                        label.c_str(), runs, med(max_a_db), max_of(max_a_db), gap_ducks, restarts, open_at_end, howl,
+                        med(reentry_db), max_of(reentry_db), strikes, min_of(level_db));
         }
     };
 
     void print_gap_header() {
-        std::printf("  %-20s %3s | %7s %7s | %3s %3s %3s | %4s | %6s %6s\n", "row", "n", "A' max", "max", "dck", "rst",
-                    "opn", "howl", "re dB", "max");
+        std::printf("  %-20s %3s | %7s %7s | %3s %3s %3s | %4s | %6s %6s | %3s %6s\n", "row", "n", "A' max", "max",
+                    "dck", "rst", "opn", "howl", "re dB", "max", "stk", "lvl");
     }
 
     /// The vendored Dattorro (FAUST's re.dattorro_rev, paper defaults: T30
@@ -1298,7 +1302,9 @@ TEST(HowlGuardHost, WalkReleasesAfterTheMisalignmentOracle) {
     }
     hi.print();
     // Measured at exact_msg_db - 6: 3 of 12 walks ducked (all on LOST,
-    // 0.36 s after the change), 3 releases, 0 before the misalignment
+    // 0.36 s after the change; each a strike, the walk falling inside the
+    // cold start's probation - 0 strikes with lost_in_probation_strikes
+    // off), 3 releases, 0 before the misalignment
     // oracle reconverged; release (ramp start) - reconvergence median
     // 1.59 s, minimum 1.38 s. At the canceller's limit - 6: 0 of 12 walks
     // ducked (D's median over the 2 s before the walk -8.46 dB; the verdict
@@ -1336,50 +1342,51 @@ TEST(HowlGuardHost, LateHowlAfterAWalkIsCaught) {
 TEST(HowlGuardHost, LouderCouplingRearms) {
     const std::vector<std::string> rooms = {"cabin", "mt5", "studio", "hall"};
     print_rearm_header();
-    std::printf("  lost_in_probation_strikes off\n");
-    const auto rows = louder_rows(rooms, {1, 21}, false);
+    std::printf("  lost_in_probation_strikes on (the default)\n");
+    const auto rows = louder_rows(rooms, {1, 21}, true);
     for (const auto& r : rows) {
         r.print();
     }
     const rearm_totals tot = rearm_total(rows);
-    std::printf("  lost_in_probation_strikes on\n");
-    const auto rows_l = louder_rows(rooms, {1, 21}, true);
-    for (const auto& r : rows_l) {
+    std::printf("  lost_in_probation_strikes off (PR C's policy)\n");
+    const auto rows_off = louder_rows(rooms, {1, 21}, false);
+    for (const auto& r : rows_off) {
         r.print();
     }
-    rearm_total(rows_l);
-    // Measured (macOS x86_64): every run ducked after F -> 2F (2 of 2 per
-    // room; LOST 0.37 to 0.39 s after the change, cabin 4.65 s); the timer
-    // re-arm at 5.00 s (10.01 s after a strike) in 6 of 8 runs; 0 howl
-    // blocks after the change, 0 after the re-arm.
-    // The pump: LOST-ducks after the first re-arm, 0 in 8 runs with LOST
-    // armed only once ok has been held release_hold_s after a re-arm
-    // (16 in 6 of 8 when one ok tick armed it; the MUTAP_SLOW sweep: 1 in
-    // 30 runs, against 47 in 20 of 30). Gated as a rate with margin, at most
-    // 4 over the 8 runs (0.5 a run, a quarter of the old 2.0): a chaotic loop
-    // moves single runs between hosts. Cabin never re-arms (the verdict is
-    // held ok while ducked and released on the walk path) and still cycles
-    // there: 7 LOST-ducks in 2 runs, unchanged; printed, not gated.
-    for (const auto& r : rows) {
-        EXPECT_EQ(r.ducked, r.runs) << r.label;
-        EXPECT_EQ(r.howl_after, 0U) << r.label;
+    const rearm_totals tot_off = rearm_total(rows_off);
+    // Measured (macOS x86_64), the default policy: every run ducked after
+    // F -> 2F (2 of 2 per room; LOST 0.37 to 0.39 s after the change, cabin
+    // 4.65 s); 0 howl blocks after the change, 0 after a re-arm. The
+    // change's LOST falls inside the cold start's probation (OPEN at
+    // 1.76-1.79 s), so it is a strike: the level at -3.00 dB and the timer
+    // re-arm at 10.00 s (10.01 s), in 6 of 8 runs. LOST-ducks after the
+    // first re-arm: 0 in 8 (16 in 6 of 8 when one ok tick re-armed LOST).
+    // Cabin never re-arms (the verdict is held ok while ducked and released
+    // on the walk path); each later LOST strikes: 7 LOST-ducks in the 2
+    // runs (median 4 a run), 5 strikes, 1 run latched by 30 s; the
+    // MUTAP_SLOW sweep's 120 s rows latch every cabin run at the cap after
+    // a median 4 LOST-ducks, and it ducks no more.
+    // With the option off (PR C): the same ducks and 7 cabin LOST-ducks, 0
+    // strikes in studio and hall, the re-arm at 5.00 s, 0 LOST-ducks after
+    // it; the sweep's 120 s cabin rows take 19 a run and never latch.
+    // Gated as counts with margin, both ways (a chaotic loop moves single
+    // runs between hosts): every run ducked, 0 howl blocks, at least 4 of 8
+    // re-armed, at most 4 LOST-ducks after a re-arm over 8 runs (0.5 a run,
+    // a quarter of PR B's 2.0); with the option on, cabin strikes at all
+    // (the rule acts) and no other room below -6 dB (measured -3.00).
+    for (const auto* set : {&rows, &rows_off}) {
+        for (const auto& r : *set) {
+            EXPECT_EQ(r.ducked, r.runs) << r.label;
+            EXPECT_EQ(r.howl_after, 0U) << r.label;
+        }
     }
-    EXPECT_GE(tot.rearmed, 4U) << "measured 6 of 8 re-armed";
-    EXPECT_LE(tot.pumps, 4U) << "LOST-ducks after a re-arm: measured 0 in 8 runs (16 before the held-ok rule)";
-    // With lost_in_probation_strikes (a LOST in probation is a strike;
-    // off by default, docs/howl-guard.md says why): cabin still took 7
-    // LOST-ducks in the 2 runs (median 4 a run, as without), with 5 strikes
-    // and 1 run latched by 30 s; the MUTAP_SLOW sweep's 120 s rows latch
-    // every cabin run at the cap after a median 4 LOST-ducks and duck no
-    // more. Elsewhere the first LOST after the change falls inside the
-    // cold start's probation (OPEN at 1.76-1.79 s, the change at 10 s): one
-    // strike, the level at -3.00 dB and the re-arm at 10.00 s, no new duck.
-    // Gated: 0 howl blocks, cabin strikes at all (the rule acts), and no
-    // other room backed off more than 6 dB (measured -3.00).
+    for (const auto* t : {&tot, &tot_off}) {
+        EXPECT_GE(t->rearmed, 4U) << "measured 6 of 8 re-armed, on and off";
+        EXPECT_LE(t->pumps, 4U) << "LOST-ducks after a re-arm: measured 0 in 8 runs, on and off (16 before the "
+                                   "held-ok rule)";
+    }
     size_t cabin_strikes = 0;
-    for (const auto& r : rows_l) {
-        EXPECT_EQ(r.ducked, r.runs) << r.label;
-        EXPECT_EQ(r.howl_after, 0U) << r.label;
+    for (const auto& r : rows) {
         if (r.label.rfind("cabin", 0) == 0) {
             cabin_strikes += r.strikes;
         }
@@ -1417,9 +1424,12 @@ TEST(HowlGuardHost, SongGapDoesNotRestart) {
     }
     // Measured: A' rose to -15.21 / -15.30 dB (median peak; max -14.96) in
     // the gap - far under restart_a_db (-1), so 0 restarts; LOST ducked in
-    // the gap in 3 of 3 runs per room and the timer re-arm opened again
-    // before the singer returned (3 of 3 OPEN); 0 howl blocks after the
-    // gap; the loudest residual block in the 1 s after it +3.91 dB.
+    // the gap in 3 of 3 runs per room - a strike each, the gap starting
+    // inside the cold start's probation (3 strikes a room, the level -3.00
+    // dB; 0 with lost_in_probation_strikes off) - and the timer re-arm
+    // (10 s after the strike) opened again before the singer returned (3 of
+    // 3 OPEN); 0 howl blocks after the gap; the loudest residual block in
+    // the 1 s after it +3.91 dB.
     for (const auto& r : rows) {
         EXPECT_EQ(r.restarts, 0U) << r.label;
         EXPECT_LT(max_of(r.max_a_db), -5.0) << r.label;
@@ -1928,8 +1938,8 @@ TEST(HowlGuardSweep, LouderCoupling) {
     print_rearm_header();
     // 30 s (the gated rows' length) and 120 s (where the back-off ends).
     for (const double seconds : {30.0, 120.0}) {
-        for (const bool lost_strikes : {false, true}) {
-            std::printf("  %.0f s, lost_in_probation_strikes %s\n", seconds, lost_strikes ? "on" : "off");
+        for (const bool lost_strikes : {true, false}) {
+            std::printf("  %.0f s, lost_in_probation_strikes %s\n", seconds, lost_strikes ? "on (the default)" : "off");
             const auto rows = louder_rows(rooms, k_seeds5, lost_strikes, seconds);
             for (const auto& r : rows) {
                 r.print();

@@ -59,8 +59,8 @@
 //     TRIP: stays ARMING, a strike (never latches here), restarts the hold.
 //     ARMING never re-arms on a timer.
 //   OPEN         gain = level. Probation (probation_s) from entry.
-//     -> DUCKED  TRIP (a strike within probation); LOST (no strike, or
-//                one within probation with lost_in_probation_strikes).
+//     -> DUCKED  TRIP (a strike within probation); LOST (a strike within
+//                probation while lost_in_probation_strikes, the default).
 //     Strike decay: one strike per strike_decay_s in OPEN without a trip
 //     (the level ramps up strike_db).
 //   OPEN_CAPPED  gain = min(cap, level); no declaration yet; `unprotected`.
@@ -91,9 +91,9 @@
 //     clear() (host): strikes 0, level 0, unlatched -> RELEASING.
 //
 // A strike: a TRIP in ARMING, in RELEASING, or in OPEN / OPEN_CAPPED within
-// probation_s of entering it; with lost_in_probation_strikes (off by
-// default) also a LOST in OPEN within probation_s. Each lowers level by
-// strike_db and doubles the re-arm timeout.
+// probation_s of entering it; with lost_in_probation_strikes (the default)
+// also a LOST in OPEN within probation_s. Each lowers level by strike_db
+// and doubles the re-arm timeout.
 //
 // PER-MIC ATTRIBUTION (M > 1). A howl lives in the shared speaker signal,
 // so every residual carries it. On a tick with TRIPs, the shared peak is
@@ -148,10 +148,11 @@
 //     24 runs; at the limit + 6: 0 guarded, against 575 blocks in 3 of 6
 //     unguarded voiced+aux runs.
 //   * Walks (S2a) at exact_msg_db - 6: 3 of 12 ducked (LOST, 0.36 s after
-//     the change); release (ramp start) - misalignment-oracle reconvergence
-//     median 1.59 s, minimum 1.38 s, 0 early. At the limit - 6 no walk
-//     ducked (D's pre-walk median -8.46 dB; the verdict lost for at most
-//     0.22 s, under trip_hold_s) and none howled. With the soundcheck
+//     the change; each a strike: the walk at 10 s is inside the cold
+//     start's probation); release (ramp start) - misalignment-oracle
+//     reconvergence median 1.59 s, minimum 1.38 s, 0 early. At the
+//     limit - 6 no walk ducked (D's pre-walk median -8.46 dB; the verdict
+//     lost for at most 0.22 s, under trip_hold_s) and none howled. With the soundcheck
 //     calibration applied (30 s from reset, D median + 4 dB, A' median
 //     + 3 dB) 12 of 12 walks at the limit - 6 ducked (0.31 s after the
 //     walk), released 1.74 s (median; minimum 1.63) after the
@@ -159,20 +160,20 @@
 //     material the calibrated guard ducked 0 times in 8 runs.
 //   * Above the canceller's limit (+6, rehearsal -> hall): 0 howl blocks
 //     guarded (5 strikes in 3 runs, no latch), 1203 unguarded.
-//   * F -> 2F (S2b): every run ducks; the timer re-arm comes at 5.00 s
-//     (10.01 s after a strike); 0 howl blocks. LOST-ducks after the re-arm:
-//     0 in 8 runs with the held-ok rule (16 in 6 of 8 when one ok tick
-//     re-armed LOST). A guard that releases on the walk path (cabin: the
-//     verdict held ok while ducked) still cycles: 7 LOST-ducks in 2 runs.
-//     lost_in_probation_strikes does not shorten that within 30 s (7 in 2
-//     runs, 5 strikes, 1 latched); over 120 s (the sweep) it ends it at the
-//     latch, every cabin run at the cap after a median 4 LOST-ducks (19
-//     without it, never ending), at the price of one strike (-3 dB, the
-//     re-arm at 10 s) in every other room. It stays off by default
-//     (docs/howl-guard.md).
+//   * F -> 2F (S2b): every run ducks; 0 howl blocks. The change's LOST
+//     falls inside the cold start's probation, so it strikes (-3 dB) and the
+//     timer re-arm comes at 10.00 s; LOST-ducks after the re-arm: 0 in 8
+//     runs (16 in 6 of 8 when one ok tick re-armed LOST). Where the guard
+//     releases on the walk path (cabin: the verdict held ok while ducked)
+//     each later LOST strikes: 7 LOST-ducks in 2 runs of 30 s, 5 strikes,
+//     1 latched; over 120 s (the sweep) every cabin run latched at the cap
+//     after a median 4 LOST-ducks and ducked no more (without
+//     lost_in_probation_strikes: 19 a run, never ending).
 //   * A 20 s gap at digital zero: A' plateaus at -15.21 / -15.30 dB (not
 //     ~0 dB), so restart_a_db (-1) never fires on silence; LOST ducks in the
-//     gap and the re-arm opens again before the singer returns; 0 howl.
+//     gap (a strike: the gap at 8 s is inside the cold start's probation)
+//     and the re-arm opens again, at -3 dB, before the singer returns;
+//     0 howl.
 //   * Two mics, mic 1's path x4 at 10 s: the first TRIP ducks mic 1 alone in
 //     7 of 8 runs, both in 1, the wrong mic alone in 0 (1 of 8 on macOS
 //     arm64 CI, 1 of 20 in the sweep); 0 fallbacks, 0
@@ -184,8 +185,10 @@
 //     0.5 s after a trip is 19.40 dB lower than without it.
 //   * Cost per block and mic: 2180 ns float, 3292 ns double - 0.57 / 0.84 %
 //     of one canceller's process_block (PR B's run: 2246 / 3180 ns).
-// The policy defaults are the design note's; the measured tables moved
-// none of them. The soundcheck margins (cal_d_margin_db 4, cal_a_margin_db
+// The policy defaults are the design note's, and lost_in_probation_strikes
+// is on (Tim, 2026-10-09: cabin's 4 ducks and a capped level beat 19 ducks
+// in two minutes; elsewhere it costs one 3 dB strike that decays in 60 s).
+// The soundcheck margins (cal_d_margin_db 4, cal_a_margin_db
 // 3) are this library's measurement: the smallest D margin with no duck on
 // stable material over 180 sweep runs was 3 dB (2 dB: 3 runs ducked), and
 // A' + 1 dB already ducked none; each carries headroom above that
@@ -252,8 +255,8 @@ namespace tap::mu {
         /// A LOST in OPEN within probation_s is a strike, as a TRIP there
         /// is: each nuisance duck backs the restore level off strike_db and
         /// the max_strikes-th latches (cabin's walk-path duck cycle under
-        /// F -> 2F). Off by default: docs/howl-guard.md has the measurement.
-        bool lost_in_probation_strikes = false;
+        /// F -> 2F). docs/howl-guard.md has the measurement, on and off.
+        bool lost_in_probation_strikes = true;
     };
 
     /// One mic's soundcheck calibration (howl_guard::calibrate_end()): the

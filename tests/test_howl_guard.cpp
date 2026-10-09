@@ -328,14 +328,17 @@ namespace {
         EXPECT_EQ(d.run1(2 * k_rearm + 5, sig::quiet, false, guard_state::releasing), 2 * k_rearm - 1);
     }
 
-    // lost_in_probation_strikes: a LOST in OPEN within probation is a strike,
-    // as a TRIP there is - each walk-path release that loses the verdict
-    // again backs the level off strike_db, and the third latches (no cap:
-    // at -9 dB). Off (the default) the same LOSTs strike nothing; on, a LOST
-    // after probation strikes nothing either.
+    // lost_in_probation_strikes (the default): a LOST in OPEN within
+    // probation is a strike, as a TRIP there is - each walk-path release
+    // that loses the verdict again backs the level off strike_db, and the
+    // third latches (no cap: at -9 dB); a LOST after probation strikes
+    // nothing. Off, the same LOSTs strike nothing.
     TYPED_TEST(howl_guard_test, LostInProbationIsAStrikeWhenEnabled) {
+        EXPECT_TRUE(guard_policy{}.lost_in_probation_strikes);
         {
-            driver<TypeParam> d(guard_config<TypeParam>());
+            auto c                             = guard_config<TypeParam>();
+            c.policy.lost_in_probation_strikes = false;
+            driver<TypeParam> d(c);
             EXPECT_FALSE(d.g.policy().lost_in_probation_strikes);
             open_it(d, false);
             for (int k = 1; k <= 3; ++k) {
@@ -346,8 +349,7 @@ namespace {
             EXPECT_EQ(d.g.strikes(0), 0U);
             EXPECT_EQ(d.g.gain_db(0), TypeParam(0));
         }
-        auto c                             = guard_config<TypeParam>();
-        c.policy.lost_in_probation_strikes = true;
+        const auto c = guard_config<TypeParam>();
         {
             driver<TypeParam> d(c);
             EXPECT_TRUE(d.g.policy().lost_in_probation_strikes);
