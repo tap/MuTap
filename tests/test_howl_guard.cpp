@@ -328,6 +328,51 @@ namespace {
         EXPECT_EQ(d.run1(2 * k_rearm + 5, sig::quiet, false, guard_state::releasing), 2 * k_rearm - 1);
     }
 
+    // lost_in_probation_strikes: a LOST in OPEN within probation is a strike,
+    // as a TRIP there is - each walk-path release that loses the verdict
+    // again backs the level off strike_db, and the third latches (no cap:
+    // at -9 dB). Off (the default) the same LOSTs strike nothing; on, a LOST
+    // after probation strikes nothing either.
+    TYPED_TEST(howl_guard_test, LostInProbationIsAStrikeWhenEnabled) {
+        {
+            driver<TypeParam> d(guard_config<TypeParam>());
+            EXPECT_FALSE(d.g.policy().lost_in_probation_strikes);
+            open_it(d, false);
+            for (int k = 1; k <= 3; ++k) {
+                ASSERT_EQ(d.run1(k_trip + 5, sig::quiet, false, guard_state::ducked), k_trip - 1) << k;
+                ASSERT_EQ(d.run1(k_release + 5, sig::quiet, true, guard_state::releasing), k_release - 1) << k;
+                ASSERT_EQ(d.run1(k_ramp_up + 2, sig::quiet, true, guard_state::open), k_ramp_up - 1) << k;
+            }
+            EXPECT_EQ(d.g.strikes(0), 0U);
+            EXPECT_EQ(d.g.gain_db(0), TypeParam(0));
+        }
+        auto c                             = guard_config<TypeParam>();
+        c.policy.lost_in_probation_strikes = true;
+        {
+            driver<TypeParam> d(c);
+            EXPECT_TRUE(d.g.policy().lost_in_probation_strikes);
+            open_it(d, false);
+            for (int k = 1; k <= 3; ++k) {
+                ASSERT_EQ(d.run1(k_trip + 5, sig::quiet, false, guard_state::ducked), k_trip - 1) << k;
+                EXPECT_FALSE(d.g.tripped(0));
+                EXPECT_EQ(d.g.strikes(0), static_cast<size_t>(k));
+                EXPECT_EQ(d.g.level_db(0), TypeParam(-3 * k));
+                EXPECT_EQ(d.g.latched(0), k == 3);
+                ASSERT_EQ(d.run1(k_release + 5, sig::quiet, true, guard_state::releasing), k_release - 1) << k;
+                const guard_state arrive = (k == 3) ? guard_state::latched : guard_state::open;
+                ASSERT_EQ(d.run1(k_ramp_up + 2, sig::quiet, true, arrive), k_ramp_up - 1) << k;
+                EXPECT_EQ(d.g.gain_db(0), TypeParam(-3 * k)) << k;
+            }
+            EXPECT_TRUE(d.g.unprotected(0));
+        }
+        {
+            driver<TypeParam> d(c);
+            open_it(d, true);
+            ASSERT_EQ(d.run1(k_trip + 5, sig::quiet, false, guard_state::ducked), k_trip - 1);
+            EXPECT_EQ(d.g.strikes(0), 0U);
+        }
+    }
+
     // clear() releases a latch and the back-off: ramps up to 0 dB, OPEN.
     TYPED_TEST(howl_guard_test, ClearReleasesTheLatch) {
         driver<TypeParam> d(guard_config<TypeParam>());

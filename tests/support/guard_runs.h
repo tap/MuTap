@@ -162,6 +162,7 @@ namespace mutap_test::guard {
         long                              change      = -1; ///< the change block
         size_t                            strikes     = 0;
         bool                              latched     = false;
+        float                             level_db    = 0.0F; ///< the restore level at the end (level_db())
         size_t                            rearms      = 0;
         size_t                            hints       = 0;
         long                              unprot_from = -1; ///< first block with unprotected() raised
@@ -299,10 +300,11 @@ namespace mutap_test::guard {
                 t.o_mis.push_back(static_cast<float>(loop.misalignment_db(0)));
             }
         }
-        t.strikes = g.strikes(0);
-        t.latched = g.latched(0);
-        t.rearms  = g.rearms(0);
-        t.hints   = g.hints(0);
+        t.strikes  = g.strikes(0);
+        t.latched  = g.latched(0);
+        t.level_db = static_cast<float>(g.level_db(0));
+        t.rearms   = g.rearms(0);
+        t.hints    = g.hints(0);
         return t;
     }
 

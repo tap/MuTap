@@ -30,7 +30,11 @@ canceller's residual, and it sets that mic's gain:
   disarmed until the verdict has held ok for 1.5 s (the release hold), not
   merely read ok once.
 - **RELEASING** ramps back over 200 ms; **LATCHED** is the end state after
-  three strikes.
+  three strikes. A strike is a detector trip within 10 s (probation) of
+  entering OPEN, or in RELEASING or ARMING; with
+  `lost_in_probation_strikes` (off by default,
+  [below](#a-lost-in-probation-as-a-strike)) a verdict LOST in OPEN within
+  probation is one too.
 
 Two mics are attributed by the detectors' band level at the shared howl
 frequency, with a duck-all fallback. A bus stage in `afc_chain`'s safety
@@ -53,6 +57,7 @@ track-through, plus a margin. The header lists every transition.
 | Stable material at the limit − 6, soundcheck thresholds: runs with a duck | 0 of 8 | 0 of 180 |
 | Walk at the limit + 6 (rehearsal → hall): howl blocks guarded / unguarded | 0 / 1203 | — |
 | F → 2F: howl blocks; LOST-ducks after the timer re-arm (PR B → now) | 0; 16 in 6 of 8 runs → 0 in 8 | 0; 47 in 20 of 30 runs → 1 in 1 of 30 |
+| F → 2F, cabin: LOST-ducks per run, median, without / with `lost_in_probation_strikes` | 4 / 4 (30 s) | 4 / 3 (30 s); 19 / 4 (120 s), latched 0 / 5 of 5 |
 | Two mics, one forced: first TRIP on the wrong mic alone; howl blocks | 0 of 8; 1 | 1 of 20; 3 |
 | Stable material at the limit − 6: ducks off a loop-born burst | 0 in 24 runs | 0 in 180 runs |
 | Dattorro in the loop: voice 0.5 s after a trip, with / without the bus stage | −66.53 / −47.13 dB | — |
@@ -68,7 +73,10 @@ section says otherwise.*
   backing track no run declares from ARMING, so those runs sit at the cap,
   and without a cap they stay 30 dB down. Under a louder coupling (F → 2F)
   the timer re-arm no longer pumps, but a guard that releases on the walk
-  path (cabin) still cycles between ducked and open.
+  path (cabin) still cycles between ducked and open. Counting a LOST in
+  probation as a strike ends that cycle at the latch after a median 4
+  ducks. That is not the ≤ 1 a run the option had to reach, so it ships
+  off.
 - **The factory thresholds do not see a walk at the operating point; the
   soundcheck's do.** With the thresholds set from 30 s of the song (median
   + 4 dB for D, + 3 dB for A′), every walk ducked and released after the
@@ -519,9 +527,9 @@ identical before and after.*
 - **Cabin still cycles, by another route.** Its verdict holds ok for 1.5 s
   while ducked, so it releases on the walk path (no timer re-arm), and the
   verdict is lost again at full gain: 7 LOST-ducks in 2 runs, before and
-  after. The re-arm hold does not touch that path; a LOST within probation
-  counted as a strike (the design note's alternative) would, and was not
-  measured.
+  after. The re-arm hold does not touch that path. Counting a LOST within
+  probation as a strike (the design note's alternative) is measured
+  [below](#a-lost-in-probation-as-a-strike).
 - The gate is a rate with margin (at most 4 LOST-ducks after a re-arm over
   the 8 runs, a quarter of the old 2.0 a run), not a zero: the loop is
   chaotic and the rows also run on macOS arm64 and Linux in CI.
@@ -545,6 +553,98 @@ The sweep's six rooms over five seed sets (`HowlGuardSweep.LouderCoupling`):
 LOST-duck left after a re-arm is cabin's (its single re-arm, at 16.73 s,
 then the walk-path cycle). The TRIP-ducks (the detector, mt5 and mt9) are
 unchanged.
+
+### A LOST in probation as a strike
+
+`guard_policy::lost_in_probation_strikes` makes a LOST in OPEN within
+probation a strike, as a detector trip there already is: each nuisance duck
+backs the restore level off 3 dB and doubles the re-arm timeout, and the
+third latches. It was meant for cabin's cycle above, and was to be the
+default only if (1) cabin's LOST-ducks after the change fell to at most 1 a
+run, (2) no new ducks appeared elsewhere, and (3) the other five rooms
+ended within 6 dB of the operating point. (2) and (3) hold; (1) does not.
+**The option ships off.**
+
+Same rows as above, the option off → on, in one run of each test:
+
+| Room | LOST-ducks after the change (median a run [max]) | Strikes at the end | Runs latched | Restore level at the end, median [min] (dB) | Re-arm after the duck, median (s) | Time ducked or releasing, median | Howl blocks |
+|---|---|---|---|---|---|---|---|
+| cabin | 7 (4 [4]) → 7 (4 [4]) | 0 → 5 | 0 → 1 of 2 | 0.00 [0.00] → −6.00 [−9.00] | — (no re-arm) | 0.56 → 0.65 | 0 → 0 |
+| mt5 | 1 (1 [1]) → 1 (1 [1]) | 1 → 2 | 0 → 0 | 0.00 [−3.00] → −3.00 [−3.00] | 10.01 → 10.01 | 0.51 → 0.51 | 0 → 0 |
+| studio | 2 (1 [1]) → 2 (1 [1]) | 0 → 2 | 0 → 0 | 0.00 [0.00] → −3.00 [−3.00] | 5.00 → 10.00 | 0.26 → 0.51 | 0 → 0 |
+| hall | 2 (1 [1]) → 2 (1 [1]) | 0 → 2 | 0 → 0 | 0.00 [0.00] → −3.00 [−3.00] | 5.00 → 10.00 | 0.26 → 0.51 | 0 → 0 |
+
+*macOS 15.7 x86_64, AppleClang 17, Release; `HowlGuardHost.LouderCouplingRearms`,
+seeds 1 and 21, 30 s.*
+
+The sweep, six rooms over five seed sets, at the gated rows' 30 s and at
+120 s (`HowlGuardSweep.LouderCoupling`):
+
+| Room, length | LOST-ducks after the change (median a run [max]) | TRIP-ducks | Strikes at the end | Runs latched (reached LATCHED; after the change, median s) | Restore level at the end, median [min] (dB) | Gain at the end, median (dB) | Time ducked or releasing, median | Howl blocks |
+|---|---|---|---|---|---|---|---|---|
+| cabin, 30 s | 18 (4 [4]) → 17 (3 [4]) | 0 → 0 | 0 → 14 | 0 → 4 of 5 (2; 16.25) | 0.00 [0.00] → −9.00 [−9.00] | −5.47 → −26.00 | 0.55 → 0.59 | 0 → 0 |
+| mt5, 30 s | 3 (1 [1]) → 3 (1 [1]) | 4 → 2 | 4 → 5 | 0 → 0 | −3.00 [−6.00] → −3.00 [−3.00] | −3.00 → −3.00 | 0.51 → 0.51 | 0 → 0 |
+| studio, 30 s | 5 (1 [1]) → 5 (1 [1]) | 0 → 0 | 0 → 5 | 0 → 0 | 0.00 [0.00] → −3.00 [−3.00] | 0.00 → −3.00 | 0.26 → 0.51 | 0 → 0 |
+| rehearsal, 30 s | 5 (1 [1]) → 5 (1 [1]) | 0 → 0 | 0 → 5 | 0 → 0 | 0.00 [0.00] → −3.00 [−3.00] | 0.00 → −3.00 | 0.26 → 0.51 | 0 → 0 |
+| hall, 30 s | 5 (1 [1]) → 5 (1 [1]) | 0 → 0 | 0 → 5 | 0 → 0 | 0.00 [0.00] → −3.00 [−3.00] | 0.00 → −3.00 | 0.26 → 0.51 | 0 → 0 |
+| mt9, 30 s | 5 (1 [1]) → 5 (1 [1]) | 3 → 0 | 3 → 5 | 0 → 0 | −3.00 [−3.00] → −3.00 [−3.00] | −3.00 → −3.00 | 0.77 → 0.51 | 0 → 0 |
+| cabin, 120 s | 72 (19 [22]) → 19 (4 [4]) | 0 → 0 | 0 → 15 | 0 → 5 of 5 (5; 23.27), 0 ducks after it | 0.00 [0.00] → −9.00 [−9.00] | 0.00 → −11.89 (the cap) | 0.49 → 0.12 | 0 → 0 |
+| mt5, 120 s | 2 (0 [1]) → 2 (0 [1]) | 4 → 4 | 1 → 1 | 0 → 0 | 0.00 [−3.00] → 0.00 [−3.00] | 0.00 → 0.00 | 0.09 → 0.09 | 0 → 0 |
+| studio, rehearsal, hall, mt9, 120 s | 5 (1 [1]) → 5 (1 [1]) each | 0 → 0 (mt9 1 → 0) | 0 → 0 | 0 → 0 | 0.00 → 0.00 | 0.00 → 0.00 | 0.05 → 0.09 | 0 → 0 |
+
+*macOS 15.7 x86_64, AppleClang 17, Release; 974.9 s on 4 threads for all
+four passes. A strike decays after 60 s in OPEN, so the 120 s rows' strike
+counts are those left at the end. The singer and the backing track are
+generated per run length, so the 30 s and 120 s rows are different
+trajectories, not one cut short.*
+
+- **Within 30 s the option does not shorten cabin's cycle:** 7 LOST-ducks
+  in 2 gated runs either way, and 18 → 17 in the sweep (median 4 → 3 a
+  run). Cabin's first duck (a LOST) comes a median 2.53 s after the change,
+  while the cold start's probation ends about 1.8 s after it, so that duck
+  usually strikes nothing; each later one follows a walk-path release,
+  falls inside the new probation and strikes. The third strike, which
+  latches, is then usually the fourth duck: by 30 s 4 of 5 sweep runs had
+  latched (2 had ramped into LATCHED).
+- **Over 120 s it ends the cycle at the latch**: every cabin run latched,
+  a median 23.27 s after the change, after 4 LOST-ducks (19 a run without
+  it, and still cycling at 120 s), and ducked no more; the mic then sits
+  at the cap (−11.89 dB re the operating gain, the dry limit − 6) with
+  `unprotected` raised. Time ducked or releasing fell from 0.49 to 0.12.
+- **Elsewhere it costs one strike and a longer re-arm, no new duck.** In
+  every other room the first LOST after the change at 10 s falls inside the
+  cold start's probation (OPEN at 1.76–1.79 s), so it strikes: the level
+  ends at −3.00 dB (30 s rows; the strike decays by 120 s), the re-arm
+  waits 10.00 s instead of 5.00, and the time ducked or releasing doubles
+  (0.26 → 0.51). No room backed off more than 3 dB, LOST-ducks are unchanged
+  and TRIP-ducks fell (mt5 4 → 2, mt9 3 → 0).
+- **0 howl blocks**, on and off, in every row.
+
+**The other rows with the option on.** A scratch build with the option
+defaulted on re-ran every gated row (`HowlGuardHost.*` but `CostPerBlock`)
+and the `Walks`, `ColdStart` and `TwoMicsAndAudibleCost` sweeps. The off
+side is this PR's build (gated rows, `Walks`, `ColdStart`) and, for
+`TwoMicsAndAudibleCost`, the tables above (PR C's run of the same code
+path). Against each other:
+
+| Rows | Runs | What moved, off → on |
+|---|---|---|
+| Cold start, gated (every `ColdStart*` row) and sweep | 126 / 690 | nothing: every printed number identical, 0 howl blocks, ducks off a burst 0 |
+| Walks at exact − 6, gated / sweep | 12 / 30 | ducks unchanged (3 / 6, all LOST, 0.36 / 0.34 s after the walk), release − reconvergence median unchanged (1.59 / 1.60 s); every one of those ducks became a strike (0 → 3 / 0 → 6: the walk at 10 s is inside the cold start's probation); sweep minimum 1.38 both, studio → rehearsal's own minimum 1.44 → 1.46 s; 0 early, 0 howl |
+| Walks at the limit − 6 (gated + sweep), and above the limits (gated + sweep) | 12 + 30, 6 + 10 | nothing (no LOST-duck in probation; the TRIP strikes, 5 and 5, unchanged) |
+| Soundcheck walks and stable runs, gated | 12 + 8 | nothing (the walk is at 40 s, long after probation) |
+| Stable material (audible cost), gated / sweep | 24 / 180 | nothing: 0 / 9 ducks, 0 off a burst |
+| Song gap, gated | 6 | the trajectory (mt5's peak A′ maximum −15.11 → −15.10 dB); the summary did not: 3 ducks in the gap per room, 0 restarts, 3 of 3 OPEN when the singer returns, 0 howl |
+| Two mics, gated / sweep | 8 / 20 | nothing |
+
+*macOS 15.7 x86_64, AppleClang 17, Release; on 995 s (gated), 287 s
+(walks), 619 s (two mics and audible cost), 2051 s (cold start); off 878 s
+(gated, with `CostPerBlock`), 265 s (walks), 1813 s (cold start); each on
+4 threads.*
+
+So the option adds no duck anywhere; what it adds is a strike for any LOST
+in the first 10 s of OPEN, including one that a walk (or a louder coupling)
+causes while the cold start's probation still runs.
 
 ## A gap between songs
 
@@ -707,7 +807,13 @@ timed loop. The guard allocates only in its constructor.
   lost again at full gain (7 LOST-ducks after the change in 2 gated runs, 18 in 5 sweep
   runs, unchanged; [A louder coupling](#a-louder-coupling-f--2f)). Safe
   (0 howl blocks) and audible. Counting a LOST within probation as a strike
-  would reach it; that was not measured.
+  (`lost_in_probation_strikes`) ends the cycle at the latch, but only after
+  a median 4 ducks a run, so within the gated 30 s it removes nothing, and
+  it costs every other room a strike (−3 dB, a 10 s re-arm) for the LOST
+  that the change itself causes inside the cold start's probation. It
+  ships off ([A LOST in probation as a strike](#a-lost-in-probation-as-a-strike)).
+  A rule that latches sooner on LOSTs (fewer strikes to the latch) was not
+  measured.
 - **The soundcheck calibration is one window of one song.** The margins
   (D + 4, A′ + 3 dB) were measured on the song the soundcheck sampled, in
   this loop (aligned reference, white backing track at −12 dB). A
@@ -733,8 +839,10 @@ timed loop. The guard allocates only in its constructor.
   returns. No re-entry howled here.
 - **The frozen-estimate margin is not a howl oracle at these gains**, so
   the howl claims rest on the 40 dB rule alone.
-- **The latch never engaged in a live row.** The most strikes were 5 over
-  three runs at the limit + 6; the latch, `clear()` and the end state are
+- **The latch engages in a live row only with `lost_in_probation_strikes`**
+  (cabin under F → 2F: 1 of 2 gated runs by 30 s, 5 of 5 sweep runs by
+  120 s, each then held at the cap). With the default policy the most
+  strikes were 5 over three runs at the limit + 6, and `clear()` is
   covered by the state-machine suite (`tests/test_howl_guard.cpp`) only.
 - **The release experiment's late howl at + 6 dB does not reproduce here**,
   and neither does its cold-start howling at + 3 / + 6. Both stress claims
@@ -836,32 +944,33 @@ build/tests/mutap_tests --gtest_filter='HowlGuardHost.*'
 ```
 
 Wall times in one run of the gated rows (`--gtest_filter='HowlGuardHost.*'`,
-each row on 4 threads; this PR's code; the full `ctest --test-dir build`
+each row on 4 threads; the probation-strike PR's code, the option off; the full `ctest --test-dir build`
 run is in the PR description):
 
 | Test | Seconds |
 |---|---|
-| `HowlGuardHost.ColdStartWithBackingTrack` | 51.02 |
-| `HowlGuardHost.ColdStartWithoutBackingTrack` | 53.16 |
-| `HowlGuardHost.ColdStartWithoutACapStaysArmed` | 47.69 |
-| `HowlGuardHost.ColdStartAboveTheDryLimit` | 87.97 |
-| `HowlGuardHost.ColdStartAboveTheCancellerLimit` | 51.80 |
-| `HowlGuardHost.ColdStartShiftedAndAtS3` | 70.60 |
-| `HowlGuardHost.WalkReleasesAfterTheMisalignmentOracle` | 71.75 |
-| `HowlGuardHost.LateHowlAfterAWalkIsCaught` | 45.58 |
-| `HowlGuardHost.LouderCouplingRearms` | 21.32 |
-| `HowlGuardHost.SongGapDoesNotRestart` | 27.02 |
-| `HowlGuardHost.TwoMicsAttributeASingleMicHowl` | 30.30 |
-| `HowlGuardHost.AudibleCostOnStableMaterial` | 63.94 |
-| `HowlGuardHost.SoundcheckCalibrationOnStableMaterial` | 45.45 |
-| `HowlGuardHost.SoundcheckCalibrationSeesAWalk` | 81.11 |
-| `HowlGuardHost.BusStageCutsTheReverbRing` | 8.94 |
-| `HowlGuardHost.CostPerBlock` | 19.71 |
-| total | 777.37 |
+| `HowlGuardHost.ColdStartWithBackingTrack` | 58.48 |
+| `HowlGuardHost.ColdStartWithoutBackingTrack` | 58.91 |
+| `HowlGuardHost.ColdStartWithoutACapStaysArmed` | 50.15 |
+| `HowlGuardHost.ColdStartAboveTheDryLimit` | 90.46 |
+| `HowlGuardHost.ColdStartAboveTheCancellerLimit` | 57.03 |
+| `HowlGuardHost.ColdStartShiftedAndAtS3` | 80.59 |
+| `HowlGuardHost.WalkReleasesAfterTheMisalignmentOracle` | 81.67 |
+| `HowlGuardHost.LateHowlAfterAWalkIsCaught` | 49.85 |
+| `HowlGuardHost.LouderCouplingRearms` | 48.09 |
+| `HowlGuardHost.SongGapDoesNotRestart` | 29.77 |
+| `HowlGuardHost.TwoMicsAttributeASingleMicHowl` | 33.21 |
+| `HowlGuardHost.AudibleCostOnStableMaterial` | 72.39 |
+| `HowlGuardHost.SoundcheckCalibrationOnStableMaterial` | 48.72 |
+| `HowlGuardHost.SoundcheckCalibrationSeesAWalk` | 86.88 |
+| `HowlGuardHost.BusStageCutsTheReverbRing` | 10.37 |
+| `HowlGuardHost.CostPerBlock` | 20.62 |
+| total | 877.17 |
 
-Every gated table that PR B also printed reads the same in this run, to
-the last printed digit, except `LouderCouplingRearms` (the re-arm hold)
-and `CostPerBlock` (timing).
+Every gated table that PR C printed reads the same in this run, to the
+last printed digit, except `CostPerBlock` (timing) and
+`LouderCouplingRearms`, which now also runs every row with
+`lost_in_probation_strikes` on (its off rows read as before).
 
 The sweep is behind `MUTAP_SLOW=1`; it prints and asserts nothing:
 
@@ -874,7 +983,7 @@ MUTAP_SLOW=1 MUTAP_SLOW_THREADS=4 build/tests/mutap_tests --gtest_filter='HowlGu
 | `HowlGuardSweep.OperatingPoints` | 1583.2 s (3 threads) | PR B, not re-run (the guard is not in it) |
 | `HowlGuardSweep.ColdStart` | 1890 s (4 threads) | this PR |
 | `HowlGuardSweep.Walks` | 245 s (4 threads) | this PR |
-| `HowlGuardSweep.LouderCoupling` | 88 s (4 threads) | this PR |
+| `HowlGuardSweep.LouderCoupling` | 974.9 s (4 threads; 30 s and 120 s rows, the option off and on) | the probation-strike PR |
 | `HowlGuardSweep.TwoMicsAndAudibleCost` | 567 s (4 threads) | this PR |
 | `HowlGuardSweep.CalibrationMargins` | 2079.35 s (4 threads) | this PR |
 | `HowlGuardSweep.CalibrationApplied` | 1227 s (4 threads) | this PR |

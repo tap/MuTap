@@ -460,8 +460,19 @@ carries the measured numbers; this is the map:
    for all 20 s. Open, with the numbers in the doc:
    - **F → 2F still cycles where the guard releases on the walk path**
      (cabin: the verdict holds ok while ducked, then is lost at full gain;
-     7 LOST-ducks in 2 gated runs, unchanged by the re-arm hold). A LOST
-     in probation as a strike would reach it; not measured.
+     7 LOST-ducks in 2 gated runs, unchanged by the re-arm hold). The
+     follow-up PR added `guard_policy::lost_in_probation_strikes` (a LOST
+     in OPEN within probation is a strike) and measured it, off → on: cabin
+     7 → 7 LOST-ducks in the 2 gated 30 s runs, 18 → 17 in the 5 sweep runs
+     (median 4 → 3 a run); over 120 s 72 → 19 (median 19 → 4 a run), every
+     cabin run latched at the cap (−11.89 dB) a median 23.27 s after the
+     change and ducked no more. Elsewhere the change's own LOST falls
+     inside the cold start's probation: one strike (−3.00 dB, the re-arm at
+     10.00 s instead of 5.00), no new duck, 0 howl blocks. The bar for
+     default ON was at most 1 LOST-duck a run in cabin, so it ships **off**;
+     whether a latch after 4 ducks is the behaviour wanted (it is the
+     design's end state) is Tim's call. The gated rows: 877.17 s on 4
+     threads; `HowlGuardSweep.LouderCoupling` 974.9 s.
    - **The soundcheck margins are one loop's and one song's.** Measured
      in this loop with the backing track; a soundcheck on another song or
      gain, or without the track, was not measured.
@@ -473,8 +484,8 @@ carries the measured numbers; this is the map:
    - **The release experiment's +6 dB rehearsal → hall howl does not
      reproduce in this loop** (0 blocks unguarded); the stress rows run at
      the canceller's limit + 6 instead.
-   - The latch never engaged in a gated row; it is covered by the state
-     machine suite only.
+   - The latch never engaged in a gated row with the default policy; with
+     `lost_in_probation_strikes` it engages live (cabin under F → 2F).
 13. **The reverb behind the canceller, part 1: the Dattorro plates
    (2026-10-02; [`docs/reverb-afc.md`](docs/reverb-afc.md)).** Phase 2
    item 7, part 1. Part 2 (2026-10-08, item 11) measured the spectral
