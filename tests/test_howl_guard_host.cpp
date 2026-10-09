@@ -1651,7 +1651,11 @@ TEST(HowlGuardHost, CostPerBlock) {
         //     2246 / 3962 and 3180 / 6311 ns).
         //   Linux GCC CI (job 110465810942): float 8575 / 12794 ns, 4.61 /
         //     6.86 %; double 8706 / 13571 ns, 4.59 / 7.15 % (the canceller
-        //     there 186-190 us, the guard 4x Intel's).
+        //     there 186-190 us, the guard 4x Intel's): GCC did not vectorize
+        //     the detector's bank. Since tap/MuTap#87 (run_bank's arrays are
+        //     __restrict parameters; bench/README.md), job 113795845819:
+        //     float 1998 / 3986 ns, 0.62 / 1.24 %; double 3371 / 6793 ns,
+        //     1.03 / 2.07 % (that runner's canceller 321-327 us).
         // A wall-clock ratio on shared CI hardware moves by the factor
         // between those hosts, so it is not gated tightly: the bound only
         // catches a gross regression (25 %, 3.5x over the worst CI row).

@@ -140,7 +140,10 @@
 // COST (bench/bench_howl_detector.cpp, defaults, block 64 at 48 kHz, the same
 // i9-8950HK at load 4.1): 1786 ns per block in float32, 3039 ns in double -
 // 0.55 % / 0.94 % of one pem_afc process_block (pem_afc.h: 324455.2 /
-// 324621.6 ns).
+// 324621.6 ns). On the Linux GCC CI runner (GCC 13.3): 2006 / 3337 ns, the
+// same as Linux Clang there, since run_bank's arrays became __restrict
+// parameters (10885 / 11135 ns before: GCC did not vectorize the bank;
+// tap/MuTap#87, bench/README.md).
 //
 // Real-time contract (as frequency_shifter.h): the constructor validates its
 // config, may throw std::invalid_argument and allocates (the bank's state
