@@ -76,8 +76,8 @@ carries the measured numbers; this is the map:
   near-end models: `speech_predictor`, `warped_lpc_predictor`),
   `pem_afc.h` (the FDAF-PEM-AFROW wrapper, templated over BOTH the
   predictor and the adaptive core).
-- `tests/` — 437 tests (gtest cases on the host build, 9 October 2026; the
-  on-target selection is 127, `tests/bare_metal_main.cpp`); `tests/support/closed_loop.h` is the closed-loop
+- `tests/` — 439 tests (gtest cases on the host build, 9 October 2026; the
+  on-target selection is 128, `tests/bare_metal_main.cpp`); `tests/support/closed_loop.h` is the closed-loop
   simulator + MSG/ASG bisection metrics (a deliverable in its own right);
   `tests/support/echo_scenario.h` is its open-loop AEC counterpart (echo
   path + double-talk injection, observable ERLE + true residual-echo
@@ -195,20 +195,32 @@ carries the measured numbers; this is the map:
     production-readiness M0c, 9 October 2026). Every hot path —
     `partitioned_fdaf`, `partitioned_fdkf`, `pem_afc`, `residual_suppressor`,
     `aec_chain`, `howl_guard::analyze` — makes one finite check per block on
-    its input power and one on its residual power; a non-finite block
-    resets the stage as `reset()` does (the guard: that mic to ARMING,
-    strikes kept), comes out as ZEROS (never the NaN, which would poison
-    the next stage), and increments the stage's `watchdog_trips()`, which
-    `reset()` keeps. A new stage that holds adaptive state gets the same
-    three lines and a row in `tests/test_watchdog.cpp`, whose oracle is
-    bit-equality with a freshly constructed stage on the block after the
-    trip — so it also proves that `reset()` resets everything. `pem_afc`
-    propagates a trip of its core on the prewhitened pair (a predictor gone
-    non-finite) into a full reset; `aec_chain` checks first so its policy
-    layer (receive floor, guard, rescue, shadow) never sees the block. The
-    checks touch no arithmetic on finite input: every fingerprint line held
-    on every leg. The Max externals report the counter on their right
-    outlet (MuTap-Max follow-up to the M0 PR).
+    its input and one on its residual, READ OFF SUMS THE STAGE ALREADY
+    COMPUTES (the error spectrum's DC slot is the block's sum; the
+    suppressor's three analysis spectra and its constrained gain spectrum;
+    the detector's block power), so the cost is a few `isfinite` calls and
+    nothing per sample; only a path that runs no transform (adaptation
+    frozen, the narrowband guard holding) sums the block itself. The
+    first cut summed every block per sample and cost 0.2–2.7 % of a stage
+    on the ratchet (a scalar float reduction does not vectorise), which is
+    why the header records which transform slots see which inputs
+    (measured on srdif: a fault in any input reaches the forward DC slot;
+    a faulty bin reaches at least half of the inverse's second half; a
+    single output sample is NOT a check). A non-finite block resets the
+    stage as `reset()` does (the guard: that mic to ARMING, strikes kept),
+    comes out as ZEROS (never the NaN, which would poison the next stage),
+    and increments the stage's `watchdog_trips()`, which `reset()` keeps. A
+    new stage that holds adaptive state gets the same contract and a row in
+    `tests/test_watchdog.cpp`, whose oracle is bit-equality with a freshly
+    constructed stage on the block after the trip — so it also proves that
+    `reset()` resets everything. `pem_afc` checks nothing of its own while
+    adapting: every fault reaches the prewhitened pair, where the core's
+    check sees it, and `pem_afc` propagates the trip into a full reset;
+    `aec_chain` likewise propagates its stages' trips so its policy layer
+    (receive floor, guard, rescue, shadow) never sees the block. The checks
+    touch no arithmetic on finite input: every fingerprint line held on
+    every leg. The Max externals report the counter on their right outlet
+    (MuTap-Max follow-up to the M0 PR).
 
 ## What's next (ranked)
 

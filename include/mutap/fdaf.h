@@ -157,9 +157,11 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         bool transient_held() const noexcept { return m_transient; }
 
         /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
-        /// on which the input or the error power was not finite, each of
-        /// which reset the filter as reset() does and wrote zeros. reset()
-        /// keeps the count.
+        /// whose error block was not finite — which is where a non-finite
+        /// input, desired sample or filter bin shows — each of which reset
+        /// the filter as reset() does and wrote zeros. reset() keeps the
+        /// count. Cost: on the adapting path one isfinite on the error
+        /// spectrum's DC slot; frozen, one sum over the block.
         size_t watchdog_trips() const noexcept { return m_watchdog; }
 
         /// Zero the filter, the input history and the power estimate.
@@ -187,12 +189,6 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t b    = m_cfg.block_size;
             const size_t p_n  = m_cfg.partitions;
             const size_t half = b; // bin count is half + 1
-
-            // The NaN watchdog's input check (mutap/watchdog.h).
-            if (!detail::finite_power(detail::sum_of_squares(input, b) + detail::sum_of_squares(desired, b))) {
-                watchdog_trip(error, estimate);
-                return;
-            }
 
             // Slide the overlap-save window and take the newest input block's
             // spectrum into the partition ring.
@@ -223,14 +219,18 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 }
             }
 
-            // The watchdog's residual check: a filter state that went
-            // non-finite shows here, whether or not adaptation is frozen.
-            if (!detail::finite_power(detail::sum_of_squares(error, b))) {
-                watchdog_trip(error, estimate);
-                return;
-            }
-
+            // THE NaN WATCHDOG (mutap/watchdog.h). A non-finite input,
+            // desired sample or filter bin reaches the error block (a faulty
+            // bin reaches at least half of the inverse transform's second
+            // half; measured, see the header), and the error spectrum's DC
+            // slot is the sum of that block, so on the adapting path the
+            // check is one isfinite on a value the update computes anyway.
+            // With adaptation frozen no transform runs, and the stage sums
+            // the block itself.
             if (!m_adapt) {
+                if (!detail::finite_power(detail::sum_of_squares(error, b))) {
+                    watchdog_trip(error, estimate);
+                }
                 return;
             }
 
@@ -240,6 +240,10 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 m_espec[i + b] = error[i];
             }
             m_fft.forward_inplace(m_espec.data());
+            if (!detail::finite_power(m_espec[0])) {
+                watchdog_trip(error, estimate);
+                return;
+            }
 
             update_ipc();
 

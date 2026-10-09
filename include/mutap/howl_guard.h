@@ -520,12 +520,15 @@ namespace tap::mu {
         /// mic, then update(). @pre mic < microphones()
         void analyze(size_t mic, const Sample* e, Sample uncertainty_ratio, Sample shadow_ratio) noexcept {
             mic_state& s = m_mics[mic];
+            m_detectors[mic].process_block(e, m_block);
             // The NaN watchdog (mutap/watchdog.h): a non-finite residual
-            // block or statistic sends this mic to ARMING as a canceller
-            // restart does (strikes kept), clears its detector, and counts.
-            // Neither reaches the detector or the verdict: std::max below
-            // would pass a NaN.
-            if (!detail::finite_power(detail::sum_of_squares(e, m_block) + uncertainty_ratio + shadow_ratio)) {
+            // block shows in the detector's block power (its sum of
+            // squares, floored at 1e-30 before the log, so silence is
+            // finite), a non-finite statistic in itself. Either sends this
+            // mic to ARMING as a canceller restart does (strikes kept),
+            // clears the detector it just poisoned, and counts; neither
+            // reaches the verdict, where std::max would pass a NaN.
+            if (!detail::finite_power(m_detectors[mic].power_db() + uncertainty_ratio + shadow_ratio)) {
                 ++s.watchdog;
                 m_detectors[mic].reset();
                 enter_arming(s);
@@ -534,7 +537,6 @@ namespace tap::mu {
                 s.ok   = false;
                 return;
             }
-            m_detectors[mic].process_block(e, m_block);
             constexpr Sample tiny = std::numeric_limits<Sample>::min();
             s.a_db                = Sample(10) * std::log10(std::max(uncertainty_ratio, tiny));
             s.d_db                = Sample(10) * std::log10(std::max(shadow_ratio, tiny));
@@ -638,7 +640,8 @@ namespace tap::mu {
         /// NaN WATCHDOG trips on mic `mic` since construction
         /// (mutap/watchdog.h): analyze() calls whose residual block or
         /// statistics were not finite, each of which sent the mic to ARMING.
-        /// reset() keeps the count.
+        /// reset() keeps the count. Cost: one isfinite on the detector's
+        /// block power and the two statistics.
         size_t watchdog_trips(size_t mic) const noexcept { return m_mics[mic].watchdog; }
         /// Attribution fallbacks (every mic ducked) since reset().
         size_t                       fallbacks() const noexcept { return m_fallbacks; }

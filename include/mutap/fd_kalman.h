@@ -291,9 +291,11 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         Sample uncertainty_ratio() const noexcept { return uncertainty_sum() / m_p0_sum; }
 
         /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
-        /// on which the input or the error power was not finite, each of
-        /// which reset the filter as reset() does and wrote zeros. reset()
-        /// keeps the count.
+        /// whose error block was not finite — which is where a non-finite
+        /// input, desired sample or filter bin shows — each of which reset
+        /// the filter as reset() does and wrote zeros. reset() keeps the
+        /// count. Cost: on the adapting path one isfinite on the error
+        /// spectrum's DC slot; frozen, one sum over the block.
         size_t watchdog_trips() const noexcept { return m_watchdog; }
 
         /// Zero the filter and histories, restore the initial uncertainty
@@ -333,12 +335,6 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t b    = m_cfg.block_size;
             const size_t p_n  = m_cfg.partitions;
             const size_t half = b; // bin count is half + 1
-
-            // The NaN watchdog's input check (mutap/watchdog.h).
-            if (!detail::finite_power(detail::sum_of_squares(input, b) + detail::sum_of_squares(desired, b))) {
-                watchdog_trip(error, estimate);
-                return;
-            }
 
             // Overlap-save input window and newest block spectrum, exactly
             // as in partitioned_fdaf (memmove/memcpy: bit-identical to the
@@ -398,14 +394,15 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 }
             }
 
-            // The watchdog's residual check: a filter state that went
-            // non-finite shows here, whether or not adaptation is frozen.
-            if (!detail::finite_power(detail::sum_of_squares(error, b))) {
-                watchdog_trip(error, estimate);
-                return;
-            }
-
+            // THE NaN WATCHDOG (mutap/watchdog.h), as in partitioned_fdaf:
+            // every non-finite value reaches the error block, whose
+            // spectrum's DC slot the update computes anyway; on the two
+            // paths that run no transform (adaptation frozen, the
+            // narrowband guard holding) the stage sums the block itself.
             if (!m_adapt) {
+                if (!detail::finite_power(detail::sum_of_squares(error, b))) {
+                    watchdog_trip(error, estimate);
+                }
                 return;
             }
 
@@ -442,6 +439,9 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                     m_nb_count /= 2;
                 }
                 if (m_nb_count >= m_cfg.narrowband_hold_blocks) {
+                    if (!detail::finite_power(detail::sum_of_squares(error, b))) {
+                        watchdog_trip(error, estimate);
+                    }
                     return;
                 }
             }
@@ -452,6 +452,10 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 m_espec[i + b] = error[i];
             }
             m_fft.forward_inplace(m_espec.data());
+            if (!detail::finite_power(m_espec[0])) {
+                watchdog_trip(error, estimate);
+                return;
+            }
 
             const Sample a2     = m_cfg.transition * m_cfg.transition;
             const Sample q_gain = Sample(1) - a2;

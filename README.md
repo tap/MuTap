@@ -142,7 +142,7 @@ algorithmically complete. What exists today:
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
   SampleRateTap ([`platform/`](platform/),
   [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
-  127 tests run on-target (the baked selection in
+  128 tests run on-target (the baked selection in
   [`tests/bare_metal_main.cpp`](tests/bare_metal_main.cpp), 9 October 2026):
   the float32 typed suites (the embedded profile),
   the LP conditioning suite, the float closed-loop canaries (single-seed
@@ -157,8 +157,8 @@ algorithmically complete. What exists today:
   ([`cmake/hexagon-linux-musl.cmake`](cmake/hexagon-linux-musl.cmake)).
   A hosted Linux target needs no platform rig — stock gtest, ctest and
   exit codes work unchanged. Per-push CI runs the same emulation-sized
-  selection as the M55 leg (127 tests, ~8 min of TCG); the full suite
-  (437 tests on the host build, 9 October 2026), double-typed adaptive
+  selection as the M55 leg (128 tests, ~8 min of TCG); the full suite
+  (439 tests on the host build, 9 October 2026), double-typed adaptive
   suites included, was validated once on the ISA when it was 74 tests
   (double is hardware on the Hexagon scalar core). What
   this leg deliberately does not cover: VTCM placement, L2 streaming
@@ -311,17 +311,20 @@ algorithmically complete. What exists today:
   the canceller, with converged probes, in
   [`docs/reverb-afc.md`](docs/reverb-afc.md).
 - **The NaN watchdog** ([`include/mutap/watchdog.h`](include/mutap/watchdog.h)):
-  one finite check per block on the input and the residual power in every
-  hot path (`partitioned_fdaf`, `partitioned_fdkf`, `pem_afc`,
-  `residual_suppressor`, `aec_chain`, `howl_guard::analyze`); a NaN or
-  infinity resets the stage as `reset()` does, comes out as zeros and
-  counts on `watchdog_trips()`, which the Max externals report. Recovery
-  within one block and the counter at 1 for every stage
-  ([`tests/test_watchdog.cpp`](tests/test_watchdog.cpp): the block after
-  the trip is bit-identical to a fresh stage's); no arithmetic touched on
-  finite input (every fingerprint line held on all nine CI legs); its
-  instruction-count cost per stage is recorded in the header from the
-  ratchet.
+  one finite check per block on the input and the residual in every hot
+  path (`partitioned_fdaf`, `partitioned_fdkf`, `pem_afc`,
+  `residual_suppressor`, `aec_chain`, `howl_guard::analyze`), read off
+  sums the stage already computes (the error spectrum's DC slot, the
+  suppressor's analysis and gain spectra, the detector's block power), so
+  nothing runs per sample; a NaN or infinity resets the stage as `reset()`
+  does, comes out as zeros and counts on `watchdog_trips()`, which the Max
+  externals report. Recovery within one block and the counter at 1 for
+  every stage ([`tests/test_watchdog.cpp`](tests/test_watchdog.cpp): the
+  block after the trip is bit-identical to a fresh stage's); no arithmetic
+  touched on finite input (every fingerprint line held on all nine CI
+  legs); its instruction-count cost per stage is recorded in the header
+  from the ratchet (the per-sample first cut measured 0.2–2.7 % and was
+  replaced).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance

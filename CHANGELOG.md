@@ -12,13 +12,14 @@ them (`scripts/repin.sh`). Dates are the tag's.
 Production-readiness milestone M0 (hygiene).
 
 - **The NaN watchdog** (`include/mutap/watchdog.h`): one finite check per
-  block on the input and the residual power in `partitioned_fdaf`,
+  block on the input and the residual in `partitioned_fdaf`,
   `partitioned_fdkf`, `pem_afc`, `residual_suppressor`, `aec_chain` and
-  `howl_guard::analyze`; a non-finite block resets the stage as `reset()`
-  does (the guard sends the mic to ARMING), comes out as zeros, and counts
-  on the stage's `watchdog_trips()`. Fingerprints unchanged on finite input
-  (all nine legs); `tests/test_watchdog.cpp` asserts recovery within one
-  block and the counter at 1 for every stage. The Max externals report the
+  `howl_guard::analyze`, read off sums the stages already compute (nothing
+  per sample); a non-finite block resets the stage as `reset()` does (the
+  guard sends the mic to ARMING), comes out as zeros, and counts on the
+  stage's `watchdog_trips()`. Fingerprints unchanged on finite input (all
+  nine legs); `tests/test_watchdog.cpp` asserts recovery within one block
+  and the counter at 1 for every stage. The Max externals report the
   counter in the MuTap-Max change that follows.
 - **README** names the namespace the library has, `tap::mu` (it quoted a
   `mutap::` that never existed), its quick start gained the canceller, and
