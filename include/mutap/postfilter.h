@@ -328,7 +328,11 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// out receives the suppressed block. e and out may alias. The
         /// constrained gain filter is linear-phase with block_size
         /// samples of delay — the postfilter's only added latency.
-        void process_block(const Sample* e, const Sample* yhat_block, Sample* out) noexcept {
+        // Out of line (mutap/watchdog.h, MUTAP_NOINLINE): inlined into
+        // aec_chain::process_block on the Cortex-M33 (GCC), this body lost
+        // the inlining of its per-bin lambdas and the chain scenario read
+        // +0.7 % on the ratchet where this scenario read +0.004 %.
+        MUTAP_NOINLINE void process_block(const Sample* e, const Sample* yhat_block, Sample* out) noexcept {
             const size_t b    = m_cfg.block_size;
             const size_t bins = m_n / 2 + 1;
             const Sample eps  = Sample(1e-20);
