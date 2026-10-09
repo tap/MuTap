@@ -59,7 +59,8 @@
 //     TRIP: stays ARMING, a strike (never latches here), restarts the hold.
 //     ARMING never re-arms on a timer.
 //   OPEN         gain = level. Probation (probation_s) from entry.
-//     -> DUCKED  TRIP (a strike within probation); LOST (no strike).
+//     -> DUCKED  TRIP (a strike within probation); LOST (no strike, or
+//                one within probation with lost_in_probation_strikes).
 //     Strike decay: one strike per strike_decay_s in OPEN without a trip
 //     (the level ramps up strike_db).
 //   OPEN_CAPPED  gain = min(cap, level); no declaration yet; `unprotected`.
@@ -90,8 +91,9 @@
 //     clear() (host): strikes 0, level 0, unlatched -> RELEASING.
 //
 // A strike: a TRIP in ARMING, in RELEASING, or in OPEN / OPEN_CAPPED within
-// probation_s of entering it. Each lowers level by strike_db and doubles
-// the re-arm timeout.
+// probation_s of entering it; with lost_in_probation_strikes (off by
+// default) also a LOST in OPEN within probation_s. Each lowers level by
+// strike_db and doubles the re-arm timeout.
 //
 // PER-MIC ATTRIBUTION (M > 1). A howl lives in the shared speaker signal,
 // so every residual carries it. On a tick with TRIPs, the shared peak is
@@ -162,6 +164,12 @@
 //     0 in 8 runs with the held-ok rule (16 in 6 of 8 when one ok tick
 //     re-armed LOST). A guard that releases on the walk path (cabin: the
 //     verdict held ok while ducked) still cycles: 7 LOST-ducks in 2 runs.
+//     lost_in_probation_strikes does not shorten that within 30 s (7 in 2
+//     runs, 5 strikes, 1 latched); over 120 s (the sweep) it ends it at the
+//     latch, every cabin run at the cap after a median 4 LOST-ducks (19
+//     without it, never ending), at the price of one strike (-3 dB, the
+//     re-arm at 10 s) in every other room. It stays off by default
+//     (docs/howl-guard.md).
 //   * A 20 s gap at digital zero: A' plateaus at -15.21 / -15.30 dB (not
 //     ~0 dB), so restart_a_db (-1) never fires on silence; LOST ducks in the
 //     gap and the re-arm opens again before the singer returns; 0 howl.
@@ -240,6 +248,12 @@ namespace tap::mu {
         /// The host's ceiling (dry MSG - 6 dB, relative); none = unset.
         /// Mandatory for opening without a declaration (see ARMING).
         std::optional<double> cap_db;
+
+        /// A LOST in OPEN within probation_s is a strike, as a TRIP there
+        /// is: each nuisance duck backs the restore level off strike_db and
+        /// the max_strikes-th latches (cabin's walk-path duck cycle under
+        /// F -> 2F). Off by default: docs/howl-guard.md has the measurement.
+        bool lost_in_probation_strikes = false;
     };
 
     /// One mic's soundcheck calibration (howl_guard::calibrate_end()): the
@@ -704,6 +718,7 @@ namespace tap::mu {
                 const double old = prev.cap_db.value_or(0.0);
                 q.cap_db         = pick(*p.cap_db, old, -120.0, 0.0);
             }
+            q.lost_in_probation_strikes = p.lost_in_probation_strikes;
             return q;
         }
 
@@ -991,6 +1006,9 @@ namespace tap::mu {
                     enter(s, guard_state::ducked);
                 }
                 else if (lost) {
+                    if (m_policy.lost_in_probation_strikes && s.probation > 0) {
+                        strike(s);
+                    }
                     enter(s, guard_state::ducked);
                 }
                 else {

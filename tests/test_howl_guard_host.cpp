@@ -17,8 +17,8 @@
 // The host's cap is set as the protocol would: the dry limit - 6 dB, relative.
 //
 // The gated rows (HowlGuardHost.*) run seeds 1, 21, 41 (or 1, 21) on cabin
-// and mt5 (both generator families); each takes under 90 s on 4 threads
-// (777.37 s for all 16 in one run on the Intel Mac). HowlGuardSweep.*
+// and mt5 (both generator families); each takes about 90 s or less on 4 threads
+// (877.17 s for all 16 in one run on the Intel Mac). HowlGuardSweep.*
 // (MUTAP_SLOW=1) re-measures the operating points and runs the long grids
 // (six rooms, five seed sets) that docs/howl-guard.md quotes, including the
 // soundcheck margin grid (CalibrationMargins: shadow guards, see
@@ -498,14 +498,26 @@ namespace {
         size_t              howl_after  = 0; ///< howl blocks after the change
         size_t              rehowl      = 0; ///< howl blocks after the first re-arm (re-howls)
         size_t              rehowl_runs = 0;
-        std::vector<double> ducked_frac; ///< share of the post-change time ducked or releasing
+        std::vector<double> ducked_frac;     ///< share of the post-change time ducked or releasing
+        size_t              strikes = 0;     ///< strikes at the end (after any decay)
+        size_t              latched = 0;     ///< runs latched at the end
+        std::vector<double> level_db;        ///< the restore level at the end, dB
+        std::vector<double> end_gain_db;     ///< the gain at the end, dB
+        std::vector<double> lost_per_run;    ///< LOST-ducks after the change, per run
+        std::vector<double> latch_s;         ///< first LATCHED block - change, s (runs that reached it)
+        size_t              after_latch = 0; ///< DUCKED entries after the first LATCHED block
         std::mutex          mu;
 
         void add(const gd::run_trace& t) {
             std::lock_guard<std::mutex> lock(mu);
             ++runs;
-            const auto c    = static_cast<size_t>(t.change);
-            const long duck = gd::first_state(t, guard_state::ducked, t.change);
+            strikes += t.strikes;
+            latched += t.latched ? 1U : 0U;
+            level_db.push_back(static_cast<double>(t.level_db));
+            end_gain_db.push_back(static_cast<double>(t.gain_db.back()));
+            const size_t lost_before = lost_ducks;
+            const auto   c           = static_cast<size_t>(t.change);
+            const long   duck        = gd::first_state(t, guard_state::ducked, t.change);
             if (duck >= 0) {
                 ++ducked;
                 duck_s.push_back(secs(duck - t.change));
@@ -542,17 +554,56 @@ namespace {
                 rehowl_runs += h > 0 ? 1U : 0U;
             }
             ducked_frac.push_back(static_cast<double>(ducked_blocks) / static_cast<double>(t.size() - c));
+            lost_per_run.push_back(static_cast<double>(lost_ducks - lost_before));
+            const long latch = gd::first_state(t, guard_state::latched, t.change);
+            if (latch >= 0) {
+                latch_s.push_back(secs(latch - t.change));
+                after_latch += gd::entries(t, guard_state::ducked, static_cast<size_t>(latch));
+            }
         }
         void print() const {
-            std::printf("  %-22s %3zu | %3zu %5.2f | %3zu %5.2f | %4zu %3zu | %3zu %3zu | %5zu %4zu %3zu | %5.2f\n",
+            std::printf("  %-22s %3zu | %3zu %5.2f | %3zu %5.2f | %4zu %3zu | %3zu %5.2f %3zu %3zu | %5zu %4zu %3zu | "
+                        "%5.2f | %3zu %3zu %6.2f %6.2f %6.2f | %3zu %6.2f %3zu\n",
                         label.c_str(), runs, ducked, med(duck_s), rearmed, med(rearm_s), pumps, pump_runs, lost_ducks,
-                        trip_ducks, howl_after, rehowl, rehowl_runs, med(ducked_frac));
+                        med(lost_per_run), static_cast<size_t>(max_of(lost_per_run)), trip_ducks, howl_after, rehowl,
+                        rehowl_runs, med(ducked_frac), strikes, latched, med(level_db), min_of(level_db),
+                        med(end_gain_db), latch_s.size(), med(latch_s), after_latch);
         }
     };
 
     void print_rearm_header() {
-        std::printf("  %-22s %3s | %3s %5s | %3s %5s | %4s %3s | %3s %3s | %5s %4s %3s | %5s\n", "row", "n", "dck",
-                    "duck", "rea", "rearm", "pump", "run", "lst", "trp", "howl", "rhwl", "run", "dfrac");
+        std::printf("  %-22s %3s | %3s %5s | %3s %5s | %4s %3s | %3s %5s %3s %3s | %5s %4s %3s | %5s | %3s %3s %6s %6s "
+                    "%6s | %3s %6s %3s\n",
+                    "row", "n", "dck", "duck", "rea", "rearm", "pump", "run", "lst", "l/run", "max", "trp", "howl",
+                    "rhwl", "run", "dfrac", "stk", "lat", "lvl", "min", "gain", "LAT", "at", "dk>");
+    }
+
+    /// F -> 2F (S2b) at 10 s, voiced + aux at the limit - 6, `seconds` from
+    /// reset: one row per room over `seeds`, with or without a LOST in
+    /// probation counted as a strike.
+    std::vector<rearm_stats> louder_rows(const std::vector<std::string>& rooms, const std::vector<unsigned>& seeds,
+                                         bool lost_strikes, double seconds = 30.0) {
+        std::vector<rearm_stats>           rows(rooms.size());
+        std::vector<std::function<void()>> jobs;
+        for (size_t r = 0; r < rooms.size(); ++r) {
+            rows[r].label = rooms[r] + " x2" + (lost_strikes ? " (L)" : "");
+            for (const unsigned seed : seeds) {
+                gd::run_spec s;
+                s.room                             = rooms[r];
+                s.scale2                           = 2.0;
+                s.t_change_s                       = 10.0;
+                s.mat                              = k_v;
+                s.seed                             = seed;
+                s.gain_db                          = operating_gain(s.room, k_v, gd::k_s1);
+                s.cap_db                           = cap_for(exact_db(s.room, gd::k_s1), s.gain_db);
+                s.seconds                          = seconds;
+                s.oracle                           = false;
+                s.policy.lost_in_probation_strikes = lost_strikes;
+                jobs.emplace_back([s, &st = rows[r]] { st.add(gd::live_run(s)); });
+            }
+        }
+        run_parallel(jobs);
+        return rows;
     }
 
     /// The pooled pump numbers over rearm rows.
@@ -1283,31 +1334,20 @@ TEST(HowlGuardHost, LateHowlAfterAWalkIsCaught) {
 }
 
 TEST(HowlGuardHost, LouderCouplingRearms) {
-    std::vector<rearm_stats>           rows(4);
-    const char*                        rooms[] = {"cabin", "mt5", "studio", "hall"};
-    std::vector<std::function<void()>> jobs;
-    for (size_t r = 0; r < 4; ++r) {
-        rows[r].label = std::string(rooms[r]) + " x2";
-        for (const unsigned seed : {1U, 21U}) {
-            gd::run_spec s;
-            s.room       = rooms[r];
-            s.scale2     = 2.0;
-            s.t_change_s = 10.0;
-            s.mat        = k_v;
-            s.seed       = seed;
-            s.gain_db    = operating_gain(s.room, k_v, gd::k_s1);
-            s.cap_db     = cap_for(exact_db(s.room, gd::k_s1), s.gain_db);
-            s.seconds    = 30.0;
-            s.oracle     = false;
-            jobs.emplace_back([s, &st = rows[r]] { st.add(gd::live_run(s)); });
-        }
-    }
-    run_parallel(jobs);
+    const std::vector<std::string> rooms = {"cabin", "mt5", "studio", "hall"};
     print_rearm_header();
+    std::printf("  lost_in_probation_strikes off\n");
+    const auto rows = louder_rows(rooms, {1, 21}, false);
     for (const auto& r : rows) {
         r.print();
     }
     const rearm_totals tot = rearm_total(rows);
+    std::printf("  lost_in_probation_strikes on\n");
+    const auto rows_l = louder_rows(rooms, {1, 21}, true);
+    for (const auto& r : rows_l) {
+        r.print();
+    }
+    rearm_total(rows_l);
     // Measured (macOS x86_64): every run ducked after F -> 2F (2 of 2 per
     // room; LOST 0.37 to 0.39 s after the change, cabin 4.65 s); the timer
     // re-arm at 5.00 s (10.01 s after a strike) in 6 of 8 runs; 0 howl
@@ -1326,6 +1366,28 @@ TEST(HowlGuardHost, LouderCouplingRearms) {
     }
     EXPECT_GE(tot.rearmed, 4U) << "measured 6 of 8 re-armed";
     EXPECT_LE(tot.pumps, 4U) << "LOST-ducks after a re-arm: measured 0 in 8 runs (16 before the held-ok rule)";
+    // With lost_in_probation_strikes (a LOST in probation is a strike;
+    // off by default, docs/howl-guard.md says why): cabin still took 7
+    // LOST-ducks in the 2 runs (median 4 a run, as without), with 5 strikes
+    // and 1 run latched by 30 s; the MUTAP_SLOW sweep's 120 s rows latch
+    // every cabin run at the cap after a median 4 LOST-ducks and duck no
+    // more. Elsewhere the first LOST after the change falls inside the
+    // cold start's probation (OPEN at 1.76-1.79 s, the change at 10 s): one
+    // strike, the level at -3.00 dB and the re-arm at 10.00 s, no new duck.
+    // Gated: 0 howl blocks, cabin strikes at all (the rule acts), and no
+    // other room backed off more than 6 dB (measured -3.00).
+    size_t cabin_strikes = 0;
+    for (const auto& r : rows_l) {
+        EXPECT_EQ(r.ducked, r.runs) << r.label;
+        EXPECT_EQ(r.howl_after, 0U) << r.label;
+        if (r.label.rfind("cabin", 0) == 0) {
+            cabin_strikes += r.strikes;
+        }
+        else {
+            EXPECT_GE(min_of(r.level_db), -6.0) << r.label << ": measured -3.00";
+        }
+    }
+    EXPECT_GE(cabin_strikes, 1U) << "measured 5 strikes in 2 runs";
 }
 
 TEST(HowlGuardHost, SongGapDoesNotRestart) {
@@ -1862,31 +1924,19 @@ TEST(HowlGuardSweep, LouderCoupling) {
     if (!slow_enabled()) {
         GTEST_SKIP() << "set MUTAP_SLOW=1 for the guard sweep";
     }
-    std::vector<rearm_stats>           rows(6);
-    const char*                        rooms[] = {"cabin", "mt5", "studio", "rehearsal", "hall", "mt9"};
-    std::vector<std::function<void()>> jobs;
-    for (size_t r = 0; r < 6; ++r) {
-        rows[r].label = std::string(rooms[r]) + " x2";
-        for (const unsigned seed : k_seeds5) {
-            gd::run_spec s;
-            s.room       = rooms[r];
-            s.scale2     = 2.0;
-            s.t_change_s = 10.0;
-            s.mat        = k_v;
-            s.seed       = seed;
-            s.gain_db    = operating_gain(s.room, k_v, gd::k_s1);
-            s.cap_db     = cap_for(exact_db(s.room, gd::k_s1), s.gain_db);
-            s.seconds    = 30.0;
-            s.oracle     = false;
-            jobs.emplace_back([s, &st = rows[r]] { st.add(gd::live_run(s)); });
+    const std::vector<std::string> rooms = {"cabin", "mt5", "studio", "rehearsal", "hall", "mt9"};
+    print_rearm_header();
+    // 30 s (the gated rows' length) and 120 s (where the back-off ends).
+    for (const double seconds : {30.0, 120.0}) {
+        for (const bool lost_strikes : {false, true}) {
+            std::printf("  %.0f s, lost_in_probation_strikes %s\n", seconds, lost_strikes ? "on" : "off");
+            const auto rows = louder_rows(rooms, k_seeds5, lost_strikes, seconds);
+            for (const auto& r : rows) {
+                r.print();
+            }
+            rearm_total(rows);
         }
     }
-    run_parallel(jobs);
-    print_rearm_header();
-    for (const auto& r : rows) {
-        r.print();
-    }
-    rearm_total(rows);
 }
 
 TEST(HowlGuardSweep, TwoMicsAndAudibleCost) {
