@@ -228,7 +228,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             // With adaptation frozen no transform runs, and the stage sums
             // the block itself.
             if (!m_adapt) {
-                if (!detail::finite_power(detail::sum_of_squares(error, b))) {
+                if (!detail::finite_power(detail::sum_of_squares(error, b))) [[unlikely]] {
                     watchdog_trip(error, estimate);
                 }
                 return;
@@ -240,7 +240,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 m_espec[i + b] = error[i];
             }
             m_fft.forward_inplace(m_espec.data());
-            if (!detail::finite_power(m_espec[0])) {
+            if (!detail::finite_power(m_espec[0])) [[unlikely]] {
                 watchdog_trip(error, estimate);
                 return;
             }
@@ -466,7 +466,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
         /// A watchdog trip (mutap/watchdog.h): count it, reset the filter,
         /// and hand the block downstream as zeros rather than as NaNs.
-        void watchdog_trip(Sample* error, Sample* estimate) noexcept {
+        MUTAP_WATCHDOG_COLD void watchdog_trip(Sample* error, Sample* estimate) noexcept {
             ++m_watchdog;
             reset();
             for (size_t i = 0; i < m_cfg.block_size; ++i) {

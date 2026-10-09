@@ -528,13 +528,8 @@ namespace tap::mu {
             // mic to ARMING as a canceller restart does (strikes kept),
             // clears the detector it just poisoned, and counts; neither
             // reaches the verdict, where std::max would pass a NaN.
-            if (!detail::finite_power(m_detectors[mic].power_db() + uncertainty_ratio + shadow_ratio)) {
-                ++s.watchdog;
-                m_detectors[mic].reset();
-                enter_arming(s);
-                s.a_db = Sample(0);
-                s.d_db = Sample(0);
-                s.ok   = false;
+            if (!detail::finite_power(m_detectors[mic].power_db() + uncertainty_ratio + shadow_ratio)) [[unlikely]] {
+                watchdog_trip(mic);
                 return;
             }
             constexpr Sample tiny = std::numeric_limits<Sample>::min();
@@ -899,6 +894,19 @@ namespace tap::mu {
                     enter_arming(s);
                 }
             }
+        }
+
+        /// A watchdog trip on mic `mic` (mutap/watchdog.h, analyze()): count
+        /// it, clear the detector the block poisoned, the mic to ARMING as
+        /// a restart does, its verdict inputs to a finite "not ok".
+        MUTAP_WATCHDOG_COLD void watchdog_trip(size_t mic) noexcept {
+            mic_state& s = m_mics[mic];
+            ++s.watchdog;
+            m_detectors[mic].reset();
+            enter_arming(s);
+            s.a_db = Sample(0);
+            s.d_db = Sample(0);
+            s.ok   = false;
         }
 
         /// ARMING after a restart: the declaration, the latch and the
