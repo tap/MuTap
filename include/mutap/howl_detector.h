@@ -257,6 +257,42 @@ namespace tap::mu {
             }
         };
 
+        /// The bank over len samples: nb resonators (w = x + bias - a1 w1 -
+        /// a2 w2, y = |g (w - w2)| + env_floor) and their attack / release
+        /// envelopes. Returns sq plus the sum of the inputs' squares.
+        ///
+        /// A free function for one reason: its arrays are __restrict
+        /// PARAMETERS (each is the detector's own, so none aliases another
+        /// or the input). The vectorizer runs the band loop across bands;
+        /// without the qualifiers GCC 13 left it scalar, with a branch on
+        /// y > env that noise mispredicts, while Clang vectorized it - 10103
+        /// vs 1164 ns per block on the Linux GCC runner (float; double 10383
+        /// vs 2273), the guard's whole Linux excess. The same qualifiers on
+        /// local pointers did not help GCC; on parameters it honours them.
+        /// Each band's arithmetic is unchanged, operation for operation
+        /// (every readout measured bit-identical to the previous loop's on
+        /// Linux GCC / Clang and macOS; bench/README.md, tap/MuTap#87).
+        template <typename Sample>
+        Sample run_bank(const Sample* __restrict in, size_t len, size_t nb, const Sample* __restrict a1,
+                        const Sample* __restrict a2, const Sample* __restrict g, Sample* __restrict w1,
+                        Sample* __restrict w2, Sample* __restrict env, Sample att, Sample rel, Sample sq, Sample bias,
+                        Sample env_floor) noexcept {
+            for (size_t i = 0; i < len; ++i) {
+                const Sample x  = in[i];
+                const Sample xb = x + bias;
+                sq += x * x;
+                for (size_t b = 0; b < nb; ++b) {
+                    const Sample w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    const Sample y = std::abs(g[b] * (w - w2[b])) + env_floor;
+                    w2[b]          = w1[b];
+                    w1[b]          = w;
+                    const Sample c = (y > env[b]) ? att : rel;
+                    env[b]         = y + c * (env[b] - y);
+                }
+            }
+            return sq;
+        }
+
         /// Least-squares slope (dB per tick) and RMS fit residual (dB) of
         /// band b's line level over the ring, oldest slot first.
         template <typename Sample>
@@ -678,30 +714,9 @@ namespace tap::mu {
 
         /// The resonators and their envelopes over len samples.
         void run_bank(const Sample* in, size_t len) noexcept {
-            const size_t  nb  = m_cfg.bands;
-            const Sample* a1  = m_a1.data();
-            const Sample* a2  = m_a2.data();
-            const Sample* g   = m_g.data();
-            Sample*       w1  = m_w1.data();
-            Sample*       w2  = m_w2.data();
-            Sample*       env = m_env.data();
-            const Sample  att = m_att;
-            const Sample  rel = m_rel;
-            Sample        sq  = m_block_sq;
-            for (size_t i = 0; i < len; ++i) {
-                const Sample x  = in[i];
-                const Sample xb = x + k_bias;
-                sq += x * x;
-                for (size_t b = 0; b < nb; ++b) {
-                    const Sample w = xb - a1[b] * w1[b] - a2[b] * w2[b];
-                    const Sample y = std::abs(g[b] * (w - w2[b])) + k_env_floor;
-                    w2[b]          = w1[b];
-                    w1[b]          = w;
-                    const Sample c = (y > env[b]) ? att : rel;
-                    env[b]         = y + c * (env[b] - y);
-                }
-            }
-            m_block_sq = sq;
+            m_block_sq =
+                howl_detail::run_bank(in, len, m_cfg.bands, m_a1.data(), m_a2.data(), m_g.data(), m_w1.data(),
+                                      m_w2.data(), m_env.data(), m_att, m_rel, m_block_sq, k_bias, k_env_floor);
         }
 
         config m_cfg;
