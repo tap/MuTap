@@ -93,6 +93,12 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
+      # TEMPORARY (perf/guard-linux-cost, not for merge): print the guard's
+      # cost line, which a passing ctest run does not show.
+      - name: TEMP HowlGuardHost.CostPerBlock
+        if: always() && runner.os != 'Windows'
+        run: ./build/tests/mutap_tests --gtest_filter='HowlGuardHost.CostPerBlock'
+
       # The bit-identity gate (tests/fingerprint_harness.cpp) already ran as a
       # test above against this leg's committed lines
       # (tests/fingerprints/<fingerprint_leg>.txt); a difference failed the
