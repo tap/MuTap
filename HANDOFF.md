@@ -219,8 +219,15 @@ carries the measured numbers; this is the map:
     `aec_chain` likewise propagates its stages' trips so its policy layer
     (receive floor, guard, rescue, shadow) never sees the block. The checks
     touch no arithmetic on finite input: every fingerprint line held on
-    every leg. The Max externals report the counter on their right outlet
-    (MuTap-Max follow-up to the M0 PR).
+    every leg. Cost on the ratchet (table in the header): the checks are
+    ≤ 40 instructions per block; 26 of 30 rows inside ±0.1 %; the M33
+    chain row reads +0.7 % from a code-generation shift in the
+    four-argument `partitioned_fdkf` instantiation that cold trip paths
+    did not move and an out-of-line suppressor entry point made worse
+    elsewhere (tried, reverted) — a recorded miss, to revisit with the
+    cross toolchain in hand (M2a puts the AFC path on the ratchet). The
+    Max externals report the counter on their right outlet (MuTap-Max
+    follow-up to the M0 PR).
 
 ## What's next (ranked)
 
