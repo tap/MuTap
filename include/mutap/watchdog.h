@@ -85,7 +85,36 @@
 // vectorised without reassociation, which no MuTap target permits), +0.58 /
 // +0.99 % and +0.67 % on the M33, +0.26 / +0.44 % and +0.19 % on Hexagon;
 // nn_suppressor, untouched, read +0.000 % on all three, so the instrument
-// resolves this. This cut's counts are recorded below from the PR's run.
+// resolves this. THIS CUT, measured the same way (tap/MuTap#91, commit
+// a402f0c against main 3ac601b; 400 timed blocks per scenario; the trip
+// paths cold, the checks [[unlikely]]):
+//
+//   scenario        Cortex-M55          Cortex-M33          Hexagon
+//   fdkf_48k        +0.002 % (+6/blk)   +0.000 % (+0.6)     -0.064 % (-243)
+//   fdkf_16k        -0.011 % (-23)      +0.000 % (+0.6)     -0.110 % (-237)
+//   shadow_48k      -0.005 % (-6)       +0.000 % (+0.6)     -0.174 % (-235)
+//   shadow_16k      +0.007 % (+9)       +0.000 % (+0.6)     -0.174 % (-235)
+//   suppressor_48k  +0.182 % (+1021)    +0.004 % (+38)      +0.001 % (+6)
+//   suppressor_16k  +0.168 % (+960)     +0.004 % (+38)      -0.005 % (-28)
+//   chain_48k       -0.361 % (-3770)    +0.695 % (+13478)   -0.041 % (-462)
+//   chain_16k       -0.405 % (-3650)    +0.726 % (+11985)   -0.051 % (-491)
+//   nn_suppressor   +0.000 %            +0.000 %            +0.000 %
+//
+// The checks' own cost is what the rows with stable code generation show:
+// at most 40 instructions per block (M33: +0.6 on the cores, +38 on the
+// suppressor; Hexagon suppressor +6). The other moves are the compilers
+// re-deciding inlining and scheduling as the functions changed shape, in
+// both directions: the M55 suppressor read -0.16 % with the trips inline
+// and +0.18 % with them cold (identical arithmetic); Hexagon's cores and
+// shadow got CHEAPER by 235-243 per block; and the M33 chain reads
+// +12-13 k per block against +40 for the stages it contains, a shift in
+// the four-argument partitioned_fdkf instantiation the chain alone uses
+// (the standalone scenario calls the three-argument form) that neither
+// cold trips nor an out-of-line suppressor entry point moved (the latter,
+// tried and reverted, cost the standalone M55 suppressor +1.0 %). So the
+// criterion is met on 26 of the 30 rows, the misses are code-generation
+// effects of both signs with one positive outlier, and that outlier is a
+// recorded finding (docs/claims.md row 122), not a per-sample cost.
 //
 // A block of finite samples large enough for its sum to overflow Sample
 // trips the watchdog too; that is treated as the fault it is. The check

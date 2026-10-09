@@ -322,9 +322,11 @@ algorithmically complete. What exists today:
   every stage ([`tests/test_watchdog.cpp`](tests/test_watchdog.cpp): the
   block after the trip is bit-identical to a fresh stage's); no arithmetic
   touched on finite input (every fingerprint line held on all nine CI
-  legs); its instruction-count cost per stage is recorded in the header
-  from the ratchet (the per-sample first cut measured 0.2–2.7 % and was
-  replaced).
+  legs); its instruction-count cost is recorded in the header from the
+  ratchet: at most 40 instructions per block where code generation held
+  still, 26 of 30 target × scenario rows inside ±0.1 %, one M33 chain row
+  at +0.7 % by a code-generation shift (a recorded finding; the per-sample
+  first cut measured 0.2–2.7 % and was replaced).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
