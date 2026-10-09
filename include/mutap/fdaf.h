@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "mutap/fft.h"
+#include "mutap/watchdog.h"
 
 namespace tap::mu {
 
@@ -155,7 +156,14 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// True if the last adapting block was held by the transient gate.
         bool transient_held() const noexcept { return m_transient; }
 
+        /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
+        /// on which the input or the error power was not finite, each of
+        /// which reset the filter as reset() does and wrote zeros. reset()
+        /// keeps the count.
+        size_t watchdog_trips() const noexcept { return m_watchdog; }
+
         /// Zero the filter, the input history and the power estimate.
+        /// Keeps watchdog_trips().
         void reset() noexcept {
             fill_zero(m_input);
             fill_zero(m_u);
@@ -179,6 +187,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t b    = m_cfg.block_size;
             const size_t p_n  = m_cfg.partitions;
             const size_t half = b; // bin count is half + 1
+
+            // The NaN watchdog's input check (mutap/watchdog.h).
+            if (!detail::finite_power(detail::sum_of_squares(input, b) + detail::sum_of_squares(desired, b))) {
+                watchdog_trip(error, estimate);
+                return;
+            }
 
             // Slide the overlap-save window and take the newest input block's
             // spectrum into the partition ring.
@@ -207,6 +221,13 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 if (estimate != nullptr) {
                     estimate[i] = y;
                 }
+            }
+
+            // The watchdog's residual check: a filter state that went
+            // non-finite shows here, whether or not adaptation is frozen.
+            if (!detail::finite_power(detail::sum_of_squares(error, b))) {
+                watchdog_trip(error, estimate);
+                return;
             }
 
             if (!m_adapt) {
@@ -439,6 +460,19 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             }
         }
 
+        /// A watchdog trip (mutap/watchdog.h): count it, reset the filter,
+        /// and hand the block downstream as zeros rather than as NaNs.
+        void watchdog_trip(Sample* error, Sample* estimate) noexcept {
+            ++m_watchdog;
+            reset();
+            for (size_t i = 0; i < m_cfg.block_size; ++i) {
+                error[i] = Sample(0);
+                if (estimate != nullptr) {
+                    estimate[i] = Sample(0);
+                }
+            }
+        }
+
         config                 m_cfg;
         size_t                 m_n; ///< FFT size N = 2 * block_size
         basic_real_fft<Sample> m_fft;
@@ -459,6 +493,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         Sample                 m_ipc       = Sample(0);
         bool                   m_transient = false;
         Sample                 m_ee_weight = Sample(0); ///< 1 - a^n debiasing weight for m_s_ee
+        size_t                 m_watchdog  = 0;         ///< watchdog_trips()
     };
 
 } // namespace tap::mu::inline TAP_DSP_FFT_ABI

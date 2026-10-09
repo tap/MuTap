@@ -35,9 +35,9 @@ Milestones M0–M4 of [HANDOFF.md](HANDOFF.md) (the full technical plan,
 milestone sequence and paper list) are done — the canceller core is
 algorithmically complete. What exists today:
 
-- `mutap::basic_real_fft<Sample>` — DspTap's real FFT (`tap::dsp`, re-exported
+- `tap::mu::basic_real_fft<Sample>` — DspTap's real FFT (`tap::dsp`, re-exported
   by [`include/mutap/fft.h`](include/mutap/fft.h)) for float and double
-  (`mutap::real_fft`, `mutap::real_fft32`): Ooura's packed spectrum layout and
+  (`tap::mu::real_fft`, `tap::mu::real_fft32`): Ooura's packed spectrum layout and
   sign convention, run by DspTap's srdif engine (a split-radix DIF engine
   written from the literature; until tap/DspTap#42 a C++20 port of Ooura's
   `rdft`) and locked down by DspTap's tests.
@@ -47,7 +47,7 @@ algorithmically complete. What exists today:
   in MuTap by default (root `CMakeLists.txt`); double always stays on the
   srdif engine, the golden model. See
   [`docs/optimization.md`](docs/optimization.md).
-- `mutap::partitioned_fdaf<Sample>` — partitioned-block frequency-domain
+- `tap::mu::partitioned_fdaf<Sample>` — partitioned-block frequency-domain
   adaptive filter (overlap-save, per-bin NLMS update, optional gradient
   constraint): the identification core that PEM prewhitening will wrap.
   Validated open-loop against known impulse responses: on white noise the
@@ -77,7 +77,7 @@ algorithmically complete. What exists today:
   floor, early stop), plus the pluggable near-end models — `lpc_predictor`
   (short-term LP) and `speech_predictor` (the cascade: short-term LP +
   long-term pitch tap). [`include/mutap/pem_afc.h`](include/mutap/pem_afc.h):
-  `mutap::pem_afc<Sample, Predictor>`, the FDAF-PEM-AFROW structure —
+  `tap::mu::pem_afc<Sample, Predictor>`, the FDAF-PEM-AFROW structure —
   cancellation runs on the raw signals, adaptation on the prewhitened pair.
   Measured in the M2 loop (converged at MSG−6 dB, medians over five seed
   sets): on the tonal material where the naive canceller howls at the
@@ -114,7 +114,7 @@ algorithmically complete. What exists today:
   [MuTap-Max](https://github.com/tap/MuTap-Max) (Min-DevKit package, MuTap
   as a submodule): universal macOS `.mxo` + Windows `.mxe64` built in CI.
 - **The music/tonal near-end predictor** —
-  `mutap::warped_lpc_predictor<Sample>`: frequency-warped LP (unit delays
+  `tap::mu::warped_lpc_predictor<Sample>`: frequency-warped LP (unit delays
   replaced by first-order allpass sections), warped autocorrelation + the
   same ridge-guarded Levinson–Durbin, applied as an unconditionally stable
   tapped allpass chain. At λ = 0 it reduces *exactly* to the plain
@@ -136,13 +136,15 @@ algorithmically complete. What exists today:
   family. Speech-envelope material improves to +17.81 dB. Defaults
   (λ = 0.5, order 16) are the sweep's best worst-case; Bark-scale λ = 0.766/order 24 trades a slightly better mean
   for a weaker floor at ~1.5× the cost. Select it with
-  `mutap::pem_afc<Sample, mutap::warped_lpc_predictor<Sample>>`.
+  `tap::mu::pem_afc<Sample, tap::mu::warped_lpc_predictor<Sample>>`.
 - **The Cortex-M55 build** — the first embedded target: bare metal
   (newlib + semihosting) on QEMU's MPS3 AN547 board model, platform rig
   (Armv8-M startup, linker script, one-shot gtest harness) ported from
   SampleRateTap ([`platform/`](platform/),
   [`cmake/arm-cortex-m55-mps3.cmake`](cmake/arm-cortex-m55-mps3.cmake)).
-  63 tests run on-target: the float32 typed suites (the embedded profile),
+  127 tests run on-target (the baked selection in
+  [`tests/bare_metal_main.cpp`](tests/bare_metal_main.cpp), 9 October 2026):
+  the float32 typed suites (the embedded profile),
   the LP conditioning suite, the float closed-loop canaries (single-seed
   checks that target arithmetic tracks the host, including the PEM tonal
   and burst-gating scenarios; the acoustic claims are host-side), and the
@@ -155,19 +157,20 @@ algorithmically complete. What exists today:
   ([`cmake/hexagon-linux-musl.cmake`](cmake/hexagon-linux-musl.cmake)).
   A hosted Linux target needs no platform rig — stock gtest, ctest and
   exit codes work unchanged. Per-push CI runs the same emulation-sized
-  selection as the M55 leg (63 tests, ~8 min of TCG); the full 74-test
-  suite, double-typed adaptive suites included, has also been validated
-  once on the ISA (double is hardware on the Hexagon scalar core). What
+  selection as the M55 leg (127 tests, ~8 min of TCG); the full suite
+  (437 tests on the host build, 9 October 2026), double-typed adaptive
+  suites included, was validated once on the ISA when it was 74 tests
+  (double is hardware on the Hexagon scalar core). What
   this leg deliberately does not cover: VTCM placement, L2 streaming
   layout and FastRPC offload need the proprietary Hexagon SDK and real
   hardware (HANDOFF.md pins the layout targets).
 
-- **The PEM-FD-Kalman core (v2)** — `mutap::partitioned_fdkf<Sample>`
+- **The PEM-FD-Kalman core (v2)** — `tap::mu::partitioned_fdkf<Sample>`
   ([`include/mutap/fd_kalman.h`](include/mutap/fd_kalman.h)): the NLMS
   update replaced by a diagonalized partitioned-block frequency-domain
   Kalman filter (Enzner & Vary 2006; Bernardi et al.'s PEM variant), as a
   drop-in core for the same FDAF-PEM-AFROW structure —
-  `mutap::pem_afc<Sample, Predictor, mutap::partitioned_fdkf<Sample>>`.
+  `tap::mu::pem_afc<Sample, Predictor, tap::mu::partitioned_fdkf<Sample>>`.
   The per-bin state uncertainty and near-end PSD replace the entire
   adaptation-control stack (no step size, no IPC options), and every claim
   is measured: at 0 dB SNR it beats both ends of the NLMS speed/depth
@@ -216,7 +219,7 @@ algorithmically complete. What exists today:
   deliverable of the [ITU compliance plan](docs/itu-compliance.md):
   a per-bin Wiener suppressor driven by mic-vs-echo-estimate coherence
   gating a learned leakage estimate, comfort noise matched to the
-  near-end floor by two-window minimum statistics, and `mutap::aec_chain`
+  near-end floor by two-window minimum statistics, and `tap::mu::aec_chain`
   composing it with a linear canceller (default: the **raw** FD-Kalman
   core — open-loop AEC has an exogenous far end, so PEM's decorrelation
   buys nothing and its predictor refit floors misalignment near −20 dB
@@ -275,11 +278,11 @@ algorithmically complete. What exists today:
   own scenario machinery and meters — and re-measures everything live
   (~6 minutes, deterministic seeds).
 
-- **The learned residual suppressor** — `mutap::nn_suppressor<Sample>`
+- **The learned residual suppressor** — `tap::mu::nn_suppressor<Sample>`
   ([`include/mutap/nn_suppressor.h`](include/mutap/nn_suppressor.h)): a
   52k-parameter GRU predicting per-band gains on the linear canceller's
   output, composable as the chain's post stage
-  (`mutap::aec_chain_nn`, [`include/mutap/nn_chain.h`](include/mutap/nn_chain.h))
+  (`tap::mu::aec_chain_nn`, [`include/mutap/nn_chain.h`](include/mutap/nn_chain.h))
   and exposed as `mutap.aec~ @postfilter 2`. Trained end-to-end on
   clean-licensed material by [`tools/ml/`](tools/ml/) (LibriSpeech
   CC BY 4.0 + synthesized scenarios through the real canceller), with
@@ -307,6 +310,18 @@ algorithmically complete. What exists today:
   header-only, no FFT. The vendored FAUST Dattorro plates measured behind
   the canceller, with converged probes, in
   [`docs/reverb-afc.md`](docs/reverb-afc.md).
+- **The NaN watchdog** ([`include/mutap/watchdog.h`](include/mutap/watchdog.h)):
+  one finite check per block on the input and the residual power in every
+  hot path (`partitioned_fdaf`, `partitioned_fdkf`, `pem_afc`,
+  `residual_suppressor`, `aec_chain`, `howl_guard::analyze`); a NaN or
+  infinity resets the stage as `reset()` does, comes out as zeros and
+  counts on `watchdog_trips()`, which the Max externals report. Recovery
+  within one block and the counter at 1 for every stage
+  ([`tests/test_watchdog.cpp`](tests/test_watchdog.cpp): the block after
+  the trip is bit-identical to a fresh stage's); no arithmetic touched on
+  finite input (every fingerprint line held on all nine CI legs); its
+  instruction-count cost per stage is recorded in the header from the
+  ratchet.
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance
@@ -316,8 +331,8 @@ offload).
 
 ## ITU-T compliance
 
-The echo-cancellation chain — `mutap::aec_chain` configured by
-`mutap::aec_chain_preset` (and exposed as `mutap.aec~ @postfilter 1` in
+The echo-cancellation chain — `tap::mu::aec_chain` configured by
+`tap::mu::aec_chain_preset` (and exposed as `mutap.aec~ @postfilter 1` in
 [MuTap-Max](https://github.com/tap/MuTap-Max)) — **meets every
 requirement of the in-force ITU-T automotive/hands-free recommendations
 at both required rates, 48 kHz and 16 kHz**, on one pinned
@@ -371,13 +386,40 @@ target_link_libraries(app PRIVATE MuTap::MuTap)
 
 ```cpp
 #include <mutap/mutap.h>
+#include <vector>
 
-mutap::real_fft32 fft(1024);            // power-of-2 size, fixed at construction
+tap::mu::real_fft32 fft(1024);          // power-of-2 size, fixed at construction
 std::vector<float> block(1024);
 // ... fill block with audio ...
 fft.forward_inplace(block.data());      // noexcept, allocation-free
 // bins: DC in [0], Nyquist in [1], then re/im interleaved pairs
 ```
+
+The feedback canceller itself — PEM prewhitening (the speech cascade) over
+the FD-Kalman core, at the geometry the test suite measures (block 64,
+1024 taps):
+
+```cpp
+#include <mutap/mutap.h>
+#include <vector>
+
+using canceller = tap::mu::pem_afc<float, tap::mu::speech_predictor<float>,
+                                   tap::mu::partitioned_fdkf<float>>;
+canceller::config cfg;
+cfg.fdaf.block_size = 64;               // samples per process_block() call
+cfg.fdaf.partitions = 16;               // filter length = 16 x 64 = 1024 taps
+canceller afc(cfg);                     // allocates here, and only here
+
+std::vector<float> speaker(64), mic(64), clean(64);
+// ... every block: speaker = what the loudspeaker played, mic = what it heard ...
+afc.process_block(speaker.data(), mic.data(), clean.data()); // noexcept, allocation-free
+// clean = mic - the estimated feedback: feed it to the forward path (gain,
+// delay, ...) and back to the loudspeaker. afc.watchdog_trips() counts the
+// blocks a NaN or infinity reached it (the stage resets and outputs silence).
+```
+
+Every `cpp` block above is extracted from this file at configure time and
+compiled and run as `tests/test_readme_snippets.cpp` on every CI leg.
 
 Build and test:
 

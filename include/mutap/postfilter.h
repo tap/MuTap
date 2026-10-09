@@ -22,6 +22,7 @@
 #include "mutap/fd_kalman.h"
 #include "mutap/fft.h"
 #include "mutap/pem_afc.h"
+#include "mutap/watchdog.h"
 
 // The suppressor's pass-1 per-bin estimator exists in two bit-identical
 // shapes (proven by the itu_dump cmp; see docs/optimization.md). On Arm
@@ -250,6 +251,14 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// certifies convergence on this.
         Sample echo_explained() const noexcept { return m_echo_explained; }
 
+        /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
+        /// on which the input (e, yhat) or the output power was not finite,
+        /// each of which reset the suppressor as reset() does (gains back
+        /// at the floor, the comfort fill off until a window has been
+        /// observed) and wrote zeros to out. reset() keeps the count.
+        size_t watchdog_trips() const noexcept { return m_watchdog; }
+
+        /// Keeps watchdog_trips().
         void reset() noexcept {
             // Symmetric (m_n - 1) and in Sample precision: not tap::dsp::periodic_hann, which would move bits.
             for (size_t i = 0; i < m_n; ++i) { // Hann for the ESTIMATION ffts
@@ -322,6 +331,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t b    = m_cfg.block_size;
             const size_t bins = m_n / 2 + 1;
             const Sample eps  = Sample(1e-20);
+
+            // The NaN watchdog's input check (mutap/watchdog.h).
+            if (!detail::finite_power(detail::sum_of_squares(e, b) + detail::sum_of_squares(yhat_block, b))) {
+                watchdog_trip(out);
+                return;
+            }
 
             // Slide both analysis windows by one block (memmove: the
             // same element moves as the loop it replaces — bit-identical,
@@ -661,9 +676,25 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             for (size_t i = 0; i < b; ++i) {
                 out[i] = m_time[m_n - b + i];
             }
+
+            // The watchdog's output check: an estimator or gain gone
+            // non-finite shows here.
+            if (!detail::finite_power(detail::sum_of_squares(out, b))) {
+                watchdog_trip(out);
+            }
         }
 
       private:
+        /// A watchdog trip (mutap/watchdog.h): count it, reset, and hand the
+        /// block downstream as zeros rather than as NaNs.
+        void watchdog_trip(Sample* out) noexcept {
+            ++m_watchdog;
+            reset();
+            for (size_t i = 0; i < m_cfg.block_size; ++i) {
+                out[i] = Sample(0);
+            }
+        }
+
         static config validated(const config& cfg) {
             if (cfg.block_size < 4 || (cfg.block_size & (cfg.block_size - 1)) != 0) {
                 throw std::invalid_argument("residual_suppressor: block_size must be a power of 2 >= 4");
@@ -758,6 +789,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         std::vector<Sample>    m_gspec; ///< constrained gain spectrum (packed)
         std::vector<Sample>    m_gtime; ///< gain impulse response workspace
         Sample                 m_echo_explained = Sample(0);
+        size_t                 m_watchdog       = 0; ///< watchdog_trips()
         std::uint32_t          m_rng            = 0x2545F491U;
     };
 
@@ -926,6 +958,24 @@ namespace tap::mu {
         Post&            postfilter() noexcept { return m_post; }
         const Post&      postfilter() const noexcept { return m_post; }
 
+        /// NaN WATCHDOG trips since construction (mutap/watchdog.h): the
+        /// chain's own — blocks whose input (x, y) power was not finite,
+        /// each of which reset the whole chain as reset() does (the
+        /// policy layer's receive floor, guard, rescue and shadow with it)
+        /// and wrote zeros to e — plus the canceller's and the post
+        /// stage's own trips (a state gone non-finite inside either), for
+        /// engines that carry a watchdog. reset() keeps the count.
+        size_t watchdog_trips() const noexcept {
+            size_t n = m_watchdog;
+            if constexpr (requires(const Canceller& c) { c.watchdog_trips(); }) {
+                n += m_afc.watchdog_trips();
+            }
+            if constexpr (requires(const Post& p) { p.watchdog_trips(); }) {
+                n += m_post.watchdog_trips();
+            }
+            return n;
+        }
+
         void reset() noexcept {
             m_afc.reset();
             m_post.reset();
@@ -950,6 +1000,22 @@ namespace tap::mu {
         void set_adaptation(bool enabled) noexcept { m_afc.set_adaptation(enabled); }
 
         void process_block(const Sample* x, const Sample* y, Sample* e) noexcept {
+            // The NaN watchdog's input check (mutap/watchdog.h), the chain's
+            // own: the receive-activity floor, the guard gain and the
+            // rescue and shadow counters are the chain's state, and a
+            // non-finite block would poison them past the canceller's own
+            // trip. Reset everything, hand e downstream as zeros, count.
+            {
+                const size_t b = block_size();
+                if (!detail::finite_power(detail::sum_of_squares(x, b) + detail::sum_of_squares(y, b))) {
+                    ++m_watchdog;
+                    reset();
+                    for (size_t i = 0; i < b; ++i) {
+                        e[i] = Sample(0);
+                    }
+                    return;
+                }
+            }
             if constexpr (requires(Canceller& c) { c.process_block(x, y, e, e); }) {
                 m_afc.process_block(x, y, m_mid.data(), m_yhat.data());
                 m_post.process_block(m_mid.data(), m_yhat.data(), e);
@@ -1110,6 +1176,7 @@ namespace tap::mu {
         Sample                   m_pm           = Sample(0); ///< smoothed main residual power
         Sample                   m_ps           = Sample(0); ///< smoothed shadow residual power
         size_t                   m_shadow_count = 0;
+        size_t                   m_watchdog     = 0; ///< the chain's own trips (watchdog_trips())
     };
 
     /// THE COMPLIANCE PRESET: the aec_chain configuration MuTap's ITU-T

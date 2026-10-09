@@ -14,6 +14,7 @@
 
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
+#include "mutap/watchdog.h"
 
 // The ABI tag (mutap/fft.h): partitioned_fdkf holds a basic_real_fft<Sample>
 // by value, so its layout follows the build's float FFT engine, and it is
@@ -289,8 +290,15 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         /// constant of the core.
         Sample uncertainty_ratio() const noexcept { return uncertainty_sum() / m_p0_sum; }
 
+        /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
+        /// on which the input or the error power was not finite, each of
+        /// which reset the filter as reset() does and wrote zeros. reset()
+        /// keeps the count.
+        size_t watchdog_trips() const noexcept { return m_watchdog; }
+
         /// Zero the filter and histories, restore the initial uncertainty
-        /// (shaped by initial_uncertainty_decay when configured).
+        /// (shaped by initial_uncertainty_decay when configured). Keeps
+        /// watchdog_trips().
         void reset() noexcept {
             fill_zero(m_input);
             fill_zero(m_u);
@@ -325,6 +333,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t b    = m_cfg.block_size;
             const size_t p_n  = m_cfg.partitions;
             const size_t half = b; // bin count is half + 1
+
+            // The NaN watchdog's input check (mutap/watchdog.h).
+            if (!detail::finite_power(detail::sum_of_squares(input, b) + detail::sum_of_squares(desired, b))) {
+                watchdog_trip(error, estimate);
+                return;
+            }
 
             // Overlap-save input window and newest block spectrum, exactly
             // as in partitioned_fdaf (memmove/memcpy: bit-identical to the
@@ -382,6 +396,13 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 if (estimate != nullptr) {
                     estimate[i] = y;
                 }
+            }
+
+            // The watchdog's residual check: a filter state that went
+            // non-finite shows here, whether or not adaptation is frozen.
+            if (!detail::finite_power(detail::sum_of_squares(error, b))) {
+                watchdog_trip(error, estimate);
+                return;
             }
 
             if (!m_adapt) {
@@ -588,6 +609,19 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             }
         }
 
+        /// A watchdog trip (mutap/watchdog.h): count it, reset the filter,
+        /// and hand the block downstream as zeros rather than as NaNs.
+        void watchdog_trip(Sample* error, Sample* estimate) noexcept {
+            ++m_watchdog;
+            reset();
+            for (size_t i = 0; i < m_cfg.block_size; ++i) {
+                error[i] = Sample(0);
+                if (estimate != nullptr) {
+                    estimate[i] = Sample(0);
+                }
+            }
+        }
+
         config                 m_cfg;
         size_t                 m_n; ///< FFT size N = 2 * block_size
         basic_real_fft<Sample> m_fft;
@@ -607,7 +641,8 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         size_t                 m_nb_count = 0;
         bool                   m_adapt    = true;
         /// Sum of P at reset: uncertainty_ratio()'s denominator.
-        Sample m_p0_sum = Sample(1);
+        Sample m_p0_sum   = Sample(1);
+        size_t m_watchdog = 0; ///< watchdog_trips()
     };
 
 } // namespace tap::mu::inline TAP_DSP_FFT_ABI

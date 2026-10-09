@@ -76,7 +76,8 @@ carries the measured numbers; this is the map:
   near-end models: `speech_predictor`, `warped_lpc_predictor`),
   `pem_afc.h` (the FDAF-PEM-AFROW wrapper, templated over BOTH the
   predictor and the adaptive core).
-- `tests/` — 97 tests; `tests/support/closed_loop.h` is the closed-loop
+- `tests/` — 437 tests (gtest cases on the host build, 9 October 2026; the
+  on-target selection is 127, `tests/bare_metal_main.cpp`); `tests/support/closed_loop.h` is the closed-loop
   simulator + MSG/ASG bisection metrics (a deliverable in its own right);
   `tests/support/echo_scenario.h` is its open-loop AEC counterpart (echo
   path + double-talk injection, observable ERLE + true residual-echo
@@ -190,6 +191,24 @@ carries the measured numbers; this is the map:
    user: `tests/test_afc_decorrelation_sweep.cpp`
    (`MUTAP_SLOW=1 build/tests/mutap_tests --gtest_filter='AfcDecorrelationSweep.*'`,
    1:16:10 wall on 11 threads of the Intel Mac).
+10. **The NaN watchdog is a contract, not a feature** (`include/mutap/watchdog.h`,
+    production-readiness M0c, 9 October 2026). Every hot path —
+    `partitioned_fdaf`, `partitioned_fdkf`, `pem_afc`, `residual_suppressor`,
+    `aec_chain`, `howl_guard::analyze` — makes one finite check per block on
+    its input power and one on its residual power; a non-finite block
+    resets the stage as `reset()` does (the guard: that mic to ARMING,
+    strikes kept), comes out as ZEROS (never the NaN, which would poison
+    the next stage), and increments the stage's `watchdog_trips()`, which
+    `reset()` keeps. A new stage that holds adaptive state gets the same
+    three lines and a row in `tests/test_watchdog.cpp`, whose oracle is
+    bit-equality with a freshly constructed stage on the block after the
+    trip — so it also proves that `reset()` resets everything. `pem_afc`
+    propagates a trip of its core on the prewhitened pair (a predictor gone
+    non-finite) into a full reset; `aec_chain` checks first so its policy
+    layer (receive floor, guard, rescue, shadow) never sees the block. The
+    checks touch no arithmetic on finite input: every fingerprint line held
+    on every leg. The Max externals report the counter on their right
+    outlet (MuTap-Max follow-up to the M0 PR).
 
 ## What's next (ranked)
 

@@ -618,7 +618,7 @@ against the uncached run.)
 ## Stage 5 delivered: the preset, the external, the claims
 
 - **The pinned configuration is now a library API**:
-  `mutap::aec_chain_preset<Sample>(block, partitions, fs)` in
+  `tap::mu::aec_chain_preset<Sample>(block, partitions, fs)` in
   `mutap/postfilter.h`. `tests/support/itu_chain.h` builds the
   compliance chain through it, so the suite gates the preset itself;
   the per-rate comfort-noise floor-bias calibration is generalized by
