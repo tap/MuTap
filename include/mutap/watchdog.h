@@ -98,6 +98,21 @@
 #include <cmath>
 #include <cstddef>
 
+/// The trip paths are cold: out of line and marked so, to leave the hot
+/// functions' size — and the compiler's inlining decisions inside them —
+/// as they were. Measured reason: with the trips inline, the second cut
+/// read +0.14 % on the suppressor and +0.8 % on the chain on the Cortex-M33
+/// (GCC) against +0.003 % on the Kalman core beside them, and -0.16 % on
+/// the M55's suppressor: a few isfinite calls cannot cost that; a shifted
+/// inlining decision inside the suppressor's per-bin loops can.
+#if defined(__GNUC__) || defined(__clang__)
+#define MUTAP_WATCHDOG_COLD [[gnu::cold, gnu::noinline]]
+#elif defined(_MSC_VER)
+#define MUTAP_WATCHDOG_COLD __declspec(noinline)
+#else
+#define MUTAP_WATCHDOG_COLD
+#endif
+
 namespace tap::mu::detail {
 
     /// Sum of squares of n samples, accumulated in Sample: the fallback for

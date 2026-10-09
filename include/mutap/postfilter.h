@@ -360,7 +360,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             // e + yhat and yhat Hann-weighted: a non-finite sample survives
             // a zero weight, since NaN * 0 and inf * 0 are NaN), so three
             // values the suppressor computes anyway cover both inputs.
-            if (!detail::finite_power(m_spec[0] + m_dspec[0] + m_yspec[0])) {
+            if (!detail::finite_power(m_spec[0] + m_dspec[0] + m_yspec[0])) [[unlikely]] {
                 watchdog_trip(out);
                 return;
             }
@@ -616,7 +616,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             // comparisons, which a NaN falls through), which reaches the
             // kept taps through the inverse transform (measured: every
             // faulty slot does) and so this forward transform's DC slot.
-            if (!detail::finite_power(m_gspec[0])) {
+            if (!detail::finite_power(m_gspec[0])) [[unlikely]] {
                 watchdog_trip(out);
                 return;
             }
@@ -695,7 +695,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             // the gain check above does not cover) never leaves two
             // consecutive samples of the kept slice finite (measured, see
             // the header), so two values cover the block.
-            if (!detail::finite_power(out[0] + out[1])) {
+            if (!detail::finite_power(out[0] + out[1])) [[unlikely]] {
                 watchdog_trip(out);
             }
         }
@@ -703,7 +703,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
       private:
         /// A watchdog trip (mutap/watchdog.h): count it, reset, and hand the
         /// block downstream as zeros rather than as NaNs.
-        void watchdog_trip(Sample* out) noexcept {
+        MUTAP_WATCHDOG_COLD void watchdog_trip(Sample* out) noexcept {
             ++m_watchdog;
             reset();
             for (size_t i = 0; i < m_cfg.block_size; ++i) {
@@ -1026,12 +1026,8 @@ namespace tap::mu {
                 m_afc.process_block(x, y, m_mid.data());
                 m_post.process_block(m_mid.data(), m_afc.echo_estimate_block(), e);
             }
-            if (stage_trips() != trips_before) {
-                ++m_watchdog;
-                reset();
-                for (size_t i = 0; i < block_size(); ++i) {
-                    e[i] = Sample(0);
-                }
+            if (stage_trips() != trips_before) [[unlikely]] {
+                watchdog_trip(e);
                 return;
             }
             const bool receive_active = track_receive_activity(x);
@@ -1044,6 +1040,16 @@ namespace tap::mu {
         static typename Post::config matched(typename Post::config pf, size_t block_size) {
             pf.block_size = block_size; // one block size for the chain
             return pf;
+        }
+
+        /// A propagated watchdog trip (mutap/watchdog.h): count it once,
+        /// reset the chain, and hand e downstream as zeros.
+        MUTAP_WATCHDOG_COLD void watchdog_trip(Sample* e) noexcept {
+            ++m_watchdog;
+            reset();
+            for (size_t i = 0; i < block_size(); ++i) {
+                e[i] = Sample(0);
+            }
         }
 
         /// The stages' watchdog counts, summed (0 for engines without one).

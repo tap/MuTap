@@ -305,7 +305,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             // and pem_afc propagates the trip (below). Frozen, nothing runs
             // past this point, and the stage sums e itself.
             if (!m_fdaf.adapting()) {
-                if (!detail::finite_power(detail::sum_of_squares(e, b))) {
+                if (!detail::finite_power(detail::sum_of_squares(e, b))) [[unlikely]] {
                     watchdog_trip(e);
                 }
                 return;
@@ -331,7 +331,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 // states, windows, shadow) and hand e downstream as zeros.
                 const size_t core_trips = m_fdaf.watchdog_trips();
                 m_fdaf.process_block(m_u_pw.data(), m_y_pw.data(), m_e_pw.data());
-                if (m_fdaf.watchdog_trips() != core_trips) {
+                if (m_fdaf.watchdog_trips() != core_trips) [[unlikely]] {
                     watchdog_trip(e);
                     return;
                 }
@@ -339,7 +339,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             else {
                 // A core without a watchdog: check the pair here instead.
                 if (!detail::finite_power(detail::sum_of_squares(m_u_pw.data(), b)
-                                          + detail::sum_of_squares(m_y_pw.data(), b))) {
+                                          + detail::sum_of_squares(m_y_pw.data(), b))) [[unlikely]] {
                     watchdog_trip(e);
                     return;
                 }
@@ -385,7 +385,7 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
 
         /// A watchdog trip (mutap/watchdog.h): count it, reset everything,
         /// and hand e downstream as zeros.
-        void watchdog_trip(Sample* e) noexcept {
+        MUTAP_WATCHDOG_COLD void watchdog_trip(Sample* e) noexcept {
             ++m_watchdog;
             reset();
             for (size_t i = 0; i < block_size(); ++i) {
