@@ -2,6 +2,28 @@
 
 > Context brief for a Claude Code session. Captures decisions and technical direction so the next session can start working without re-deriving anything. Can be adapted into a `CLAUDE.md` for persistent project context.
 >
+> **Rev 6** — planning revision, no code (9 October 2026). The next effort
+> is **production readiness**, planned as one track of ten milestones in
+> [`docs/production-readiness-plan.md`](docs/production-readiness-plan.md)
+> (rev 2), which carries every amendment of its own adversarial audit
+> ([`docs/production-readiness-audit.md`](docs/production-readiness-audit.md))
+> and the eight decisions Tim took on the same date (the plan's §2: first
+> product is live-sound AFC via `mutap.afc~`; one maintainer plus Claude
+> Code sessions over about a quarter; `tap::mu` only, no `mutap` alias;
+> stereo far end scoped out; the soundcheck probe is operator-triggered
+> only; no embedded hardware this quarter; measured rooms are Tim's own
+> sweeps, published MIT; the patent review is a literature search, not a
+> clearance). Start at M0 (plan §4) — its first items are the README
+> namespace fix with a compiled snippet test, `PROTOCOL.md`, and the NaN
+> watchdog — then M1, the first real-room session, which needs Tim and a
+> rig and orders everything after it. The 9 October audit's measured
+> facts worth keeping in view: `pem_afc` on the speech cascade costs about
+> ten times the Kalman core (432 against 46 µs per 64-sample block on
+> Linux x86-64) and no AFC workload is instruction-counted on any embedded
+> target; every guard row is measured at block 64 / 1024 taps while the
+> external ships block 256 / 2048 taps; the default battery is about 6,800
+> CPU-seconds.
+>
 > **Rev 5** — planning revision, no code. Rev 4's effort is fully merged
 > (both repos); the next effort is chosen and staged: **ITU compliance
 > for the AEC, with margin** — prove, via a requirements matrix, a
