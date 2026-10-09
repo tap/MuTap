@@ -224,6 +224,16 @@ carries the measured numbers; this is the map:
      +11.6…+13.4, "the room where its NLMS incarnation destabilizes").
      Updating `tools/notebook/build_afc_demo.py` means re-executing the
      notebook, so it is left for that pass.
+   - **`bench/bench_aec.cpp` fails `-DMUTAP_WERROR=ON` on AppleClang**
+     (2026-10-09, found in tap/MuTap#87): `-Wsign-conversion` on
+     `state.iterations() * g.block` at lines 95 / 115 / 134 / 149. CI's
+     `bench-smoke` job builds without `-Werror`, so it never shows there.
+   - **`howl_detail::run_bank`'s bit-identity on the Arm targets is not
+     proven** (2026-10-09, tap/MuTap#87): the readout dump matched main bit
+     for bit on Linux GCC / Clang, macOS arm64 and the Intel Mac, but no
+     dump was compared under the Cortex-M / Hexagon toolchains, where
+     `-ffp-contract=fast` may fuse the vectorized and scalar loops
+     differently (the M55 float detector suite passed).
 9. **Karaoke / in-cabin AFC (2026-09-26; [`docs/karaoke-afc.md`](docs/karaoke-afc.md)).**
    Landed: the decorrelated loop with an IIR allpass-pair SSB shifter
    (`tests/support/decorrelated_loop.h`), the shared like-for-like ASG
