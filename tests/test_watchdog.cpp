@@ -207,6 +207,42 @@ namespace {
         core_trips_and_recovers<partitioned_fdkf<TypeParam>, TypeParam>();
     }
 
+    /// The Kalman core's third path: the narrowband guard holding
+    /// adaptation (no error transform runs), where the core sums the block
+    /// itself. A 1 kHz tone engages the guard; a NaN then trips.
+    TYPED_TEST(watchdog_test, KalmanCoreTripsWhileTheNarrowbandGuardHolds) {
+        using sample_t = TypeParam;
+        typename partitioned_fdkf<sample_t>::config cfg;
+        cfg.block_size             = k_block;
+        cfg.partitions             = k_partitions;
+        cfg.narrowband_guard       = sample_t(0.8);
+        cfg.narrowband_hold_blocks = 4;
+        partitioned_fdkf<sample_t> core(cfg);
+        std::vector<sample_t>      u(k_block);
+        std::vector<sample_t>      y(k_block);
+        std::vector<sample_t>      e(k_block);
+        double                     phase = 0.0;
+        const auto                 tone  = [&] {
+            for (size_t i = 0; i < k_block; ++i) {
+                u[i] = static_cast<sample_t>(std::sin(phase));
+                y[i] = sample_t(0.5) * u[i];
+                phase += 2.0 * 3.141592653589793 * 1000.0 / 48000.0;
+            }
+        };
+        for (size_t n = 0; n < 12; ++n) {
+            tone();
+            core.process_block(u.data(), y.data(), e.data());
+        }
+        ASSERT_TRUE(core.narrowband_frozen());
+        ASSERT_EQ(core.watchdog_trips(), 0u);
+        tone();
+        y[9] = quiet_nan<sample_t>();
+        core.process_block(u.data(), y.data(), e.data());
+        expect_zeros(e);
+        EXPECT_EQ(core.watchdog_trips(), 1u);
+        EXPECT_FALSE(core.narrowband_frozen()) << "reset() cleared the hold";
+    }
+
     // ------------------------------------------------------------- pem_afc
 
     /// The canceller on either core: the raw pair's check trips before the
@@ -233,7 +269,7 @@ namespace {
         a.process_block(src.u().data(), src.y().data(), e.data());
         expect_zeros(e);
         EXPECT_EQ(a.watchdog_trips(), 1u);
-        EXPECT_EQ(a.fdaf().watchdog_trips(), 0u) << "the raw pair never reached the core";
+        EXPECT_EQ(a.fdaf().watchdog_trips(), 1u) << "the fault reached the core on the prewhitened pair";
 
         afc                 fresh(cfg);
         std::vector<Sample> e2(k_block);
@@ -244,8 +280,20 @@ namespace {
             expect_same(e, e2);
         }
         EXPECT_EQ(a.watchdog_trips(), 1u);
+
+        // Frozen: the core never runs, so the canceller sums e itself.
+        a.set_adaptation(false);
+        src.next();
+        src.u()[0] = infinity<Sample>();
+        a.process_block(src.u().data(), src.y().data(), e.data());
+        expect_zeros(e);
+        EXPECT_EQ(a.watchdog_trips(), 2u);
+        EXPECT_EQ(a.fdaf().watchdog_trips(), 1u);
+        EXPECT_FALSE(a.adapting());
+        a.set_adaptation(true);
+
         a.reset();
-        EXPECT_EQ(a.watchdog_trips(), 1u);
+        EXPECT_EQ(a.watchdog_trips(), 2u);
     }
 
     TYPED_TEST(watchdog_test, PemAfcOnNlmsTripsAndRecovers) {
@@ -309,9 +357,9 @@ namespace {
         src.u()[0] = quiet_nan<sample_t>();
         chain.process_block(src.u().data(), src.y().data(), e.data());
         expect_zeros(e);
-        EXPECT_EQ(chain.watchdog_trips(), 1u);
-        EXPECT_EQ(chain.canceller().watchdog_trips(), 0u);
-        EXPECT_EQ(chain.postfilter().watchdog_trips(), 0u);
+        EXPECT_EQ(chain.watchdog_trips(), 1u) << "one trip counts once on the chain";
+        EXPECT_EQ(chain.canceller().watchdog_trips(), 1u) << "the canceller saw x";
+        EXPECT_EQ(chain.postfilter().watchdog_trips(), 0u) << "the post stage got the canceller's zeros";
 
         aec_chain<sample_t>   fresh(cfg);
         std::vector<sample_t> e2(256);

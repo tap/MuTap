@@ -252,10 +252,11 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         Sample echo_explained() const noexcept { return m_echo_explained; }
 
         /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
-        /// on which the input (e, yhat) or the output power was not finite,
-        /// each of which reset the suppressor as reset() does (gains back
-        /// at the floor, the comfort fill off until a window has been
-        /// observed) and wrote zeros to out. reset() keeps the count.
+        /// on which an input (e, yhat), the gains or the output were not
+        /// finite, each of which reset the suppressor as reset() does
+        /// (gains back at the floor, the comfort fill off until a window
+        /// has been observed) and wrote zeros to out. reset() keeps the
+        /// count. Cost: five isfinite on values the block computes anyway.
         size_t watchdog_trips() const noexcept { return m_watchdog; }
 
         /// Keeps watchdog_trips().
@@ -332,12 +333,6 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t bins = m_n / 2 + 1;
             const Sample eps  = Sample(1e-20);
 
-            // The NaN watchdog's input check (mutap/watchdog.h).
-            if (!detail::finite_power(detail::sum_of_squares(e, b) + detail::sum_of_squares(yhat_block, b))) {
-                watchdog_trip(out);
-                return;
-            }
-
             // Slide both analysis windows by one block (memmove: the
             // same element moves as the loop it replaces — bit-identical,
             // measurably cheaper on every target).
@@ -360,6 +355,15 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             m_fft.forward_inplace(m_spec.data());
             m_fft.forward_inplace(m_dspec.data());
             m_fft.forward_inplace(m_yspec.data());
+            // THE NaN WATCHDOG's input check (mutap/watchdog.h): the DC
+            // slots are the sums of the analysis windows (e rectangular,
+            // e + yhat and yhat Hann-weighted: a non-finite sample survives
+            // a zero weight, since NaN * 0 and inf * 0 are NaN), so three
+            // values the suppressor computes anyway cover both inputs.
+            if (!detail::finite_power(m_spec[0] + m_dspec[0] + m_yspec[0])) {
+                watchdog_trip(out);
+                return;
+            }
 
 #if MUTAP_SUPPRESSOR_BRANCHLESS
             // Pass 1 per analysis bin: gated power-domain leakage ->
@@ -607,6 +611,15 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 m_gspec[tau] = m_gtime[(tau + m_n - b) % m_n];
             }
             m_fft.forward_inplace(m_gspec.data());
+            // The watchdog's state check: a gain, leakage or estimator gone
+            // non-finite makes a non-finite target gain (the clamps are
+            // comparisons, which a NaN falls through), which reaches the
+            // kept taps through the inverse transform (measured: every
+            // faulty slot does) and so this forward transform's DC slot.
+            if (!detail::finite_power(m_gspec[0])) {
+                watchdog_trip(out);
+                return;
+            }
 
             // Pass 3: apply the constrained gains + comfort-noise fill.
             for (size_t k = 0; k < bins; ++k) {
@@ -677,9 +690,12 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 out[i] = m_time[m_n - b + i];
             }
 
-            // The watchdog's output check: an estimator or gain gone
-            // non-finite shows here.
-            if (!detail::finite_power(detail::sum_of_squares(out, b))) {
+            // The watchdog's output check: a non-finite bin of the output
+            // spectrum (the comfort fill's floor tracker is the one state
+            // the gain check above does not cover) never leaves two
+            // consecutive samples of the kept slice finite (measured, see
+            // the header), so two values cover the block.
+            if (!detail::finite_power(out[0] + out[1])) {
                 watchdog_trip(out);
             }
         }
@@ -958,23 +974,16 @@ namespace tap::mu {
         Post&            postfilter() noexcept { return m_post; }
         const Post&      postfilter() const noexcept { return m_post; }
 
-        /// NaN WATCHDOG trips since construction (mutap/watchdog.h): the
-        /// chain's own — blocks whose input (x, y) power was not finite,
-        /// each of which reset the whole chain as reset() does (the
-        /// policy layer's receive floor, guard, rescue and shadow with it)
-        /// and wrote zeros to e — plus the canceller's and the post
-        /// stage's own trips (a state gone non-finite inside either), for
-        /// engines that carry a watchdog. reset() keeps the count.
-        size_t watchdog_trips() const noexcept {
-            size_t n = m_watchdog;
-            if constexpr (requires(const Canceller& c) { c.watchdog_trips(); }) {
-                n += m_afc.watchdog_trips();
-            }
-            if constexpr (requires(const Post& p) { p.watchdog_trips(); }) {
-                n += m_post.watchdog_trips();
-            }
-            return n;
-        }
+        /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
+        /// on which the canceller's or the post stage's watchdog tripped
+        /// (a non-finite x, y, or a state inside either), each of which
+        /// reset the whole chain as reset() does — the policy layer's
+        /// receive floor, guard, rescue and shadow with it — and wrote
+        /// zeros to e. One trip counts once here; the stage that saw it
+        /// counts its own too (canceller().watchdog_trips(),
+        /// postfilter().watchdog_trips()). The chain's shadow resets
+        /// itself. reset() keeps the count. Cost: two counter reads.
+        size_t watchdog_trips() const noexcept { return m_watchdog; }
 
         void reset() noexcept {
             m_afc.reset();
@@ -1000,22 +1009,15 @@ namespace tap::mu {
         void set_adaptation(bool enabled) noexcept { m_afc.set_adaptation(enabled); }
 
         void process_block(const Sample* x, const Sample* y, Sample* e) noexcept {
-            // The NaN watchdog's input check (mutap/watchdog.h), the chain's
-            // own: the receive-activity floor, the guard gain and the
-            // rescue and shadow counters are the chain's state, and a
-            // non-finite block would poison them past the canceller's own
-            // trip. Reset everything, hand e downstream as zeros, count.
-            {
-                const size_t b = block_size();
-                if (!detail::finite_power(detail::sum_of_squares(x, b) + detail::sum_of_squares(y, b))) {
-                    ++m_watchdog;
-                    reset();
-                    for (size_t i = 0; i < b; ++i) {
-                        e[i] = Sample(0);
-                    }
-                    return;
-                }
-            }
+            // THE NaN WATCHDOG (mutap/watchdog.h), the chain's part: the
+            // canceller and the post stage check themselves; a trip in
+            // either is propagated to the whole chain, because the
+            // receive-activity floor, the guard gain and the rescue and
+            // shadow counters are the chain's own state and the block that
+            // tripped a stage must not reach them. Reset everything, hand e
+            // downstream as zeros, count once. No check of the chain's own
+            // on the block: the canceller's covers x and y.
+            const size_t trips_before = stage_trips();
             if constexpr (requires(Canceller& c) { c.process_block(x, y, e, e); }) {
                 m_afc.process_block(x, y, m_mid.data(), m_yhat.data());
                 m_post.process_block(m_mid.data(), m_yhat.data(), e);
@@ -1023,6 +1025,14 @@ namespace tap::mu {
             else {
                 m_afc.process_block(x, y, m_mid.data());
                 m_post.process_block(m_mid.data(), m_afc.echo_estimate_block(), e);
+            }
+            if (stage_trips() != trips_before) {
+                ++m_watchdog;
+                reset();
+                for (size_t i = 0; i < block_size(); ++i) {
+                    e[i] = Sample(0);
+                }
+                return;
             }
             const bool receive_active = track_receive_activity(x);
             apply_guard(receive_active, e);
@@ -1034,6 +1044,18 @@ namespace tap::mu {
         static typename Post::config matched(typename Post::config pf, size_t block_size) {
             pf.block_size = block_size; // one block size for the chain
             return pf;
+        }
+
+        /// The stages' watchdog counts, summed (0 for engines without one).
+        size_t stage_trips() const noexcept {
+            size_t n = 0;
+            if constexpr (requires(const Canceller& c) { c.watchdog_trips(); }) {
+                n += m_afc.watchdog_trips();
+            }
+            if constexpr (requires(const Post& p) { p.watchdog_trips(); }) {
+                n += m_post.watchdog_trips();
+            }
+            return n;
         }
 
         /// The guard/rescue convergence statistic, when the post engine

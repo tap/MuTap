@@ -172,14 +172,14 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
         bool shadow_enabled() const noexcept { return m_shadow.has_value(); }
 
         /// NaN WATCHDOG trips since construction (mutap/watchdog.h): blocks
-        /// on which the input (u, y) or the residual e power was not
-        /// finite, plus blocks on which the core's own watchdog tripped on
-        /// the prewhitened pair (a predictor whose state went non-finite),
-        /// each of which reset this canceller as reset() does — the core,
-        /// the shadow, the predictor states and the analysis window — and,
-        /// for the first two kinds, wrote zeros to e. The core's own count
-        /// is fdaf().watchdog_trips(); the shadow resets itself. reset()
-        /// keeps the count.
+        /// on which the core's own watchdog tripped on the prewhitened pair
+        /// — where a non-finite u, y, F_hat or predictor state shows while
+        /// adapting — plus, while adaptation is frozen, blocks whose e was
+        /// not finite. Each reset this canceller as reset() does (the core,
+        /// the shadow, the predictor states and the analysis window) and
+        /// wrote zeros to e. The core counts its own trip too
+        /// (fdaf().watchdog_trips()); the shadow resets itself. reset()
+        /// keeps the count. Cost while adapting: none beyond the core's.
         size_t watchdog_trips() const noexcept { return m_watchdog; }
 
         /// Smoothed mean-square power of the core's PREWHITENED residual
@@ -272,12 +272,6 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             const size_t b   = block_size();
             const size_t p_n = partitions();
 
-            // The NaN watchdog's input check (mutap/watchdog.h).
-            if (!detail::finite_power(detail::sum_of_squares(u, b) + detail::sum_of_squares(y, b))) {
-                watchdog_trip(e);
-                return;
-            }
-
             // Raw-u spectrum into this class's own overlap-save ring.
             for (size_t i = 0; i < b; ++i) {
                 m_input[i]     = m_input[i + b];
@@ -304,14 +298,16 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
                 e[i] = y[i] - m_time[i + b];
             }
 
-            // The watchdog's residual check: F_hat gone non-finite shows
-            // here, whether or not adaptation is frozen.
-            if (!detail::finite_power(detail::sum_of_squares(e, b))) {
-                watchdog_trip(e);
-                return;
-            }
-
+            // THE NaN WATCHDOG (mutap/watchdog.h). While adapting, every
+            // non-finite value — in u, in y, in F_hat (it reaches e, and e
+            // enters the analysis window and the predictor) — ends up in the
+            // prewhitened pair, where the core's own check sees it at no cost
+            // and pem_afc propagates the trip (below). Frozen, nothing runs
+            // past this point, and the stage sums e itself.
             if (!m_fdaf.adapting()) {
+                if (!detail::finite_power(detail::sum_of_squares(e, b))) {
+                    watchdog_trip(e);
+                }
                 return;
             }
 
@@ -329,20 +325,24 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             m_predictor.apply(m_u_state, u, m_u_pw.data(), b);
             m_predictor.apply(m_y_state, y, m_y_pw.data(), b);
             if constexpr (requires(const Core& c) { c.watchdog_trips(); }) {
-                // The core's watchdog guards the prewhitened pair: a trip
-                // there means the predictor's state is what went non-finite
-                // (the raw pair passed above), and the core has already
-                // reset itself. Reset the rest too, so the next block runs
-                // on a fresh predictor; this block's e is finite and kept.
+                // The core's watchdog guards the prewhitened pair, which is
+                // where every fault of this block shows while adapting; the
+                // core has already reset itself. Reset the rest (predictor
+                // states, windows, shadow) and hand e downstream as zeros.
                 const size_t core_trips = m_fdaf.watchdog_trips();
                 m_fdaf.process_block(m_u_pw.data(), m_y_pw.data(), m_e_pw.data());
                 if (m_fdaf.watchdog_trips() != core_trips) {
-                    ++m_watchdog;
-                    reset();
+                    watchdog_trip(e);
                     return;
                 }
             }
             else {
+                // A core without a watchdog: check the pair here instead.
+                if (!detail::finite_power(detail::sum_of_squares(m_u_pw.data(), b)
+                                          + detail::sum_of_squares(m_y_pw.data(), b))) {
+                    watchdog_trip(e);
+                    return;
+                }
                 m_fdaf.process_block(m_u_pw.data(), m_y_pw.data(), m_e_pw.data());
             }
             if (m_shadow.has_value()) {
@@ -383,8 +383,8 @@ namespace tap::mu::inline TAP_DSP_FFT_ABI {
             m_ps += a * (s2 * inv_b - m_ps);
         }
 
-        /// A watchdog trip on the raw signals (mutap/watchdog.h): count it,
-        /// reset everything, and hand e downstream as zeros.
+        /// A watchdog trip (mutap/watchdog.h): count it, reset everything,
+        /// and hand e downstream as zeros.
         void watchdog_trip(Sample* e) noexcept {
             ++m_watchdog;
             reset();
