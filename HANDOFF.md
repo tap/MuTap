@@ -458,21 +458,24 @@ carries the measured numbers; this is the map:
    ARMING; PR C also re-arms a latched undeclared mic when the cap is
    removed) — without a cap 90 of 90 track-off sweep runs stay in ARMING
    for all 20 s. Open, with the numbers in the doc:
-   - **F → 2F still cycles where the guard releases on the walk path**
-     (cabin: the verdict holds ok while ducked, then is lost at full gain;
-     7 LOST-ducks in 2 gated runs, unchanged by the re-arm hold). The
-     follow-up PR added `guard_policy::lost_in_probation_strikes` (a LOST
-     in OPEN within probation is a strike) and measured it, off → on: cabin
-     7 → 7 LOST-ducks in the 2 gated 30 s runs, 18 → 17 in the 5 sweep runs
-     (median 4 → 3 a run); over 120 s 72 → 19 (median 19 → 4 a run), every
-     cabin run latched at the cap (−11.89 dB) a median 23.27 s after the
-     change and ducked no more. Elsewhere the change's own LOST falls
-     inside the cold start's probation: one strike (−3.00 dB, the re-arm at
-     10.00 s instead of 5.00), no new duck, 0 howl blocks. The bar for
-     default ON was at most 1 LOST-duck a run in cabin, so it ships **off**;
-     whether a latch after 4 ducks is the behaviour wanted (it is the
-     design's end state) is Tim's call. The gated rows: 877.17 s on 4
-     threads; `HowlGuardSweep.LouderCoupling` 974.9 s.
+   - **F → 2F in cabin: 4 ducks, then the latch at the cap** (resolved by
+     the follow-up PR, tap/MuTap#88). Cabin's verdict holds ok while
+     ducked, so it releases on the walk path and the re-arm hold cannot
+     reach it (7 LOST-ducks in 2 gated runs).
+     `guard_policy::lost_in_probation_strikes`, **on by default** (Tim,
+     2026-10-09: the cabin is the karaoke scenario itself), makes a LOST in
+     OPEN within probation a strike. Measured off → on: cabin 7 → 7 LOST-ducks in the 2
+     gated 30 s runs and 18 → 17 in the 5 sweep runs (median 4 → 3 a run);
+     over 120 s 72 → 19 (median 19 → 4 a run), every cabin run latched at
+     the cap (−11.89 dB) a median 23.27 s after the change and ducked no
+     more. Elsewhere a LOST that falls inside the cold start's probation
+     (the change at 10 s, the exact − 6 walks, the song gap at 8 s) is now
+     a strike: −3.00 dB for 60 s and the re-arm at 10.00 s instead of 5.00;
+     no new duck anywhere, 0 howl blocks, cold start / stable material /
+     two mics / soundcheck unchanged. The bar first set (≤ 1 LOST-duck a
+     run in cabin) is not reachable by any rule that needs three strikes to
+     latch. The gated rows: 755.91 s on 4 threads;
+     `HowlGuardSweep.LouderCoupling` (30 s and 120 s, on and off) 974.9 s.
    - **The soundcheck margins are one loop's and one song's.** Measured
      in this loop with the backing track; a soundcheck on another song or
      gain, or without the track, was not measured.
@@ -484,8 +487,9 @@ carries the measured numbers; this is the map:
    - **The release experiment's +6 dB rehearsal → hall howl does not
      reproduce in this loop** (0 blocks unguarded); the stress rows run at
      the canceller's limit + 6 instead.
-   - The latch never engaged in a gated row with the default policy; with
-     `lost_in_probation_strikes` it engages live (cabin under F → 2F).
+   - The latch engages live only in cabin under F → 2F (1 of 2 gated runs
+     by 30 s, 5 of 5 sweep runs by 120 s); leaving it on a fresh ok edge,
+     and `clear()`, are covered by the state-machine suite only.
 13. **The reverb behind the canceller, part 1: the Dattorro plates
    (2026-10-02; [`docs/reverb-afc.md`](docs/reverb-afc.md)).** Phase 2
    item 7, part 1. Part 2 (2026-10-08, item 11) measured the spectral

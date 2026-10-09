@@ -215,10 +215,14 @@ namespace {
 //   speech   uncertainty -17.98 .. -17.67 dB (medians -17.80 / -17.89),
 //            misalignment -5.99 .. -4.50 dB (medians -4.58 / -5.69),
 //            peak bus RMS <= 3.78
-//   unison   uncertainty -13.65 .. -10.34 dB (medians -10.98 / -12.89),
-//            peak bus RMS <= 3.14; misalignment +8.36 .. +14.89 dB, NOT
+//   unison   uncertainty -15.34 .. -10.65 dB (medians -11.18 / -13.60),
+//            peak bus RMS <= 3.14; misalignment +6.05 .. +14.61 dB, NOT
 //            asserted: after a held note the estimate carries the
 //            closed-loop bias (afc_chain's readback note), not the room
+//            (unison re-measured 2026-10-09; the 2026-09-30 numbers,
+//            -13.65 .. -10.34 dB, medians -10.98 / -12.89, misalignment
+//            +8.36 .. +14.89, had moved since, by a change the log does
+//            not single out; the speech rows read as then)
 TEST(TwoMicSmoke, BothMicsConvergeOnTheSharedReference) {
     constexpr unsigned k_sets = mutap_test::k_claim_seed_sets;
     for (const tmic::singers who : {tmic::singers::speech, tmic::singers::unison}) {
@@ -245,7 +249,7 @@ TEST(TwoMicSmoke, BothMicsConvergeOnTheSharedReference) {
                 EXPECT_LT(median(mis[m]), -3.0) << "speech mic " << m << ": measured <= -4.58";
             }
             else {
-                EXPECT_LT(median(unc[m]), -7.0) << "unison mic " << m << ": measured <= -10.98";
+                EXPECT_LT(median(unc[m]), -7.0) << "unison mic " << m << ": measured <= -11.18";
             }
         }
     }
