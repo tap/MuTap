@@ -259,6 +259,100 @@ are not copyrightable, and no code is taken from these sources. The key papers
 (PEM-AFROW, FDAF-PEM-AFROW, the acoustic feedback control survey) are listed in
 `HANDOFF.md` and cited in source comments where implemented.
 
+### Patent literature search (9 October 2026) — a search, not a clearance
+
+The production-readiness plan (M0f) asked for a literature-level search of
+the patent landscape around the four techniques MuTap implements, recorded
+here as exactly what it is: a search run by Claude Code over Google Patents
+and the open literature on one day, with the status labels Google Patents
+displayed ("Expired – Lifetime", "Expired – Fee Related", "Active",
+"abandoned") copied as shown and **not** verified against USPTO PAIR,
+maintenance-fee records or the EPO Register. Only US/EP/WO members were
+looked at; family members elsewhere were not enumerated; claims were read
+at claim 1. It is not a freedom-to-operate opinion, it cannot gate a
+release, and nothing in it is an opinion on infringement. A formal review
+is parked in the plan (§7).
+
+Every technique is implemented from the published papers HANDOFF.md lists,
+and in each area the publications predate the active filings found.
+
+**1. PEM-based feedback cancellation** (prewhitening both the adaptive
+filter's input and desired signal by a near-end model; `pem_afc.h`,
+`lpc.h`). Prior art: Spriet, Proudler, Moonen, Wouters, IEEE TSP 53(10),
+2005 (PEM-AFC); Rombouts, van Waterschoot, Moonen, JAES 55(11), 2007
+(PEM-AFROW); Gil-Cacho, van Waterschoot, Moonen, Jensen, EUSIPCO 2012 and
+IEEE/ACM TASLP 22(12), 2014 (FDAF-PEM); van Waterschoot & Moonen, Proc.
+IEEE 99(2), 2011 (survey). Filings found: US8422708B2 (Oticon, priority
+2008, active to 2031: long-term prediction filters for adaptive whitening
+in a hearing instrument); US9271090B2 (Cirrus Logic, priority 2007, active
+to 2031: whitening "tone-removal" blocks before the AFC update);
+US11722819B2 (Meta, filed 2021, active: LP whitening of the error plus a
+frequency-domain state-space AFC in an entrainment-mitigation pipeline);
+US11849283B2 (Univ. of California, priority 2019, active: all-pass
+frequency warping as a decorrelation preprocessor, not warped-LPC
+prewhitening); WO2015044915A1 (Univ. of Porto, 2013; US phase abandoned);
+US8218788B2 (Yamaha, 2008, expired – fee related; cites PEM-AFROW as
+background). No KU Leuven- or Cochlear-assigned patent on PEM prewhitening
+surfaced under the authors' names.
+
+**2. Frequency-domain partitioned-block Kalman filtering** (`fd_kalman.h`).
+Prior art: Enzner & Vary, Signal Processing 86(6), 2006; Malik & Enzner,
+IEEE TASLP 20(7), 2012; Kuech, Mabande, Enzner, ICASSP 2014; Yang, Enzner,
+Yang, IEEE SPL 24(12), 2017; Bernardi, van Waterschoot, Wouters, Moonen,
+IEEE/ACM TASLP 25(9), 2017 (PEM-wrapped). Filings found: US5995620A
+(Ericsson, 1995, expired – lifetime: a diagonal-covariance Kalman echo
+canceller); US8924337B2 (Nokia, priority 2011, shown as expired – fee
+related: multichannel frequency-domain state-space Kalman AEC with
+estimated noise covariances plus a post-filter — the closest family, and
+lapsed); EP3329594B1 / US10454454B2 (Fraunhofer / FAU, priority 2015,
+granted: an approximated gradient constraint with later correction, a
+complexity trick MuTap does not use); US11722819B2 (Meta, above);
+US12401945B2 (Amazon, recent, active; not opened). No Enzner/Vary- or
+RWTH-assigned patent on the 2006 filter was found.
+
+**3. Dual-path / shadow-filter comparators** (`pem_afc.h`'s shadow,
+`aec_chain`'s shadow trigger). Prior art: Ochiai, Araseki, Ogihara, IEEE
+Trans. Commun. 25(6), 1977; Haneda, Makino, Kojima, Shimauchi, EUSIPCO
+1996; ITU-T G.168's generic two-filter architecture. Filings found, every
+one shown as expired, lapsed or abandoned (the newest filing year 2003):
+US3787645A (NEC, 1972, the root patent); US5933797A (Ericsson, 1997);
+US6163609A / EP0872962 (Nokia, 1997); US7031459B2 (Tellabs lineage, 1997);
+US7035397B2 (Agere, 2001, expired – fee related 2023); US5649012A (Hughes,
+1995); US6947549B2 (HK PolyU, 2003, expired – fee related 2023);
+US20030219113A1 (Intel, 2002, abandoned); US7408891B2 (Mitel, 2002,
+expired 2025).
+
+**4. Residual-echo suppression with comfort noise matched to the near-end
+floor** (`postfilter.h`: coherence-driven Wiener gains, two-window minimum
+statistics, comfort fill). Prior art: Martin, IEEE TSAP 9(5), 2001 (minimum
+statistics; EUSIPCO 1994); Gustafsson, Martin, Vary (1998–2002) and
+Enzner, Mauler, Vary (DAGA 2004) on combined post-filters; Hänsler &
+Schmidt, *Acoustic Echo and Noise Control*, 2004; ITU-T G.168's
+comfort-noise requirements. Filings found: the 1990s families are expired
+— US5937060A (Texas Instruments, 1997), US5949888A (Hughes, 1995),
+US6622030B1 (Ericsson, 2000, expired 2021), US7027591B2 (Ericsson, 2002);
+shown active: US7649988B2 (Cirrus Logic, priority 2004, to 2028: a
+specific comfort-noise generator from a modified Doblinger estimate),
+US8189766B1 (Audience/Samsung, 2007, to 2030: a blind sub-band
+post-filter), US9167342B2 (Microsoft/Skype, 2012, to 2033: echo-power-
+driven suppression from a time-domain FIR estimate), US8811601B2
+(Qualcomm, 2011, to 2033: an integrated AEC + noise suppression + echo
+post-processing pipeline); status unverified: WO2012158163A1 (Google,
+2011, per-band coherence suppression factors; no US grant located),
+EP2673777 (Dolby, 2011, granted; US member not identified); shown lapsed:
+US9363600B2 (Apple, 2014), US9185506B1 (Amazon, 2013), US7433463B2
+(Clarity/Qualcomm, 2004). No patent naming Martin on minimum statistics
+was found.
+
+**Frequency shifting** (`frequency_shifter.h`): Schroeder, JAES 10(2),
+1962 and JASA 36(9), 1964 — publication prior art; the earliest
+frequency-shift anti-singing patent found, US3429999A (Collins Radio, filed
+1966), and US4039753A (1975) are expired. **IIR allpass-pair Hilbert
+transformers**: Regalia, Mitra, Vaidyanathan, Proc. IEEE 76(1), 1988, and
+Harris, Berdahl, Abel, AES 129th Convention, 2010 — publication prior art;
+the allpass 90° network patents found (US5654909A / US5691929, Icom, 1994;
+US5504455A, 1995) are shown as expired.
+
 ### Hilbert allpass-pair coefficients — `include/mutap/frequency_shifter.h`
 The eight coefficients of `tap::mu::allpass_hilbert` (`hilbert_detail::k_coefficients`,
 also in `tests/support/decorrelated_loop.h`'s history and
@@ -278,9 +372,25 @@ any licence or terms of use.
 
 **Source and licence.** The page is Olli Niemitalo, "Hilbert transform",
 https://yehar.com/blog/?p=368 (posted 2003-07-03, updated 2020-05-11; checked
-2026-09-29), which lists exactly these eight coefficients as its equations 2
-and 3 and refers to a 2019 Signal Processing Stack Exchange post for the
-design procedure. **The page states no licence or terms of use.** Treat the
-status of these eight numbers as unstated rather than as permissive. (They
-are the outputs of a numerical design procedure; whether such numbers are
-protectable at all is a legal question this notice does not answer.)
+2026-09-29 and again 2026-10-09), which lists exactly these eight
+coefficients as its equations 2 and 3 and, in an update dated 2019-06-28,
+refers to the author's Signal Processing Stack Exchange answer
+https://dsp.stackexchange.com/a/59157/15347 for the coefficient calculation
+(using Laurent de Soras's HIIR design code). **The page states no licence or
+terms of use.** The Stack Exchange answer is user-contributed content, which
+Stack Exchange's terms of service license under **CC BY-SA 4.0** for
+contributions made from 2 May 2018 (this answer dates from June 2019); that
+licence carries attribution and share-alike terms for the *text and code of
+the answer*, which MuTap does not copy — the answer describes a design
+procedure, and the eight numbers are that procedure's output. (Stack
+Exchange could not be reached from the environment that made the 2026-10-09
+check, so the answer's own licence line was not re-read; the terms quoted
+are the site's published ones for its date.) Treat the status of the
+numbers themselves as unstated rather than as permissive: they are the
+outputs of a numerical design procedure, and whether such numbers are
+protectable at all is a legal question this notice does not answer. The
+production-readiness audit (9 October 2026, item 12) decided to keep them:
+a redesign would move every frequency-shift row in the repository silently
+(the shifter is in no fingerprint) and the sweeps behind those rows cost
+hours each, so any redesign is scheduled with its re-measurement as a
+stated cost.
