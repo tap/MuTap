@@ -100,22 +100,17 @@
 
 /// The trip paths are cold: out of line and marked so, to leave the hot
 /// functions' size — and the compiler's inlining decisions inside them —
-/// as they were. MUTAP_NOINLINE keeps a stage's per-block entry point out
-/// of line where a wrapper (aec_chain) would otherwise inline it into a
-/// function so large that the compiler stops inlining the stage's own
-/// per-bin helpers: one call per block instead of a dozen per bin. Measured reason: with the trips inline, the second
-/// cut read +0.14 % on the suppressor and +0.8 % on the chain on the Cortex-M33 (GCC) against +0.003 % on the Kalman
-/// core beside them, and -0.16 % on the M55's suppressor: a few isfinite calls cannot cost that; a shifted inlining
-/// decision inside the suppressor's per-bin loops can.
+/// as they were. Measured reason: with the trips inline, the second cut
+/// read +0.14 % on the suppressor and +0.8 % on the chain on the Cortex-M33
+/// (GCC) against +0.003 % on the Kalman core beside them, and -0.16 % on
+/// the M55's suppressor: a few isfinite calls cannot cost that; a shifted
+/// inlining decision inside the suppressor's per-bin loops can.
 #if defined(__GNUC__) || defined(__clang__)
 #define MUTAP_WATCHDOG_COLD [[gnu::cold, gnu::noinline]]
-#define MUTAP_NOINLINE [[gnu::noinline]]
 #elif defined(_MSC_VER)
 #define MUTAP_WATCHDOG_COLD __declspec(noinline)
-#define MUTAP_NOINLINE __declspec(noinline)
 #else
 #define MUTAP_WATCHDOG_COLD
-#define MUTAP_NOINLINE
 #endif
 
 namespace tap::mu::detail {
