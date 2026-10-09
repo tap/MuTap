@@ -304,7 +304,7 @@ raw S1 and S3 numbers too: canceller +12.50 and +18.48, 5 Hz +19.71 and
 
 ## Reverb in the loop: deferred
 
-The branch also carried `mutap::spectral_reverb`, a per-bin
+The branch also carried `tap::mu::spectral_reverb`, a per-bin
 frequency-domain reverb whose decay is shaped from the canceller's F̂. It
 does not land with this work, for three reasons:
 

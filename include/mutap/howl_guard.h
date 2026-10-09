@@ -215,6 +215,7 @@
 #include <vector>
 
 #include "mutap/howl_detector.h"
+#include "mutap/watchdog.h"
 
 // No ABI tag: the guard holds howl detectors (resonator banks, no FFT), so
 // its layout does not depend on the build's FFT engine (as howl_detector.h).
@@ -376,17 +377,19 @@ namespace tap::mu {
             for (auto& s : m_mics) {
                 // The verdict thresholds are deployment configuration, as the
                 // policy and the cap: reset() keeps a calibration.
-                const Sample d_thr   = s.d_thr;
-                const Sample a_thr   = s.a_thr;
-                const bool   own_thr = s.own_thr;
-                s                    = mic_state{};
-                s.d_thr              = d_thr;
-                s.a_thr              = a_thr;
-                s.own_thr            = own_thr;
-                s.cur                = g;
-                s.tgt                = g;
-                s.tgt_l              = gl;
-                s.since              = m_quiet_ticks; // quiet from the start
+                const Sample d_thr    = s.d_thr;
+                const Sample a_thr    = s.a_thr;
+                const bool   own_thr  = s.own_thr;
+                const size_t watchdog = s.watchdog; // a counter since construction
+                s                     = mic_state{};
+                s.d_thr               = d_thr;
+                s.a_thr               = a_thr;
+                s.own_thr             = own_thr;
+                s.watchdog            = watchdog;
+                s.cur                 = g;
+                s.tgt                 = g;
+                s.tgt_l               = gl;
+                s.since               = m_quiet_ticks; // quiet from the start
             }
             std::fill(m_gain.begin(), m_gain.end(), gl);
             std::fill(m_bus_gain.begin(), m_bus_gain.end(), Sample(1));
@@ -516,8 +519,22 @@ namespace tap::mu {
         /// (uncertainty_ratio(), shadow_residual_ratio()). Call for every
         /// mic, then update(). @pre mic < microphones()
         void analyze(size_t mic, const Sample* e, Sample uncertainty_ratio, Sample shadow_ratio) noexcept {
+            mic_state& s = m_mics[mic];
+            // The NaN watchdog (mutap/watchdog.h): a non-finite residual
+            // block or statistic sends this mic to ARMING as a canceller
+            // restart does (strikes kept), clears its detector, and counts.
+            // Neither reaches the detector or the verdict: std::max below
+            // would pass a NaN.
+            if (!detail::finite_power(detail::sum_of_squares(e, m_block) + uncertainty_ratio + shadow_ratio)) {
+                ++s.watchdog;
+                m_detectors[mic].reset();
+                enter_arming(s);
+                s.a_db = Sample(0);
+                s.d_db = Sample(0);
+                s.ok   = false;
+                return;
+            }
             m_detectors[mic].process_block(e, m_block);
-            mic_state&       s    = m_mics[mic];
             constexpr Sample tiny = std::numeric_limits<Sample>::min();
             s.a_db                = Sample(10) * std::log10(std::max(uncertainty_ratio, tiny));
             s.d_db                = Sample(10) * std::log10(std::max(shadow_ratio, tiny));
@@ -618,6 +635,11 @@ namespace tap::mu {
         size_t ducks(size_t mic) const noexcept { return m_mics[mic].ducks; }
         size_t rearms(size_t mic) const noexcept { return m_mics[mic].rearms; }
         size_t hints(size_t mic) const noexcept { return m_mics[mic].hints; }
+        /// NaN WATCHDOG trips on mic `mic` since construction
+        /// (mutap/watchdog.h): analyze() calls whose residual block or
+        /// statistics were not finite, each of which sent the mic to ARMING.
+        /// reset() keeps the count.
+        size_t watchdog_trips(size_t mic) const noexcept { return m_mics[mic].watchdog; }
         /// Attribution fallbacks (every mic ducked) since reset().
         size_t                       fallbacks() const noexcept { return m_fallbacks; }
         const howl_detector<Sample>& detector(size_t mic) const noexcept { return m_detectors[mic]; }
@@ -671,10 +693,11 @@ namespace tap::mu {
             Sample level   = Sample(0);
             Sample floor   = Sample(0);
             // counters
-            size_t trips  = 0;
-            size_t ducks  = 0;
-            size_t rearms = 0;
-            size_t hints  = 0;
+            size_t trips    = 0;
+            size_t ducks    = 0;
+            size_t rearms   = 0;
+            size_t hints    = 0;
+            size_t watchdog = 0; ///< since construction: reset() keeps it
         };
 
         static config validated(const config& cfg) {
