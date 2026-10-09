@@ -50,6 +50,50 @@ medians of 5, load average 4.11 — a shared machine, so pessimistic):
 324621.6 / 324455.2 ns that `pem_afc.h` quotes for one canceller's
 `process_block` at the same block size on the same CPU: 0.94 % / 0.55 %.
 
+The same file breaks one block into stages, float and double, so one run
+localizes the cost on a host: `howl_bank` (the resonators and their
+envelopes, one fused loop, through a detector whose tick never comes),
+`howl_tick` (one `howl_detail::decide()` on envelope snapshots),
+`howl_tick_logs` (its 66 `std::log10` calls alone), `howl_fit` (one band's
+growth fit), `howl_readouts` (the harmonic readouts and the 32
+`band_level_db()` reads attribution makes), `bench_guard/policy_m1` (the
+guard's own step, no detector) and `bench_guard/m1`, `m2` (the whole guard
+per block, as `HowlGuardHost.CostPerBlock` times it).
+
+**The guard on Linux GCC (tap/MuTap#87).** `CostPerBlock` had read the
+guard at ~4x its Intel Mac cost on the Linux GCC runner. The breakdown, on
+the `Benchmark smoke` job (GCC 13.3, `4 X 3241 MHz` / `4 X 3244.61 MHz`;
+medians of 5 x 0.3 s; ns per block, float / double):
+
+| stage | before (main) | after |
+|---|---:|---:|
+| `howl_bank` | 10291 / 10182 | 1288 / 2434 |
+| `howl_tick` | 730 / 945 | 725 / 945 |
+| `howl_tick_logs` | 541 / 759 | 517 / 767 |
+| `howl_fit` | 34.9 / 36.7 | 34.5 / 36.4 |
+| `howl_readouts` | 241 / 293 | 248 / 294 |
+| `bench_guard/policy_m1` | 30.9 / 48.1 | 29.9 / 48.8 |
+| `howl_detector/b64` | 10885 / 11135 | 2006 / 3337 |
+| `bench_guard/m1` | 10919 / 11250 | 2059 / 3407 |
+| `bench_guard/m2` | 18204 / 18475 | 4113 / 6754 |
+
+All of the excess was the bank. GCC left its band loop scalar
+(`-fopt-info-vec`: "couldn't vectorize loop", "no vectype for stmt" on the
+coefficient loads) and compiled the envelope's attack / release pick as a
+`comiss` / `jbe` branch, which noise mispredicts; Clang vectorized the loop.
+`__restrict` on the loop's local pointers changed nothing under GCC (10603
+ns, a replica); the same loop with its arrays as `__restrict` parameters
+vectorized (1164 / 2273 ns), so the loop now lives in
+`howl_detail::run_bank` with restrict parameters, its arithmetic unchanged.
+Linux Clang on the same PR run reads 1320 / 2445 (`howl_bank`), 2000 / 3363
+(the detector) and 2061 / 3432 (`m1`): the two compilers now match. A dump of
+every detector readout after every `process_block` call (4 configs, 6
+signals that drive all three trigger paths, irregular partitions; 3,440,844
+values) is bit-identical between main's header and the new one on Linux GCC,
+Linux Clang and macOS arm64 CI and on the Intel Mac. The tick's
+`std::log10` calls are now the largest part of what is left after the bank
+(517 / 767 of the tick's 725 / 945 ns) and were left alone.
+
 ## Scalar baselines (reference container, 2.8 GHz x86, GCC Release: -O3 -DNDEBUG, medians of 5, idle machine)
 
 | layer | 48 kHz f64 | 48 kHz f32 | 16 kHz f64 | 16 kHz f32 |
