@@ -305,7 +305,255 @@ namespace {
         state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * static_cast<std::int64_t>(k_block));
     }
 
+    // ------------------------------------------------------------------
+    // DIAGNOSTIC (temporary, not for merge): replicas of
+    // howl_detector::run_bank's loop, to tell on a GCC host which part does
+    // not vectorize and why.
+    namespace diag {
+
+        template <typename S>
+        struct bank {
+            std::vector<S> a1, a2, g, w1, w2, env, y;
+            S              att = S(0);
+            S              rel = S(0);
+            S              sq  = S(0);
+            explicit bank(size_t nb)
+                : a1(nb)
+                , a2(nb)
+                , g(nb)
+                , w1(nb, S(0))
+                , w2(nb, S(0))
+                , env(nb, S(1e-20))
+                , y(nb * k_block, S(0)) {
+                for (size_t b = 0; b < nb; ++b) {
+                    const double fc =
+                        150.0 * std::pow(16000.0 / 150.0, static_cast<double>(b) / static_cast<double>(nb - 1));
+                    const double k  = std::tan(3.141592653589793 * fc / k_fs);
+                    const double q  = 14.0;
+                    const double a0 = 1.0 + k / q + k * k;
+                    g[b]            = static_cast<S>((k / q) / a0);
+                    a1[b]           = static_cast<S>(2.0 * (k * k - 1.0) / a0);
+                    a2[b]           = static_cast<S>((1.0 - k / q + k * k) / a0);
+                }
+                att = static_cast<S>(std::exp(-1.0 / (0.005 * k_fs)));
+                rel = static_cast<S>(std::exp(-1.0 / (0.050 * k_fs)));
+            }
+        };
+
+        /// run_bank verbatim.
+        template <typename S>
+        void plain(bank<S>& k, const S* in, size_t len) noexcept {
+            const size_t nb  = k.a1.size();
+            const S*     a1  = k.a1.data();
+            const S*     a2  = k.a2.data();
+            const S*     g   = k.g.data();
+            S*           w1  = k.w1.data();
+            S*           w2  = k.w2.data();
+            S*           env = k.env.data();
+            const S      att = k.att;
+            const S      rel = k.rel;
+            S            sq  = k.sq;
+            for (size_t i = 0; i < len; ++i) {
+                const S x  = in[i];
+                const S xb = x + S(1e-20);
+                sq += x * x;
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    const S y = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                    const S c = (y > env[b]) ? att : rel;
+                    env[b]    = y + c * (env[b] - y);
+                }
+            }
+            k.sq = sq;
+        }
+
+        /// run_bank with every pointer __restrict.
+        template <typename S>
+        void restricted(bank<S>& k, const S* __restrict in, size_t len) noexcept {
+            const size_t nb        = k.a1.size();
+            const S* __restrict a1 = k.a1.data();
+            const S* __restrict a2 = k.a2.data();
+            const S* __restrict g  = k.g.data();
+            S* __restrict w1       = k.w1.data();
+            S* __restrict w2       = k.w2.data();
+            S* __restrict env      = k.env.data();
+            const S att            = k.att;
+            const S rel            = k.rel;
+            S       sq             = k.sq;
+            for (size_t i = 0; i < len; ++i) {
+                const S x  = in[i];
+                const S xb = x + S(1e-20);
+                sq += x * x;
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    const S y = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                    const S c = (y > env[b]) ? att : rel;
+                    env[b]    = y + c * (env[b] - y);
+                }
+            }
+            k.sq = sq;
+        }
+
+        /// run_bank with the envelope's coefficient picked by index (a
+        /// load, never a branch) instead of the ternary.
+        template <typename S>
+        void indexed(bank<S>& k, const S* in, size_t len) noexcept {
+            const size_t nb    = k.a1.size();
+            const S*     a1    = k.a1.data();
+            const S*     a2    = k.a2.data();
+            const S*     g     = k.g.data();
+            S*           w1    = k.w1.data();
+            S*           w2    = k.w2.data();
+            S*           env   = k.env.data();
+            const S      cs[2] = {k.rel, k.att};
+            S            sq    = k.sq;
+            for (size_t i = 0; i < len; ++i) {
+                const S x  = in[i];
+                const S xb = x + S(1e-20);
+                sq += x * x;
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    const S y = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                    const S c = cs[static_cast<size_t>(y > env[b])];
+                    env[b]    = y + c * (env[b] - y);
+                }
+            }
+            k.sq = sq;
+        }
+
+        /// The resonators alone (each band's rectified output into y).
+        template <typename S>
+        void resonators(bank<S>& k, const S* in, size_t len) noexcept {
+            const size_t nb = k.a1.size();
+            const S*     a1 = k.a1.data();
+            const S*     a2 = k.a2.data();
+            const S*     g  = k.g.data();
+            S*           w1 = k.w1.data();
+            S*           w2 = k.w2.data();
+            for (size_t i = 0; i < len; ++i) {
+                const S xb = in[i] + S(1e-20);
+                S*      y  = &k.y[i * nb];
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    y[b]      = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                }
+            }
+        }
+
+        /// The envelopes alone over the resonators' last outputs.
+        template <typename S>
+        void envelopes(bank<S>& k, size_t len) noexcept {
+            const size_t nb  = k.a1.size();
+            S*           env = k.env.data();
+            const S      att = k.att;
+            const S      rel = k.rel;
+            for (size_t i = 0; i < len; ++i) {
+                const S* y = &k.y[i * nb];
+                for (size_t b = 0; b < nb; ++b) {
+                    const S c = (y[b] > env[b]) ? att : rel;
+                    env[b]    = y[b] + c * (env[b] - y[b]);
+                }
+            }
+        }
+
+        /// Bands outer, samples inner: each band's state in registers.
+        template <typename S>
+        void band_outer(bank<S>& k, const S* in, size_t len) noexcept {
+            const size_t nb = k.a1.size();
+            S            sq = k.sq;
+            for (size_t i = 0; i < len; ++i) {
+                sq += in[i] * in[i];
+            }
+            k.sq = sq;
+            for (size_t b = 0; b < nb; ++b) {
+                const S a1  = k.a1[b];
+                const S a2  = k.a2[b];
+                const S g   = k.g[b];
+                S       w1  = k.w1[b];
+                S       w2  = k.w2[b];
+                S       env = k.env[b];
+                for (size_t i = 0; i < len; ++i) {
+                    const S w = (in[i] + S(1e-20)) - a1 * w1 - a2 * w2;
+                    const S y = std::abs(g * (w - w2)) + S(1e-20);
+                    w2        = w1;
+                    w1        = w;
+                    const S c = (y > env) ? k.att : k.rel;
+                    env       = y + c * (env - y);
+                }
+                k.w1[b]  = w1;
+                k.w2[b]  = w2;
+                k.env[b] = env;
+            }
+        }
+
+        enum class variant : std::uint8_t { plain, restricted, indexed, resonators, envelopes, band_outer };
+
+        template <typename S>
+        void bench(benchmark::State& state, variant v) {
+            bank<S>              k(32);
+            const std::vector<S> x   = white_corpus<S>(k_block);
+            const auto           run = [&](size_t i) {
+                const S* in = &x[(i % k_blocks) * k_block];
+                switch (v) {
+                case variant::plain:
+                    plain(k, in, k_block);
+                    break;
+                case variant::restricted:
+                    restricted(k, in, k_block);
+                    break;
+                case variant::indexed:
+                    indexed(k, in, k_block);
+                    break;
+                case variant::resonators:
+                    resonators(k, in, k_block);
+                    break;
+                case variant::envelopes:
+                    envelopes(k, k_block);
+                    break;
+                case variant::band_outer:
+                    band_outer(k, in, k_block);
+                    break;
+                }
+            };
+            for (size_t i = 0; i < k_warm; ++i) {
+                resonators(k, &x[(i % k_blocks) * k_block], k_block);
+                run(i);
+            }
+            size_t i = k_warm;
+            for (auto _ : state) {
+                run(i);
+                benchmark::DoNotOptimize(k.env.data());
+                benchmark::DoNotOptimize(k.y.data());
+                benchmark::ClobberMemory();
+                ++i;
+            }
+            state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) * static_cast<std::int64_t>(k_block));
+        }
+
+    } // namespace diag
+
 } // namespace
+
+BENCHMARK_CAPTURE(diag::bench<double>, plain_f64, diag::variant::plain);
+BENCHMARK_CAPTURE(diag::bench<float>, plain_f32, diag::variant::plain);
+BENCHMARK_CAPTURE(diag::bench<double>, restrict_f64, diag::variant::restricted);
+BENCHMARK_CAPTURE(diag::bench<float>, restrict_f32, diag::variant::restricted);
+BENCHMARK_CAPTURE(diag::bench<double>, indexed_f64, diag::variant::indexed);
+BENCHMARK_CAPTURE(diag::bench<float>, indexed_f32, diag::variant::indexed);
+BENCHMARK_CAPTURE(diag::bench<double>, resonators_f64, diag::variant::resonators);
+BENCHMARK_CAPTURE(diag::bench<float>, resonators_f32, diag::variant::resonators);
+BENCHMARK_CAPTURE(diag::bench<double>, envelopes_f64, diag::variant::envelopes);
+BENCHMARK_CAPTURE(diag::bench<float>, envelopes_f32, diag::variant::envelopes);
+BENCHMARK_CAPTURE(diag::bench<double>, band_outer_f64, diag::variant::band_outer);
+BENCHMARK_CAPTURE(diag::bench<float>, band_outer_f32, diag::variant::band_outer);
 
 BENCHMARK_CAPTURE(bench_howl_detector<double>, b64_f64, 64);
 BENCHMARK_CAPTURE(bench_howl_detector<float>, b64_f32, 64);
