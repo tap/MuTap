@@ -520,7 +520,22 @@ jobs:
           printf '#include "mutap/howl_detector.h"\ntemplate class tap::mu::howl_detector<float>;\ntemplate class tap::mu::howl_detector<double>;\n' > /tmp/inst.cpp
           c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude -fopt-info-vec-all -c /tmp/inst.cpp -o /tmp/inst.o 2> /tmp/vec.txt || true
           grep -E 'howl_detector.h:(69[0-9]|70[0-9])' /tmp/vec.txt | sort | uniq -c | head -80
-          objdump -d --no-show-raw-insn -C /tmp/inst.o | awk '/(run_bank|process_block).*:$/{p=1} p{print} /^$/{p=0}' | head -300
+          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude -Ibuild/_deps/googlebenchmark-src/include -fopt-info-vec-all -c bench/bench_howl_detector.cpp -o /tmp/b.o 2> /tmp/vecb.txt || true
+          grep -E 'bench_howl_detector.cpp:[0-9]+:[0-9]+: (optimized|missed): ' /tmp/vecb.txt | grep -vE 'benchmark|statement clobbers' | sort -t: -k2,2n | uniq -c | head -150
+          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude -fopt-info-vec-all -fno-trapping-math -c /tmp/inst.cpp -o /tmp/inst2.o 2> /tmp/vec2.txt || true
+          echo "with -fno-trapping-math:"
+          grep -E 'howl_detector.h:(69[0-9]|70[0-9])' /tmp/vec2.txt | sort | uniq -c | head -40
+
+      - name: TEMP detector identity, main's header vs the branch's
+        run: |
+          git fetch --depth=1 origin main
+          mkdir -p /tmp/old/mutap
+          git show FETCH_HEAD:include/mutap/howl_detector.h > /tmp/old/mutap/howl_detector.h
+          c++ -O3 -DNDEBUG -std=gnu++20 -I/tmp/old bench/temp_identity.cpp -o /tmp/id_old
+          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude bench/temp_identity.cpp -o /tmp/id_new
+          /tmp/id_old /tmp/old.bin
+          /tmp/id_new /tmp/new.bin
+          cmp /tmp/old.bin /tmp/new.bin && echo "IDENTICAL: every readout of every call, bit for bit"
 
   # TEMPORARY (perf/guard-linux-cost diagnosis, not for merge): the same
   # stages on Linux Clang and macOS, to tell the compiler from the host.
@@ -555,6 +570,18 @@ jobs:
           ./build/bench/mutap_bench --benchmark_filter='howl|guard|diag'
           --benchmark_min_time=0.3s --benchmark_repetitions=5
           --benchmark_report_aggregates_only=true
+      - name: Detector identity, main's header vs the branch's
+        env:
+          CXX: ${{ matrix.cxx }}
+        run: |
+          git fetch --depth=1 origin main
+          mkdir -p /tmp/old/mutap
+          git show FETCH_HEAD:include/mutap/howl_detector.h > /tmp/old/mutap/howl_detector.h
+          $CXX -O3 -DNDEBUG -std=gnu++20 -I/tmp/old bench/temp_identity.cpp -o /tmp/id_old
+          $CXX -O3 -DNDEBUG -std=gnu++20 -Iinclude bench/temp_identity.cpp -o /tmp/id_new
+          /tmp/id_old /tmp/old.bin
+          /tmp/id_new /tmp/new.bin
+          cmp /tmp/old.bin /tmp/new.bin && echo "IDENTICAL: every readout of every call, bit for bit"
 
   # The suppressor's pass-1 estimator has two bit-identical forms selected by
   # MUTAP_SUPPRESSOR_BRANCHLESS (branch-free on Arm Helium, branchy elsewhere;

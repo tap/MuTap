@@ -28,10 +28,12 @@
 //                    run (the guard's own step);
 //   * guard          the whole guard per block, as HowlGuardHost.CostPerBlock
 //                    times it: analyze() per mic, update(), apply() per mic.
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <random>
+#include <type_traits>
 #include <vector>
 
 #include <benchmark/benchmark.h>
@@ -494,7 +496,111 @@ namespace {
             }
         }
 
-        enum class variant : std::uint8_t { plain, restricted, indexed, resonators, envelopes, band_outer };
+        /// The coefficient picked by a bit mask (no select, no branch).
+        template <typename S>
+        S mask_select(bool take_a, S a, S b) noexcept {
+            using U       = std::conditional_t<sizeof(S) == 4, std::uint32_t, std::uint64_t>;
+            const U m     = U(0) - static_cast<U>(take_a);
+            const U ub    = std::bit_cast<U>(b);
+            const U mixed = ub ^ ((std::bit_cast<U>(a) ^ ub) & m);
+            return std::bit_cast<S>(mixed);
+        }
+
+        /// run_bank with __restrict PARAMETERS (GCC honours those; local
+        /// restrict pointers it may not). Sel 0: the ternary; 1: both arms
+        /// computed, then the ternary; 2: the coefficient by bit mask.
+        template <typename S, int Sel>
+        [[gnu::noinline]] void params_kernel(const S* __restrict in, size_t len, size_t nb, const S* __restrict a1,
+                                             const S* __restrict a2, const S* __restrict g, S* __restrict w1,
+                                             S* __restrict w2, S* __restrict env, S att, S rel, S* sq_io) noexcept {
+            S sq = *sq_io;
+            for (size_t i = 0; i < len; ++i) {
+                const S x  = in[i];
+                const S xb = x + S(1e-20);
+                sq += x * x;
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    const S y = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                    const S e = env[b];
+                    if constexpr (Sel == 0) {
+                        const S c = (y > e) ? att : rel;
+                        env[b]    = y + c * (e - y);
+                    }
+                    else if constexpr (Sel == 1) {
+                        const S ea = y + att * (e - y);
+                        const S er = y + rel * (e - y);
+                        env[b]     = (y > e) ? ea : er;
+                    }
+                    else {
+                        const S c = mask_select(y > e, att, rel);
+                        env[b]    = y + c * (e - y);
+                    }
+                }
+            }
+            *sq_io = sq;
+        }
+
+        /// run_bank's loop with plain pointers and the bit-mask coefficient.
+        template <typename S>
+        void mask_plain(bank<S>& k, const S* in, size_t len) noexcept {
+            const size_t nb  = k.a1.size();
+            const S*     a1  = k.a1.data();
+            const S*     a2  = k.a2.data();
+            const S*     g   = k.g.data();
+            S*           w1  = k.w1.data();
+            S*           w2  = k.w2.data();
+            S*           env = k.env.data();
+            const S      att = k.att;
+            const S      rel = k.rel;
+            S            sq  = k.sq;
+            for (size_t i = 0; i < len; ++i) {
+                const S x  = in[i];
+                const S xb = x + S(1e-20);
+                sq += x * x;
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    const S y = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                    const S c = mask_select(y > env[b], att, rel);
+                    env[b]    = y + c * (env[b] - y);
+                }
+            }
+            k.sq = sq;
+        }
+
+        /// The resonators alone, __restrict parameters.
+        template <typename S>
+        [[gnu::noinline]] void resonators_params(const S* __restrict in, size_t len, size_t nb, const S* __restrict a1,
+                                                 const S* __restrict a2, const S* __restrict g, S* __restrict w1,
+                                                 S* __restrict w2, S* __restrict y) noexcept {
+            for (size_t i = 0; i < len; ++i) {
+                const S xb = in[i] + S(1e-20);
+                S*      yi = y + i * nb;
+                for (size_t b = 0; b < nb; ++b) {
+                    const S w = xb - a1[b] * w1[b] - a2[b] * w2[b];
+                    yi[b]     = std::abs(g[b] * (w - w2[b])) + S(1e-20);
+                    w2[b]     = w1[b];
+                    w1[b]     = w;
+                }
+            }
+        }
+
+        enum class variant : std::uint8_t {
+            plain,
+            restricted,
+            indexed,
+            resonators,
+            envelopes,
+            band_outer,
+            params_ternary,
+            params_both_arms,
+            params_mask,
+            mask_plain,
+            resonators_params
+        };
 
         template <typename S>
         void bench(benchmark::State& state, variant v) {
@@ -520,6 +626,25 @@ namespace {
                     break;
                 case variant::band_outer:
                     band_outer(k, in, k_block);
+                    break;
+                case variant::params_ternary:
+                    params_kernel<S, 0>(in, k_block, 32, k.a1.data(), k.a2.data(), k.g.data(), k.w1.data(), k.w2.data(),
+                                                  k.env.data(), k.att, k.rel, &k.sq);
+                    break;
+                case variant::params_both_arms:
+                    params_kernel<S, 1>(in, k_block, 32, k.a1.data(), k.a2.data(), k.g.data(), k.w1.data(), k.w2.data(),
+                                                  k.env.data(), k.att, k.rel, &k.sq);
+                    break;
+                case variant::params_mask:
+                    params_kernel<S, 2>(in, k_block, 32, k.a1.data(), k.a2.data(), k.g.data(), k.w1.data(), k.w2.data(),
+                                                  k.env.data(), k.att, k.rel, &k.sq);
+                    break;
+                case variant::mask_plain:
+                    mask_plain(k, in, k_block);
+                    break;
+                case variant::resonators_params:
+                    resonators_params<S>(in, k_block, 32, k.a1.data(), k.a2.data(), k.g.data(), k.w1.data(),
+                                                   k.w2.data(), k.y.data());
                     break;
                 }
             };
@@ -554,6 +679,16 @@ BENCHMARK_CAPTURE(diag::bench<double>, envelopes_f64, diag::variant::envelopes);
 BENCHMARK_CAPTURE(diag::bench<float>, envelopes_f32, diag::variant::envelopes);
 BENCHMARK_CAPTURE(diag::bench<double>, band_outer_f64, diag::variant::band_outer);
 BENCHMARK_CAPTURE(diag::bench<float>, band_outer_f32, diag::variant::band_outer);
+BENCHMARK_CAPTURE(diag::bench<double>, params_ternary_f64, diag::variant::params_ternary);
+BENCHMARK_CAPTURE(diag::bench<float>, params_ternary_f32, diag::variant::params_ternary);
+BENCHMARK_CAPTURE(diag::bench<double>, params_both_arms_f64, diag::variant::params_both_arms);
+BENCHMARK_CAPTURE(diag::bench<float>, params_both_arms_f32, diag::variant::params_both_arms);
+BENCHMARK_CAPTURE(diag::bench<double>, params_mask_f64, diag::variant::params_mask);
+BENCHMARK_CAPTURE(diag::bench<float>, params_mask_f32, diag::variant::params_mask);
+BENCHMARK_CAPTURE(diag::bench<double>, mask_plain_f64, diag::variant::mask_plain);
+BENCHMARK_CAPTURE(diag::bench<float>, mask_plain_f32, diag::variant::mask_plain);
+BENCHMARK_CAPTURE(diag::bench<double>, resonators_params_f64, diag::variant::resonators_params);
+BENCHMARK_CAPTURE(diag::bench<float>, resonators_params_f32, diag::variant::resonators_params);
 
 BENCHMARK_CAPTURE(bench_howl_detector<double>, b64_f64, 64);
 BENCHMARK_CAPTURE(bench_howl_detector<float>, b64_f32, 64);
