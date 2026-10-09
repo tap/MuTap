@@ -93,12 +93,6 @@ jobs:
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
 
-      # TEMPORARY (perf/guard-linux-cost, not for merge): print the guard's
-      # cost line, which a passing ctest run does not show.
-      - name: TEMP HowlGuardHost.CostPerBlock
-        if: always() && runner.os != 'Windows'
-        run: ./build/tests/mutap_tests --gtest_filter='HowlGuardHost.CostPerBlock'
-
       # The bit-identity gate (tests/fingerprint_harness.cpp) already ran as a
       # test above against this leg's committed lines
       # (tests/fingerprints/<fingerprint_leg>.txt); a difference failed the
@@ -512,82 +506,6 @@ jobs:
 
       - name: Run (smoke)
         run: ./build/bench/mutap_bench --benchmark_min_time=0.01s
-
-      # TEMPORARY (perf/guard-linux-cost diagnosis, not for merge).
-      - name: TEMP howl stages, medians of 5
-        run: >
-          ./build/bench/mutap_bench --benchmark_filter='howl|guard|diag'
-          --benchmark_min_time=0.3s --benchmark_repetitions=5
-          --benchmark_report_aggregates_only=true
-
-      - name: TEMP GCC vectorizer report on run_bank
-        run: |
-          c++ --version | head -1
-          printf '#include "mutap/howl_detector.h"\ntemplate class tap::mu::howl_detector<float>;\ntemplate class tap::mu::howl_detector<double>;\n' > /tmp/inst.cpp
-          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude -fopt-info-vec-all -c /tmp/inst.cpp -o /tmp/inst.o 2> /tmp/vec.txt || true
-          grep -E 'howl_detector.h:(69[0-9]|70[0-9])' /tmp/vec.txt | sort | uniq -c | head -80
-          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude -Ibuild/_deps/googlebenchmark-src/include -fopt-info-vec-all -c bench/bench_howl_detector.cpp -o /tmp/b.o 2> /tmp/vecb.txt || true
-          grep -E 'bench_howl_detector.cpp:[0-9]+:[0-9]+: (optimized|missed): ' /tmp/vecb.txt | grep -vE 'benchmark|statement clobbers' | sort -t: -k2,2n | uniq -c | head -150
-          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude -fopt-info-vec-all -fno-trapping-math -c /tmp/inst.cpp -o /tmp/inst2.o 2> /tmp/vec2.txt || true
-          echo "with -fno-trapping-math:"
-          grep -E 'howl_detector.h:(69[0-9]|70[0-9])' /tmp/vec2.txt | sort | uniq -c | head -40
-
-      - name: TEMP detector identity, main's header vs the branch's
-        run: |
-          git fetch --depth=1 origin main
-          mkdir -p /tmp/old/mutap
-          git show FETCH_HEAD:include/mutap/howl_detector.h > /tmp/old/mutap/howl_detector.h
-          c++ -O3 -DNDEBUG -std=gnu++20 -I/tmp/old bench/temp_identity.cpp -o /tmp/id_old
-          c++ -O3 -DNDEBUG -std=gnu++20 -Iinclude bench/temp_identity.cpp -o /tmp/id_new
-          /tmp/id_old /tmp/old.bin
-          /tmp/id_new /tmp/new.bin
-          cmp /tmp/old.bin /tmp/new.bin && echo "IDENTICAL: every readout of every call, bit for bit"
-
-  # TEMPORARY (perf/guard-linux-cost diagnosis, not for merge): the same
-  # stages on Linux Clang and macOS, to tell the compiler from the host.
-  temp-howl-bench:
-    name: TEMP howl stages (${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Linux Clang
-            os: ubuntu-latest
-            cxx: clang++
-          - name: macOS AppleClang
-            os: macos-latest
-            cxx: c++
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          submodules: recursive
-      - name: Configure
-        env:
-          CXX: ${{ matrix.cxx }}
-        run: >
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
-          -DMUTAP_BUILD_BENCHMARKS=ON -DMUTAP_BUILD_TESTS=OFF
-      - name: Build
-        run: cmake --build build -j 4 --target mutap_bench
-      - name: Run
-        run: >
-          ./build/bench/mutap_bench --benchmark_filter='howl|guard|diag'
-          --benchmark_min_time=0.3s --benchmark_repetitions=5
-          --benchmark_report_aggregates_only=true
-      - name: Detector identity, main's header vs the branch's
-        env:
-          CXX: ${{ matrix.cxx }}
-        run: |
-          git fetch --depth=1 origin main
-          mkdir -p /tmp/old/mutap
-          git show FETCH_HEAD:include/mutap/howl_detector.h > /tmp/old/mutap/howl_detector.h
-          $CXX -O3 -DNDEBUG -std=gnu++20 -I/tmp/old bench/temp_identity.cpp -o /tmp/id_old
-          $CXX -O3 -DNDEBUG -std=gnu++20 -Iinclude bench/temp_identity.cpp -o /tmp/id_new
-          /tmp/id_old /tmp/old.bin
-          /tmp/id_new /tmp/new.bin
-          cmp /tmp/old.bin /tmp/new.bin && echo "IDENTICAL: every readout of every call, bit for bit"
 
   # The suppressor's pass-1 estimator has two bit-identical forms selected by
   # MUTAP_SUPPRESSOR_BRANCHLESS (branch-free on Arm Helium, branchy elsewhere;
