@@ -224,6 +224,38 @@ environment (or the CI job's) and commit `bench/baselines.json`. After an
 intentional optimization, re-record the same way — the two-sided gate
 requires it.
 
+### The AFC path's counts (production-readiness M2a, seeded 2026-10-14)
+
+The six AFC scenarios' seeds, from the ratchet job of tap/MuTap#92's first
+run ([38553670143](https://github.com/tap/MuTap/actions/runs/38553670143),
+head `d6b0641`), totals over
+the fixed run and per timed block (total / 400, setup included). For
+scale, `fdkf_48k` — the Kalman core alone at the same block 256 / 8
+partitions — reads 139,981,007 on m55, 282,731,596 on m33 and
+151,426,114 on hexagon:
+
+| scenario | m55 total | m55 / block | m33 total | m33 / block | hexagon total | hexagon / block |
+|---|---:|---:|---:|---:|---:|---:|
+| afc_speech_256 | 1,797,447,363 | 4,493,618 | 1,607,765,729 | 4,019,414 | 544,331,419 | 1,360,829 |
+| afc_speech_64 | 1,694,266,568 | 4,235,666 | 1,388,293,595 | 3,470,734 | 438,467,702 | 1,096,169 |
+| afc_warped_256 | 324,780,153 | 811,950 | 559,529,591 | 1,398,824 | 285,725,309 | 714,313 |
+| afc_warped_64 | 177,054,806 | 442,637 | 257,881,434 | 644,704 | 141,014,926 | 352,537 |
+| guard_m1_256 | 109,730,676 | 274,327 | 121,139,204 | 302,848 | 36,878,595 | 92,196 |
+| guard_m1_64 | 31,636,256 | 79,091 | 36,007,314 | 90,018 | 13,830,360 | 34,576 |
+
+What the seeds say, before any work on the predictor (M3): the speech
+cascade is the cost — `afc_speech_256` is 12.8× the core on the M55,
+5.7× on the M33 and 3.6× on Hexagon (the 9 October
+audit's "about ten times", measured per target); the warped predictor
+with the 2-partition shadow is 2.3× / 2.0× / 1.9×. At block 64 the
+pitch search runs four times as often per second for the same 1024-sample
+window, so per SAMPLE the speech cascade costs about 3.8× more at block 64
+than at block 256 on the M55 (66,182 against 17,553 instructions per
+sample) — the number M2b weighs against the loop's latency budget. The
+guard costs 274,327 per block of 256 and 79,091 per block of 64 on the M55.
+M3's target is stated against these: `pem_afc` on the speech cascade at
+≤ 0.33× its count here.
+
 ### Recorded baselines and updates
 
 A DspTap bump that moves output bits also moves the committed
@@ -439,3 +471,38 @@ scalar engine (the vendored Ooura C until DspTap `b08f6c6`, its
 bit-identical C++20 port from DspTap `bbfa48d`, whose counts are the
 2026-09-23 rows above, and DspTap's srdif engine from `72977aa`, tuned for
 Hexagon at tap/DspTap#44 (`d9c1e33`), whose counts are the srdif rows above).
+
+**2026-10-14 — production-readiness M2a seeds, tap/MuTap#92.** Reason: six
+new scenarios (the AFC path at both candidate geometries; above). Seeds,
+not updates: every existing row is untouched (the harness change is behind
+`MUTAP_SC_LAYER >= 5`), and the existing rows read within the moves
+recorded for M0c on the same run. Counts taken from the ratchet job
+[115817409460](https://github.com/tap/MuTap/actions/runs/38553670143/job/115817409460)
+of the PR's first run (its `NO BASELINE` round, by design). Toolchain/QEMU:
+m33 and m55 `arm-gnu-toolchain-13.2.rel1` / `qemu-system-arm 8.2.2
+(1:8.2.2+ds-0ubuntu1.18)`; hexagon
+`clang+llvm-19.1.5-cross-hexagon-unknown-linux-musl` / `qemu-hexagon` built
+from `qemu-8.2.2.tar.xz` with `--enable-plugins`. `main SHA`: **pending**
+(the #92 squash). No local rig for any of the three; the PR's second run
+confirms the seeds at +0.00 %.
+
+| key | scenario | before | after |
+|---|---|---:|---:|
+| m55 | afc_speech_256 | — | 1,797,447,363 |
+| m55 | afc_speech_64 | — | 1,694,266,568 |
+| m55 | afc_warped_256 | — | 324,780,153 |
+| m55 | afc_warped_64 | — | 177,054,806 |
+| m55 | guard_m1_256 | — | 109,730,676 |
+| m55 | guard_m1_64 | — | 31,636,256 |
+| m33 | afc_speech_256 | — | 1,607,765,729 |
+| m33 | afc_speech_64 | — | 1,388,293,595 |
+| m33 | afc_warped_256 | — | 559,529,591 |
+| m33 | afc_warped_64 | — | 257,881,434 |
+| m33 | guard_m1_256 | — | 121,139,204 |
+| m33 | guard_m1_64 | — | 36,007,314 |
+| hexagon | afc_speech_256 | — | 544,331,419 |
+| hexagon | afc_speech_64 | — | 438,467,702 |
+| hexagon | afc_warped_256 | — | 285,725,309 |
+| hexagon | afc_warped_64 | — | 141,014,926 |
+| hexagon | guard_m1_256 | — | 36,878,595 |
+| hexagon | guard_m1_64 | — | 13,830,360 |
