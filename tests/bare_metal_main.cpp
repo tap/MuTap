@@ -57,7 +57,7 @@ int main() {
         "howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:"
         "reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*:"
         "spectral_reverb_test/0.*:SpectralReverbConfigValidation.*:SpectralReverbRtContract.*:"
-        "watchdog_test/0.*:WatchdogRtContract.*:ReadmeSnippets.*";
+        "watchdog_test/0.*:WatchdogRtContract.*:ReadmeSnippets.*:AfcPreset.*";
     ::testing::InitGoogleTest();
     const int rc = RUN_ALL_TESTS();
     // A filter typo selects zero tests and RUN_ALL_TESTS() returns 0 — an

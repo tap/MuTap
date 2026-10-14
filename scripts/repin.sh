@@ -73,8 +73,9 @@ if tag="$(git -C "$mutap_root" describe --tags --exact-match "$sha" 2>/dev/null)
     label="$tag"
 fi
 
-# MuTap-Max must be clean apart from the submodule itself.
-if [ -n "$(git -C "$max_dir" status --porcelain --ignore-submodules=all)" ]; then
+# MuTap-Max must be clean apart from the submodule itself (untracked files
+# are fine: a local CLAUDE.md or a build log is not a pending change).
+if [ -n "$(git -C "$max_dir" status --porcelain --untracked-files=no --ignore-submodules=all)" ]; then
     die "$max_dir has uncommitted changes; commit or stash them first"
 fi
 

@@ -113,6 +113,14 @@ counted in its cost rather than left implicit:
   redesign: it would move every shift row silently (the shifter is in no
   fingerprint) and the sweeps behind those rows cost hours each.
 
+**M0 — done (tap/MuTap#91, merged 2026-10-10; `v0.1.0` at 3ac601b).** Every
+pass criterion met except the watchdog's cost on one row: the checks cost
+at most 40 instructions per block where code generation held still, 26 of
+30 target × scenario rows sit inside ±0.1 %, and the M33 chain row reads
++0.7 % from a code-generation shift (`watchdog.h`, `claims.md` row 122),
+recorded as a finding. The MuTap-Max half (the externals' `watchdog n`
+message) is tap/MuTap-Max's follow-up PR.
+
 ### M1 — The first listen *(weeks 1–2, on the code as it is)*
 
 The session HANDOFF.md has asked for since Rev 3, run before any DSP
@@ -165,6 +173,18 @@ changes so that it orders the rest of the quarter.
   it. *Pass: bit-identical at 48 kHz / block 256; the AFC loop rows at
   44.1 and 96 kHz inside their 48 kHz margins, or the rate documented as
   unsupported in `SUPPORT.md`.*
+
+**M2 — a and c done (14 October 2026), b open.** M2a: the six scenarios
+(`afc_speech`, `afc_warped`, `guard_m1` at block 256 / 2048 taps and block
+64 / 1024 taps) are on the ratchet on all three targets, seeded from the
+PR's own run (`bench/README.md` carries the counts per block, no cycle
+prose). M2c: `pem_afc_preset` / `afc_guard_preset` (`afc_preset.h`)
+reproduce the external's hand assembly at 48 kHz bit for bit; 44.1 and
+96 kHz are scaled by construction and open-loop-checked, and `SUPPORT.md`
+records them as not loop-validated with what validation would take — the
+plan's "or documented as unsupported" branch, because the closed-loop
+harness is a 48 kHz fixture set. M2b, the product geometry, is decided
+from M1 and stays open until the first listen has run.
 
 ### M3 — The predictor's cost *(weeks 4–6)*
 

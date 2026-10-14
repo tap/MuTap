@@ -167,7 +167,19 @@ slack — the winning commit must re-record).
 Scenarios mirror the wall-clock layers — `fdkf`, `suppressor`, `shadow`,
 `chain` — plus `nn_suppressor` (the learned post engine at its two trained
 geometries, hop 256 at 48 kHz and hop 64 at 16 kHz) at both certified
-geometries (`_48k`, `_16k`), all **float32**
+geometries (`_48k`, `_16k`), and, since production-readiness M2a, **the
+feedback-cancellation path** at its two candidate product geometries, both
+at 48 kHz — `_256` is block 256 / 8 partitions / 2048 taps, what
+`mutap.afc~` ships; `_64` is block 64 / 16 partitions / 1024 taps, what the
+closed-loop claims and the guard's rows are measured at: `afc_speech`
+(`pem_afc` on the speech cascade and the Kalman core, `pem_afc`'s defaults
+otherwise), `afc_warped` (the warped predictor with the 2-partition shadow
+comparator the external ships) and `guard_m1` (`howl_guard`, one
+microphone: `analyze` + `update` + `apply` per block on the corpus's mic
+signal with a constant "ok" verdict). The AFC scenarios run the same
+open-loop corpus as the others: the canceller is an identification core
+with a predictor in front, and its instruction count does not depend on
+the loop being closed. All **float32**
 (the deployment precision; double is soft-float on the M55 and not the
 optimization target — the float32 parity gates in
 [`tests/test_float32.cpp`](../tests/test_float32.cpp) are the correctness
@@ -179,7 +191,12 @@ corpus so the count is stable across toolchains and re-runs.
 Targets: **m55** (`qemu-system-arm -M mps3-an547`, semihosting — Helium
 MVE is the float32 vector story) and **hexagon** (`qemu-hexagon`,
 user-mode — HVX). Baselines live in [`baselines.json`](baselines.json),
-one dict per target.
+one dict per target. The numbers are executed-instruction totals over a
+fixed run (128 warm-up blocks, then 400 timed blocks, setup included);
+nothing here is a cycle or a time — no MuTap target has been run on
+hardware, and an instruction count under QEMU says nothing about cycles.
+"Per block" below is the total over 400, an upper bound that carries the
+setup.
 
 Run one target locally (needs the cross toolchain + QEMU + the plugin):
 

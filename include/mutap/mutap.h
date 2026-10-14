@@ -17,6 +17,7 @@
 #define MUTAP_VERSION_PATCH 0
 
 #include "mutap/afc_chain.h"
+#include "mutap/afc_preset.h"
 #include "mutap/fd_kalman.h"
 #include "mutap/fdaf.h"
 #include "mutap/fft.h"
