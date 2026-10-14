@@ -11,7 +11,16 @@ set(_mutap_icount_scenarios
     chain_48k:3:0
     chain_16k:3:1
     nn_suppressor_48k:4:0
-    nn_suppressor_16k:4:1)
+    nn_suppressor_16k:4:1
+    # The AFC path at both candidate product geometries (production-readiness
+    # M2a; the second index is the geometry here: 0 = block 256 / 2048 taps,
+    # 1 = block 64 / 1024 taps, both 48 kHz — icount_main.cpp).
+    afc_speech_256:5:0
+    afc_speech_64:5:1
+    afc_warped_256:6:0
+    afc_warped_64:6:1
+    guard_m1_256:7:0
+    guard_m1_64:7:1)
 
 foreach(_sc IN LISTS _mutap_icount_scenarios)
     string(REPLACE ":" ";" _parts "${_sc}")

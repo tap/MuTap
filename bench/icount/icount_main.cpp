@@ -17,8 +17,28 @@
 // cross-run determinism.
 //
 // MUTAP_SC_LAYER: 0 = fdkf core, 1 = suppressor, 2 = shadow canceller,
-//                 3 = full certified chain, 4 = learned nn_suppressor
-// MUTAP_SC_RATE:  0 = 48 kHz (2048 taps), 1 = 16 kHz (1024 taps)
+//                 3 = full certified chain, 4 = learned nn_suppressor,
+//                 5 = the feedback canceller on the speech cascade (pem_afc,
+//                     speech_predictor, partitioned_fdkf), 6 = the same on
+//                     the warped predictor with a 2-partition shadow,
+//                     7 = the howl guard, one microphone
+// MUTAP_SC_RATE:  layers 0-4: 0 = 48 kHz (2048 taps), 1 = 16 kHz (1024 taps);
+//                 layers 5-7 (the AFC path, production-readiness M2a): the
+//                 two candidate product geometries, both at 48 kHz —
+//                 0 = block 256 / 8 partitions (2048 taps, what mutap.afc~
+//                 ships), 1 = block 64 / 16 partitions (1024 taps, what the
+//                 closed-loop claims and the guard's rows are measured at).
+//
+// The AFC layers run the same corpus (an open-loop synthetic echo: the
+// feedback canceller is an identification core with a predictor in front,
+// and the instruction count does not depend on the loop being closed) at
+// pem_afc's defaults for everything the geometry does not set — the speech
+// predictor's lags are 32 / 400 samples (120 Hz pitch floor at 48 kHz), the
+// analysis window 1024 samples, the shadow smoothing pem_afc's default. The
+// guard scenario feeds the corpus's y as the residual with a constant "ok"
+// verdict (A' 1e-3, D 0.5: -30 / -3 dB, under the factory thresholds), so
+// it arms and, where the run is long enough, declares and opens; its cost
+// is the detector bank plus the policy tick, per block.
 //
 // Layer 4 is the learned residual suppressor (nn_suppressor.h) at the two
 // trained geometries — 48 kHz / hop 256 / 26 bands and 16 kHz / hop 64 /
@@ -31,7 +51,10 @@
 #include <vector>
 
 #include "mutap/fd_kalman.h"
+#include "mutap/howl_guard.h"
+#include "mutap/lpc.h"
 #include "mutap/nn_suppressor.h"
+#include "mutap/pem_afc.h"
 #include "mutap/postfilter.h"
 
 #ifndef MUTAP_SC_LAYER
@@ -49,7 +72,13 @@ namespace {
         std::size_t partitions;
     };
 
+#if MUTAP_SC_LAYER >= 5
 #if MUTAP_SC_RATE == 0
+    constexpr geometry k_geo{48000.0, 256, 8}; // the external's shipping geometry, 2048 taps
+#else
+    constexpr geometry k_geo{48000.0, 64, 16}; // the claims' geometry, 1024 taps
+#endif
+#elif MUTAP_SC_RATE == 0
     constexpr geometry k_geo{48000.0, 256, 8};
 #else
     constexpr geometry k_geo{16000.0, 256, 4};
@@ -196,6 +225,50 @@ namespace {
                 sup.process_block(c.yb(i) + h * hop, c.xb(i) + h * hop, eh.data());
                 sink += sum_out(eh);
             }
+        }
+#elif MUTAP_SC_LAYER == 5 || MUTAP_SC_LAYER == 6
+        // The feedback canceller (production-readiness M2a): the speech
+        // cascade, or the warped predictor with the 2-partition shadow the
+        // external ships (@shadow 2), on the Kalman core.
+#if MUTAP_SC_LAYER == 5
+        using afc_type = tap::mu::pem_afc<float, tap::mu::speech_predictor<float>, tap::mu::partitioned_fdkf<float>>;
+#else
+        using afc_type =
+            tap::mu::pem_afc<float, tap::mu::warped_lpc_predictor<float>, tap::mu::partitioned_fdkf<float>>;
+#endif
+        typename afc_type::config cfg;
+        cfg.fdaf.block_size = k_geo.block;
+        cfg.fdaf.partitions = k_geo.partitions;
+#if MUTAP_SC_LAYER == 6
+        cfg.shadow_partitions = 2;
+#endif
+        afc_type afc(cfg);
+        for (std::size_t i = 0; i < k_warm; ++i) {
+            afc.process_block(c.xb(i), c.yb(i), e.data());
+        }
+        for (std::size_t i = k_warm; i < k_warm + k_timed; ++i) {
+            afc.process_block(c.xb(i), c.yb(i), e.data());
+            sink += sum_out(e);
+        }
+#elif MUTAP_SC_LAYER == 7
+        // The howl guard, one microphone (M2a's guard_m1): one analyze()
+        // on the corpus's y as the residual, update(), apply(), per block.
+        typename tap::mu::howl_guard<float>::config gc;
+        gc.microphones = 1;
+        gc.block_size  = k_geo.block;
+        gc.sample_rate = k_geo.fs;
+        tap::mu::howl_guard<float> guard(gc);
+        const auto                 tick = [&](std::size_t i) noexcept {
+            guard.analyze(0, c.yb(i), 1e-3f, 0.5f);
+            guard.update();
+            guard.apply(0, c.yb(i), e.data());
+        };
+        for (std::size_t i = 0; i < k_warm; ++i) {
+            tick(i);
+        }
+        for (std::size_t i = k_warm; i < k_warm + k_timed; ++i) {
+            tick(i);
+            sink += sum_out(e);
         }
 #else
         tap::mu::aec_chain<float> chain(preset());

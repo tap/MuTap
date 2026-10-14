@@ -327,6 +327,20 @@ algorithmically complete. What exists today:
   still, 26 of 30 target × scenario rows inside ±0.1 %, one M33 chain row
   at +0.7 % by a code-generation shift (a recorded finding; the per-sample
   first cut measured 0.2–2.7 % and was replaced).
+- **The AFC preset** ([`include/mutap/afc_preset.h`](include/mutap/afc_preset.h)):
+  `pem_afc_preset(block, partitions, fs)` and `afc_guard_preset(block, fs,
+  loop_period_s, ceiling_db)` derive every rate- and geometry-bound field
+  from physical units — the pitch search 120–1500 Hz, the analysis window
+  21.3 ms, the shadow's 51 ms time constant, the detector's top band and
+  growth window — so a consumer sets no sample counts (the speech
+  predictor's sample-count defaults would put the pitch floor at 240 Hz at
+  96 kHz). At 48 kHz it reproduces `mutap.afc~`'s hand-assembled
+  configuration field for field at both candidate geometries, with
+  bit-identical output; at 44.1 and 96 kHz open-loop identification reaches
+  −27.21 / −30.99 dB against −27.21 at 48 kHz on the same synthetic echo
+  ([`tests/test_afc_preset.cpp`](tests/test_afc_preset.cpp)). Which rates
+  are loop-validated, and what the others would take, is in
+  [`SUPPORT.md`](SUPPORT.md).
 
 Next up (see [HANDOFF.md](HANDOFF.md) "What's next"): in-Max listening in
 a real room and the default-engine decision, then the M55 performance

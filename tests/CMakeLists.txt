@@ -63,7 +63,8 @@ add_executable(mutap_tests
     test_reverb_mix.cpp
     test_spectral_reverb.cpp
     test_watchdog.cpp
-    test_readme_snippets.cpp)
+    test_readme_snippets.cpp
+    test_afc_preset.cpp)
 target_link_libraries(mutap_tests PRIVATE
     MuTap::MuTap
     mutap_warnings)
@@ -181,7 +182,7 @@ else()
     set(mutap_emulated_selection "")
     if(CMAKE_CROSSCOMPILING)
         set(mutap_emulated_selection TEST_FILTER
-            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*:howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*:howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*:spectral_reverb_test/0.*:SpectralReverbConfigValidation.*:SpectralReverbRtContract.*:watchdog_test/0.*:WatchdogRtContract.*:ReadmeSnippets.*")
+            "fdaf_test/0.*:FdafCrossPrecision.*:FdafConfigValidation.*:FdafRtContract.*:fd_kalman_test/0.*:fd_kalman_test/1.*:kalman_loop_test/0.*:FdKalmanConfigValidation.*:FdKalmanRtContract.*:Levinson.*:LpcPredictor.*:SpeechPredictor.*:WarpedLpcPredictor.*:PredictorConfigValidation.*:pem_afc_test/0.*:PemAfcConfigValidation.*:PemAfcRtContract.*:closed_loop_test/0.*:burst_test/0.*:aec_test/0.*:AdaptationControlConfigValidation.*:nn_suppressor_test/0.*:NnSuppressorCrossPrecision.*:NnChainFloat32.*:FftEngineContract.*:PortableRandom.*:frequency_shifter_test/0.*:FrequencyShifterCrossPrecision.*:FrequencyShifterConfigValidation.*:FrequencyShifterRtContract.*:howl_detector_test/0.*:HowlDetectorCrossPrecision.*:HowlDetectorConfigValidation.*:HowlDetectorRtContract.*:howl_guard_test/0.*:HowlGuardConfigValidation.*:HowlGuardRtContract.*:reverb_mix_test/0.*:ReverbMixConfigValidation.*:ReverbMixRtContract.*:spectral_reverb_test/0.*:SpectralReverbConfigValidation.*:SpectralReverbRtContract.*:watchdog_test/0.*:WatchdogRtContract.*:ReadmeSnippets.*:AfcPreset.*")
     endif()
     gtest_discover_tests(mutap_tests DISCOVERY_TIMEOUT 120 ${mutap_emulated_selection}
                          PROPERTIES TIMEOUT 900)

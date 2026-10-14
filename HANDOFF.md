@@ -228,6 +228,21 @@ carries the measured numbers; this is the map:
     cross toolchain in hand (M2a puts the AFC path on the ratchet). The
     Max externals report the counter on their right outlet (MuTap-Max
     follow-up to the M0 PR).
+11. **Rates come from the presets** (production-readiness M2c, 14 October
+    2026; `include/mutap/afc_preset.h`, `SUPPORT.md`). `pem_afc_preset(block,
+    partitions, fs)` and `afc_guard_preset(block, fs, loop_period_s,
+    ceiling_db)` are the only places a sample count is derived from a rate
+    for the AFC path (the AEC chain's `aec_chain_preset` is the other); a
+    consumer that sets `min_lag` / `max_lag` / `analysis_window` by hand at
+    a rate other than 48 kHz is a bug. The preset reproduces `mutap.afc~`'s
+    hand assembly at 48 kHz bit for bit (`tests/test_afc_preset.cpp`), so
+    adopting it moved nothing; at 44.1 and 96 kHz the configuration is
+    scaled by construction and open-loop-checked, and NOT loop-validated —
+    `SUPPORT.md` says what that would take. The warped predictor's lambda is
+    a stated exception (a 48 kHz tuning, not rescaled). The AFC path's
+    instruction counts (M2a) live on the ratchet as `afc_speech_*`,
+    `afc_warped_*` and `guard_m1_*` at both candidate geometries, seeded
+    from the PR's own ratchet run; M2b (the product geometry) waits for M1.
 
 ## What's next (ranked)
 
