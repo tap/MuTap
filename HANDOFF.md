@@ -242,7 +242,13 @@ carries the measured numbers; this is the map:
     a stated exception (a 48 kHz tuning, not rescaled). The AFC path's
     instruction counts (M2a) live on the ratchet as `afc_speech_*`,
     `afc_warped_*` and `guard_m1_*` at both candidate geometries, seeded
-    from the PR's own ratchet run; M2b (the product geometry) waits for M1.
+    from the PR's own ratchet run (tap/MuTap#92, run 38553670143): the
+    speech cascade costs 12.8× the Kalman core on the M55 at block 256
+    (4,493,618 against 349,953 instructions per block), 5.7× on the M33,
+    3.6× on Hexagon; the warped predictor 2.3× / 2.0× / 1.9×; per
+    sample, block 64 costs the speech cascade 3.8× block 256 (the pitch
+    search runs four times as often). M3's ≤ 0.33× is against these. M2b
+    (the product geometry) waits for M1.
 
 ## What's next (ranked)
 

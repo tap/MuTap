@@ -178,7 +178,10 @@ changes so that it orders the rest of the quarter.
 (`afc_speech`, `afc_warped`, `guard_m1` at block 256 / 2048 taps and block
 64 / 1024 taps) are on the ratchet on all three targets, seeded from the
 PR's own run (`bench/README.md` carries the counts per block, no cycle
-prose). M2c: `pem_afc_preset` / `afc_guard_preset` (`afc_preset.h`)
+prose): the speech cascade is 12.8× the Kalman core on the M55 at block
+256, 5.7× on the M33 and 3.6× on Hexagon — the audit's "about ten
+times", now per target — and the warped predictor 2.3× / 2.0× / 1.9×;
+M3's ≤ 0.33× is stated against `afc_speech`'s count. M2c: `pem_afc_preset` / `afc_guard_preset` (`afc_preset.h`)
 reproduce the external's hand assembly at 48 kHz bit for bit; 44.1 and
 96 kHz are scaled by construction and open-loop-checked, and `SUPPORT.md`
 records them as not loop-validated with what validation would take — the
