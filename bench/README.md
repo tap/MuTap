@@ -482,8 +482,8 @@ of the PR's first run (its `NO BASELINE` round, by design). Toolchain/QEMU:
 m33 and m55 `arm-gnu-toolchain-13.2.rel1` / `qemu-system-arm 8.2.2
 (1:8.2.2+ds-0ubuntu1.18)`; hexagon
 `clang+llvm-19.1.5-cross-hexagon-unknown-linux-musl` / `qemu-hexagon` built
-from `qemu-8.2.2.tar.xz` with `--enable-plugins`. `main SHA`: **pending**
-(the #92 squash). No local rig for any of the three; the PR's second run
+from `qemu-8.2.2.tar.xz` with `--enable-plugins`. `main SHA`: `c6ce7a7`
+(the #92 squash, filled in by the follow-up as the convention above says). No local rig for any of the three; the PR's second run
 confirms the seeds at +0.00 %.
 
 | key | scenario | before | after |
