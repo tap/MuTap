@@ -2,6 +2,27 @@
 
 > Context brief for a Claude Code session. Captures decisions and technical direction so the next session can start working without re-deriving anything. Can be adapted into a `CLAUDE.md` for persistent project context.
 >
+> **Rev 7** — status revision, no code (31 October 2026). Of the
+> production-readiness track below, **M0 is done** (tap/MuTap#91, tagged
+> `v0.1.0` at its fork point 3ac601b; the MuTap-Max half tap/MuTap-Max#28)
+> and **M2a and M2c are done** (tap/MuTap#92; the MuTap-Max half
+> tap/MuTap-Max#29): the plan's §4 carries a Done record under each, and
+> working notes 10 and 11 the two contracts they added (the NaN watchdog,
+> rates from the presets). The measured facts worth keeping in view: the
+> AFC path is on the instruction-count ratchet at both candidate
+> geometries, and the speech cascade costs 12.8× the Kalman core per block
+> on the Cortex-M55 (5.7× on the M33, 3.6× on Hexagon), the warped
+> predictor 2.3× — M3's ≤ 0.33× is stated against those seeds; the
+> watchdog's one ratchet miss (the M33 chain row, +0.7 % by code
+> generation) is a recorded finding. **Start at M1**, the first real-room
+> listen (plan §4; the run sheet is `PROTOCOL.md` §8): it needs Tim and a
+> rig, and it orders everything after it — M2b's geometry decision waits
+> on it, and so does M3. Without a rig, the session-sized items are the
+> five README-versus-test drift rows in `docs/claims.md` and M6a (one
+> selection list for both emulated filters). The anti-howl PoC bundle that
+> M1's rig patch lives in (`_afc_poc/`, see "Working notes" item 12) is
+> untracked on one machine.
+>
 > **Rev 6** — planning revision, no code (9 October 2026). The next effort
 > is **production readiness**, planned as one track of ten milestones in
 > [`docs/production-readiness-plan.md`](docs/production-readiness-plan.md)
@@ -249,6 +270,24 @@ carries the measured numbers; this is the map:
     sample, block 64 costs the speech cascade 3.8× block 256 (the pitch
     search runs four times as often). M3's ≤ 0.33× is against these. M2b
     (the product geometry) waits for M1.
+12. **The anti-howl PoC bundle is untracked** (`_afc_poc/`, 174 MB on the
+    Intel Mac, from the 2026-09 web sessions; never committed). It holds
+    M1's rig: `max/phase1-rig.maxpat`, `max/rig-roundtrip.maxpat`, the
+    `verify-*.maxpat` patchers, `max/gain_log_from_wav.py` and
+    `max/PHASE1-RIG.md` (the 9-channel map); the PoC's own documents
+    (`POC-PLAN.md` rev 3 and its audit, `PHASE0.md`, `PHASE2.md`,
+    `PROTOCOL.md` Rev 2 — the origin of the committed `PROTOCOL.md`'s
+    section numbers — `SAFETY-DESIGN.md`); two patches that have since
+    landed as tap/MuTap#57 and #86; `phase0-data/` (4 MB: the scratch
+    experiments behind PHASE0.md, and the rig patch's GENERATOR,
+    `max-patch-generator/gen_patches.py` — the `.maxpat` is generated, never
+    edited); `phase2-data/` (164 MB of JSON / CSV / log results, 139 MB of
+    them the spectral-reverb grid); and `max/dattorro~.mxo`, a 5 MB built
+    FAUST external that `max/dattorro.dsp` rebuilds. `.gitignore` does not
+    list the bundle; it is simply unadded. Before M1 runs on another
+    machine, the rig patchers with their generator and the documents need a
+    home in the repository (a `docs/poc/` and a `tools/max/` are the
+    obvious ones) and the results an off-git store.
 
 ## What's next (ranked)
 
